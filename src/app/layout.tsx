@@ -25,7 +25,10 @@ export default function RootLayout({
         <link href="https://fonts.googleapis.com/css2?family=PT+Sans:wght@400;700&display=swap" rel="stylesheet" />
         <link href="https://fonts.googleapis.com/css2?family=Source+Code+Pro:wght@400;500;600&display=swap" rel="stylesheet" />
       </head>
-      <body className={cn("font-body antialiased min-h-screen bg-background text-foreground")}>
+      <body 
+        className={cn("font-body antialiased min-h-screen bg-background text-foreground")}
+        suppressHydrationWarning={true}
+      >
         <SidebarProvider defaultOpen={true}>
           <div className="flex min-h-screen">
             <Sidebar collapsible="icon" className="bg-sidebar text-sidebar-foreground border-r border-sidebar-border hidden md:flex">
