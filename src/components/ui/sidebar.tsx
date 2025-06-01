@@ -33,7 +33,7 @@ type SidebarContext = {
   setOpen: (open: boolean) => void
   openMobile: boolean
   setOpenMobile: (open: boolean) => void
-  isMobile: boolean | undefined // Updated type
+  isMobile: boolean | undefined
   toggleSidebar: () => void
 }
 
@@ -68,7 +68,7 @@ const SidebarProvider = React.forwardRef<
     },
     ref
   ) => {
-    const isMobileHookValue = useIsMobile() // Now returns boolean | undefined
+    const isMobileHookValue = useIsMobile()
     const [openMobile, setOpenMobile] = React.useState(false)
 
     const [_open, _setOpen] = React.useState(defaultOpen)
@@ -185,7 +185,6 @@ const Sidebar = React.forwardRef<
       )
     }
     
-    // If isMobile is undefined, don't render the sidebar yet to avoid hydration mismatch
     if (isMobile === undefined) {
       return null;
     }
@@ -312,9 +311,15 @@ const SidebarRail = React.forwardRef<
 SidebarRail.displayName = "SidebarRail"
 
 const SidebarInset = React.forwardRef<
-  HTMLDivElement,
+  React.ElementRef<'main'>,
   React.ComponentProps<"main">
 >(({ className, ...props }, ref) => {
+  const context = useSidebar();
+
+  if (context.isMobile === undefined) {
+    return null;
+  }
+
   return (
     <main
       ref={ref}
@@ -579,7 +584,7 @@ const SidebarMenuButton = React.forwardRef<
         <TooltipContent
           side="right"
           align="center"
-          hidden={state !== "collapsed" || isMobile === true || isMobile === undefined } // Updated condition
+          hidden={state !== "collapsed" || isMobile === true || isMobile === undefined }
           {...tooltip}
         />
       </Tooltip>
