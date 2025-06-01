@@ -3,6 +3,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import React from 'react'; // Added React import
 import {
   SidebarHeader,
   SidebarContent,
@@ -10,7 +11,7 @@ import {
   SidebarMenuItem,
   SidebarMenuButton,
   SidebarFooter,
-  SidebarSeparator, // Added SidebarSeparator
+  SidebarSeparator, 
 } from '@/components/ui/sidebar';
 import { 
   LayoutDashboard, 
@@ -23,8 +24,7 @@ import {
   Truck,
   Settings,
   LogOut,
-  // New Icons
-  SteeringWheel,
+  Car, // Replaced SteeringWheel with Car
   Users2,
   Warehouse,
   Receipt,
@@ -38,7 +38,7 @@ import { cn } from '@/lib/utils';
 
 const navStructure = [
   {
-    groupLabel: null, // No label for the first group (Dashboard)
+    groupLabel: null, 
     items: [
       { href: '/', label: 'Dashboard', icon: LayoutDashboard },
     ]
@@ -49,7 +49,7 @@ const navStructure = [
       { href: '/branch-management', label: 'Branches', icon: Building2 },
       { href: '/locations', label: 'Locations & Units', icon: MapPin },
       { href: '/trucks', label: 'Trucks', icon: Truck },
-      { href: '/drivers', label: 'Drivers', icon: SteeringWheel },
+      { href: '/drivers', label: 'Drivers', icon: Car }, // Used Car icon
       { href: '/parties', label: 'Parties', icon: Users2 },
       { href: '/godowns', label: 'Godowns', icon: Warehouse },
     ]
