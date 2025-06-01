@@ -78,7 +78,7 @@ export default function NarrationSetupPage() {
           <div>
             <Label htmlFor="templateText">Template Text</Label>
             <Textarea id="templateText" placeholder="Enter narration text. Use {{variable_name}} for placeholders." rows={4} />
-            <p className="text-xs text-muted-foreground mt-1">Example: Being charges for shipment {{shipment_id}}.</p>
+            <p className="text-xs text-muted-foreground mt-1">Example: Being charges for shipment {'{{shipment_id}}'}.</p>
           </div>
           <Button>Save Template</Button>
         </CardContent>
