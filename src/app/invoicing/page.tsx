@@ -17,6 +17,17 @@ import {
   DialogTrigger,
   DialogClose,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
@@ -95,10 +106,12 @@ export default function InvoicingPage() {
   const [biltis, setBiltis] = useState<Bilti[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [isFormDialogOpen, setIsFormDialogOpen] = useState(false);
-  const [editingBilti, setEditingBilti] = useState<Bilti | null>(null); // For future edit functionality
+  const [editingBilti, setEditingBilti] = useState<Bilti | null>(null);
   const [formData, setFormData] = useState<Omit<Bilti, 'id' | 'totalAmount' | 'status'>>(defaultBiltiFormData);
   const [totalAmount, setTotalAmount] = useState(0);
   const { toast } = useToast();
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [biltiToDelete, setBiltiToDelete] = useState<Bilti | null>(null);
 
   useEffect(() => {
     const calculatedTotal = (formData.packages || 0) * (formData.rate || 0);
@@ -126,7 +139,7 @@ export default function InvoicingPage() {
   };
 
   const generateBiltiNo = (): string => {
-    const nextId = biltis.length + 1;
+    const nextId = biltis.length + 1 + Math.floor(Math.random() * 100); // Add some randomness
     return `BLT-${String(nextId).padStart(3, '0')}`;
   };
 
@@ -136,6 +149,16 @@ export default function InvoicingPage() {
     setTotalAmount(0);
     setIsFormDialogOpen(true);
   };
+
+  const openEditForm = (bilti: Bilti) => {
+    setEditingBilti(bilti);
+    // Make sure to destructure all relevant fields, including optional ones.
+    const { totalAmount, status, ...editableData } = bilti;
+    setFormData(editableData); 
+    setTotalAmount(bilti.totalAmount); // Use the stored total amount for editing
+    setIsFormDialogOpen(true);
+  };
+
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
@@ -147,18 +170,26 @@ export default function InvoicingPage() {
         });
         return;
     }
-
-    const newBilti: Bilti = {
-      ...formData,
-      id: editingBilti ? editingBilti.id : generateBiltiNo(),
-      totalAmount: totalAmount,
-      status: "Pending", // Initial status
-    };
+    
+    // Recalculate total amount on save/update to ensure it's current
+    const currentTotalAmount = (formData.packages || 0) * (formData.rate || 0);
 
     if (editingBilti) {
-      // setBiltis(biltis.map(b => b.id === editingBilti.id ? newBilti : b)); // For future edit
-      toast({ title: "Bilti Updated", description: `Bilti ${newBilti.id} has been updated.` });
+      const updatedBilti: Bilti = {
+        ...formData,
+        id: editingBilti.id,
+        totalAmount: currentTotalAmount, // Use recalculated total
+        status: editingBilti.status, // Preserve existing status
+      };
+      setBiltis(biltis.map(b => b.id === editingBilti.id ? updatedBilti : b));
+      toast({ title: "Bilti Updated", description: `Bilti ${updatedBilti.id} has been updated.` });
     } else {
+      const newBilti: Bilti = {
+        ...formData,
+        id: generateBiltiNo(),
+        totalAmount: currentTotalAmount,
+        status: "Pending", // Initial status for new Bilti
+      };
       setBiltis(prevBiltis => [...prevBiltis, newBilti]);
       toast({ title: "Bilti Created", description: `Bilti ${newBilti.id} has been created successfully.` });
     }
@@ -167,6 +198,7 @@ export default function InvoicingPage() {
     // updateLedgers(newBilti); 
 
     setIsFormDialogOpen(false);
+    setEditingBilti(null);
   };
   
   const getPartyName = (partyId: string) => mockParties.find(p => p.id === partyId)?.name || "N/A";
@@ -179,6 +211,20 @@ export default function InvoicingPage() {
     getPartyName(bilti.consigneeId).toLowerCase().includes(searchTerm.toLowerCase()) ||
     bilti.destination.toLowerCase().includes(searchTerm.toLowerCase())
   );
+
+  const handleDeleteClick = (bilti: Bilti) => {
+    setBiltiToDelete(bilti);
+    setIsDeleteDialogOpen(true);
+  };
+
+  const confirmDelete = () => {
+    if (biltiToDelete) {
+      setBiltis(biltis.filter((b) => b.id !== biltiToDelete.id));
+      toast({ title: "Bilti Deleted", description: `Bilti ${biltiToDelete.id} has been deleted.` });
+    }
+    setIsDeleteDialogOpen(false);
+    setBiltiToDelete(null);
+  };
 
   return (
     <div className="space-y-6">
@@ -197,7 +243,7 @@ export default function InvoicingPage() {
             <DialogHeader>
               <DialogTitle>{editingBilti ? "Edit Bilti" : "Create New Bilti / Invoice"}</DialogTitle>
               <DialogDescription>
-                Fill in the details to create a new shipment invoice.
+                {editingBilti ? "Update the details for this Bilti." : "Fill in the details to create a new shipment invoice."}
               </DialogDescription>
             </DialogHeader>
             <form onSubmit={handleSubmit}>
@@ -280,8 +326,8 @@ export default function InvoicingPage() {
                 
                 <div className="grid md:grid-cols-2 gap-4 items-center">
                   <div>
-                      <Label htmlFor="totalAmount">Total Amount</Label>
-                      <Input id="totalAmount" value={totalAmount.toFixed(2)} readOnly className="font-bold text-lg bg-muted" />
+                      <Label htmlFor="totalAmountDisplay">Total Amount</Label>
+                      <Input id="totalAmountDisplay" value={totalAmount.toFixed(2)} readOnly className="font-bold text-lg bg-muted" />
                   </div>
                    <div>
                     <Label htmlFor="payMode">Pay Mode</Label>
@@ -386,14 +432,28 @@ export default function InvoicingPage() {
                       <Button variant="outline" size="icon" aria-label="Print Bilti" onClick={() => alert(`Print Bilti ${bilti.id} (not implemented)`)}>
                         <Printer className="h-4 w-4" />
                       </Button>
-                       {/* Future Edit/Delete
-                      <Button variant="outline" size="icon" aria-label="Edit Bilti" onClick={() => { setEditingBilti(bilti); setFormData(biltis.find(b=>b.id===bilti.id) || defaultBiltiFormData); setTotalAmount(bilti.totalAmount); setIsFormDialogOpen(true);}}>
+                      <Button variant="outline" size="icon" aria-label="Edit Bilti" onClick={() => openEditForm(bilti)}>
                         <Edit className="h-4 w-4" />
                       </Button>
-                      <Button variant="destructive" size="icon" aria-label="Delete Bilti">
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                      */}
+                       <AlertDialog open={isDeleteDialogOpen && biltiToDelete?.id === bilti.id} onOpenChange={(open) => { if(!open) setBiltiToDelete(null); setIsDeleteDialogOpen(open);}}>
+                        <AlertDialogTrigger asChild>
+                           <Button variant="destructive" size="icon" aria-label="Delete Bilti" onClick={() => handleDeleteClick(bilti)}>
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              This action cannot be undone. This will permanently delete Bilti "{biltiToDelete?.id}".
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel onClick={() => {setBiltiToDelete(null); setIsDeleteDialogOpen(false);}}>Cancel</AlertDialogCancel>
+                            <AlertDialogAction onClick={confirmDelete}>Delete</AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
                     </div>
                   </TableCell>
                 </TableRow>
@@ -410,5 +470,4 @@ export default function InvoicingPage() {
     </div>
   );
 }
-
     
