@@ -1,4 +1,3 @@
-
 import type { Timestamp } from 'firebase/firestore';
 
 export interface User {
@@ -24,8 +23,8 @@ export interface Branch {
   contactPhone?: string;
   status?: "Active" | "Inactive";
   createdAt: Timestamp;
-  updatedAt?: Timestamp;
   createdBy?: string; // User.uid
+  updatedAt?: Timestamp;
   updatedBy?: string; // User.uid
 }
 
@@ -44,6 +43,7 @@ export interface Party {
   createdBy: string; // User.uid
   createdAt: Timestamp;
   updatedAt?: Timestamp;
+  updatedBy?: string; // User.uid
 }
 
 export interface Truck {
@@ -58,6 +58,7 @@ export interface Truck {
   createdBy: string; // User.uid
   createdAt: Timestamp;
   updatedAt?: Timestamp;
+  updatedBy?: string; // User.uid
 }
 
 export interface Driver {
@@ -66,12 +67,13 @@ export interface Driver {
   licenseNo: string;
   contactNo: string;
   address?: string;
-  joiningDate?: Timestamp;
+  joiningDate?: Timestamp; // Stored as Timestamp in Firestore
   status: "Active" | "Inactive" | "On Leave";
   assignedLedgerId: string; // Link to LedgerAccount.id
   createdBy: string; // User.uid
   createdAt: Timestamp;
   updatedAt?: Timestamp;
+  updatedBy?: string; // User.uid
 }
 
 export interface Godown {
@@ -83,6 +85,7 @@ export interface Godown {
   createdBy: string; // User.uid
   createdAt: Timestamp;
   updatedAt?: Timestamp;
+  updatedBy?: string; // User.uid
 }
 
 export interface Bilti {
@@ -107,6 +110,7 @@ export interface Bilti {
   createdBy: string; // User.uid
   createdAt: Timestamp;
   updatedAt?: Timestamp;
+  updatedBy?: string; // User.uid
 }
 
 export interface Manifest {
@@ -124,6 +128,7 @@ export interface Manifest {
   createdBy: string; // User.uid
   createdAt: Timestamp;
   updatedAt?: Timestamp;
+  updatedBy?: string; // User.uid
 }
 
 export interface GoodsReceipt {
@@ -140,6 +145,7 @@ export interface GoodsReceipt {
   createdBy: string; // User.uid
   createdAt: Timestamp;
   updatedAt?: Timestamp;
+  updatedBy?: string; // User.uid
 }
 
 export interface DeliveredBiltiItem {
@@ -161,6 +167,7 @@ export interface GoodsDelivery {
   createdBy: string; // User.uid
   createdAt: Timestamp;
   updatedAt?: Timestamp;
+  updatedBy?: string; // User.uid
 }
 
 export interface LedgerAccount {
@@ -173,7 +180,9 @@ export interface LedgerAccount {
   truckNo?: string; // If Truck
   lastTransactionAt?: Timestamp;
   createdAt: Timestamp;
+  createdBy: string; // User.uid
   updatedAt?: Timestamp;
+  updatedBy?: string; // User.uid
 }
 
 export type LedgerTransactionType =
@@ -209,81 +218,73 @@ export interface LedgerEntry {
   createdBy: string; // User.uid
   createdAt: Timestamp;
   updatedAt?: Timestamp;
+  updatedBy?: string; // User.uid
   sourceModule?: "Bilti" | "GoodsDelivery" | "GoodsReceipt" | "Manual" | "Payment" | string;
   branchId?: string; // Branch associated with this transaction, if applicable
 }
 
 // --- Settings / Configurations ---
-
-export interface DocumentNumberingConfig {
-  id: string; // e.g., "bilti", "manifest"
-  documentType: string; // User-friendly name like "Bilti", "Manifest"
-  prefix?: string;
-  suffix?: string;
-  startingNumber: number;
-  lastGeneratedNumber: number; // Current counter
-  minLength?: number; // e.g., 5 means INV-00001
-  perBranch: boolean;
+export interface AuditableConfig {
   createdBy?: string;
   createdAt?: Timestamp;
   updatedBy?: string;
   updatedAt?: Timestamp;
 }
 
-export interface NarrationTemplate {
+export interface DocumentNumberingConfig extends AuditableConfig {
+  id: string; // Document ID
+  documentType: string;
+  prefix?: string;
+  suffix?: string;
+  startingNumber: number;
+  lastGeneratedNumber: number;
+  minLength?: number;
+  perBranch: boolean;
+}
+
+export interface NarrationTemplate extends AuditableConfig {
   id: string; // Document ID
   title: string;
-  template: string; // e.g., "Being freight charges for {{biltiNo}} from {{origin}} to {{destination}}."
-  applicableTo?: string[]; // e.g., ["Bilti", "Invoice"]
-  createdBy: string; // User.uid
-  createdAt: Timestamp;
-  updatedAt?: Timestamp;
+  template: string;
+  applicableTo?: string[];
 }
 
-export interface InvoiceLineCustomization {
+export interface InvoiceLineCustomization extends AuditableConfig {
   id: string; // Document ID
-  fieldName: string; // e.g., "itemSKU", "discountPercentage"
-  label: string; // User-friendly label
+  fieldName: string;
+  label: string;
   type: "Text" | "Number" | "Currency" | "Percentage" | "Date" | "Textarea" | "Boolean" | "Select";
-  options?: string[]; // For "Select" type
+  options?: string[];
   required: boolean;
-  order: number; // Display order
+  order: number;
   defaultValue?: string | number | boolean;
   isEnabled: boolean;
-  createdBy: string; // User.uid
-  createdAt: Timestamp;
-  updatedAt?: Timestamp;
-}
-
-// General Audit fields can be in an interface and extended
-export interface Auditable {
-  createdBy: string; // User.uid
-  createdAt: Timestamp;
-  updatedBy?: string; // User.uid
-  updatedAt?: Timestamp;
 }
 
 // Location and Unit Types with Auditing
-export interface Country extends Auditable {
-  id: string;
+// Combined Auditable fields for consistency
+interface AuditableEntity {
+    id: string;
+    createdBy: string;
+    createdAt: Timestamp;
+    updatedBy?: string;
+    updatedAt?: Timestamp;
+}
+
+export interface Country extends AuditableEntity {
   name: string;
   code: string;
 }
-export interface State extends Auditable {
-  id: string;
+export interface State extends AuditableEntity {
   name: string;
   countryId: string; // Link to Country.id
 }
-export interface City extends Auditable {
-  id: string;
+export interface City extends AuditableEntity {
   name: string;
   stateId: string; // Link to State.id
 }
-export interface Unit extends Auditable {
-  id: string;
+export interface Unit extends AuditableEntity {
   name: string;
   symbol: string;
   type: "Weight" | "Distance" | "Volume" | "Other";
 }
-
-    

@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, type ChangeEvent, type FormEvent, useEffect } from "react";
@@ -7,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { PlusCircle, Search, Edit, Trash2, Car } from "lucide-react";
+import { PlusCircle, Search, Edit, Trash2, Car, CalendarIcon, Loader2 } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -33,57 +32,88 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { CalendarIcon } from "lucide-react";
 import { Calendar } from "@/components/ui/calendar";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
+import { db } from "@/lib/firebase";
+import { collection, getDocs, addDoc, doc, updateDoc, deleteDoc, Timestamp, query, orderBy } from "firebase/firestore";
+import type { Driver as FirestoreDriver } from "@/types/firestore";
+import { useToast } from "@/hooks/use-toast";
 
-interface Driver {
+// Local interface for UI state
+interface Driver extends Omit<FirestoreDriver, 'joiningDate' | 'createdAt' | 'updatedAt'> {
   id: string;
-  name: string;
-  licenseNo: string;
-  contactNo: string;
-  status: "Active" | "Inactive" | "On Leave";
-  assignedLedger: string;
-  joiningDate?: Date;
-  address?: string;
+  joiningDate?: Date; // Use Date for form, convert to Timestamp for Firestore
+  createdAt?: Date | Timestamp; // Allow both for local state vs. Firestore
+  updatedAt?: Date | Timestamp;
 }
 
-const driverStatuses: Driver["status"][] = ["Active", "Inactive", "On Leave"];
+const driverStatuses: FirestoreDriver["status"][] = ["Active", "Inactive", "On Leave"];
 
-const initialDrivers: Driver[] = [
-  { id: "DRV001", name: "Suresh Kumar", licenseNo: "LIC-12345", contactNo: "9876543210", status: "Active", assignedLedger: "Ledger-SK", joiningDate: new Date("2022-01-15"), address: "Kathmandu, Nepal" },
-  { id: "DRV002", name: "Bimala Rai", licenseNo: "LIC-67890", contactNo: "9876543211", status: "Active", assignedLedger: "Ledger-BR", joiningDate: new Date("2021-06-20"), address: "Pokhara, Nepal" },
-  { id: "DRV003", name: "Rajesh Thapa", licenseNo: "LIC-11223", contactNo: "9876543212", status: "On Leave", assignedLedger: "Ledger-RT", joiningDate: new Date("2023-03-10"), address: "Biratnagar, Nepal" },
-  { id: "DRV004", name: "Anita Gurung", licenseNo: "LIC-44556", contactNo: "9876543213", status: "Inactive", assignedLedger: "Ledger-AG", joiningDate: new Date("2020-11-05"), address: "Butwal, Nepal" },
-];
-
-const defaultDriverFormData: Omit<Driver, 'id'> = {
+const defaultDriverFormData: Omit<Driver, 'id' | 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy'> = {
   name: "",
   licenseNo: "",
   contactNo: "",
   status: "Active",
-  assignedLedger: "",
+  assignedLedgerId: "",
   joiningDate: new Date(),
   address: "",
 };
 
+const PLACEHOLDER_USER_ID = "system_user_placeholder";
+
 export default function DriversPage() {
-  const [drivers, setDrivers] = useState<Driver[]>(initialDrivers);
+  const [drivers, setDrivers] = useState<Driver[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [isFormDialogOpen, setIsFormDialogOpen] = useState(false);
   const [editingDriver, setEditingDriver] = useState<Driver | null>(null);
-  const [formData, setFormData] = useState<Omit<Driver, 'id'> & { id?: string }>(defaultDriverFormData);
+  const [formData, setFormData] = useState<Omit<Driver, 'id' | 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy'>>(defaultDriverFormData);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [driverToDelete, setDriverToDelete] = useState<Driver | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const { toast } = useToast();
+
+  const fetchDrivers = async () => {
+    setIsLoading(true);
+    try {
+      const driversCollectionRef = collection(db, "drivers");
+      const q = query(driversCollectionRef, orderBy("name"));
+      const querySnapshot = await getDocs(q);
+      const fetchedDrivers: Driver[] = querySnapshot.docs.map(docSnap => {
+        const data = docSnap.data() as FirestoreDriver;
+        return {
+          ...data,
+          id: docSnap.id,
+          joiningDate: data.joiningDate ? data.joiningDate.toDate() : undefined,
+        };
+      });
+      setDrivers(fetchedDrivers);
+    } catch (error) {
+      console.error("Error fetching drivers: ", error);
+      toast({ title: "Error", description: "Failed to fetch drivers.", variant: "destructive" });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchDrivers();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
 
   const handleInputChange = (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
   
-  const handleSelectChange = (name: keyof Omit<Driver, 'id'>) => (value: string) => {
-    setFormData((prev) => ({ ...prev, [name]: value }));
+  const handleSelectChange = (name: keyof Omit<Driver, 'id' | 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy' | 'joiningDate'>) => (value: string) => {
+     if (name === 'status') {
+        setFormData((prev) => ({ ...prev, [name]: value as FirestoreDriver['status'] }));
+     } else {
+        setFormData((prev) => ({ ...prev, [name]: value }));
+     }
   };
 
   const handleDateChange = (date: Date | undefined) => {
@@ -94,36 +124,60 @@ export default function DriversPage() {
 
   const openAddForm = () => {
     setEditingDriver(null);
-    setFormData({...defaultDriverFormData, joiningDate: new Date()}); // Ensure fresh date
+    setFormData({...defaultDriverFormData, joiningDate: new Date()});
     setIsFormDialogOpen(true);
   };
 
   const openEditForm = (driver: Driver) => {
     setEditingDriver(driver);
-    setFormData({...driver, joiningDate: driver.joiningDate || new Date()});
+    const { id, createdAt, createdBy, updatedAt, updatedBy, ...editableData } = driver;
+    setFormData({...editableData, joiningDate: driver.joiningDate || new Date()});
     setIsFormDialogOpen(true);
   };
 
-  const handleSubmit = (e: FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    if (!formData.name || !formData.licenseNo || !formData.contactNo || !formData.assignedLedger) {
-        // Basic validation, can be enhanced
-        alert("Please fill all required fields.");
+    if (!formData.name || !formData.licenseNo || !formData.contactNo || !formData.assignedLedgerId) {
+        toast({ title: "Validation Error", description: "Name, License No., Contact No., and Ledger A/C ID are required.", variant: "destructive"});
         return;
     }
+    setIsSubmitting(true);
+
+    const driverDataPayload: Omit<FirestoreDriver, 'id' | 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy'> & Partial<Pick<FirestoreDriver, 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy'>> = {
+        ...formData,
+        joiningDate: formData.joiningDate ? Timestamp.fromDate(formData.joiningDate) : undefined,
+    };
 
     if (editingDriver) {
-      setDrivers(
-        drivers.map((d) =>
-          d.id === editingDriver.id ? { ...editingDriver, ...formData } : d
-        )
-      );
+      try {
+        const driverDocRef = doc(db, "drivers", editingDriver.id);
+        await updateDoc(driverDocRef, {
+            ...driverDataPayload,
+            updatedAt: Timestamp.now(),
+            updatedBy: PLACEHOLDER_USER_ID,
+        });
+        toast({ title: "Success", description: "Driver updated successfully." });
+      } catch (error) {
+        console.error("Error updating driver: ", error);
+        toast({ title: "Error", description: "Failed to update driver.", variant: "destructive" });
+      }
     } else {
-      const newId = `DRV${String(drivers.length + 1 + Math.floor(Math.random() * 1000)).padStart(3, '0')}`;
-      setDrivers([...drivers, { id: newId, ...formData } as Driver]);
+      try {
+        await addDoc(collection(db, "drivers"), {
+            ...driverDataPayload,
+            createdAt: Timestamp.now(),
+            createdBy: PLACEHOLDER_USER_ID,
+        });
+        toast({ title: "Success", description: "Driver added successfully." });
+      } catch (error) {
+        console.error("Error adding driver: ", error);
+        toast({ title: "Error", description: "Failed to add driver.", variant: "destructive" });
+      }
     }
+    setIsSubmitting(false);
     setIsFormDialogOpen(false);
     setEditingDriver(null);
+    fetchDrivers();
   };
 
   const handleDeleteClick = (driver: Driver) => {
@@ -131,9 +185,19 @@ export default function DriversPage() {
     setIsDeleteDialogOpen(true);
   };
 
-  const confirmDelete = () => {
+  const confirmDelete = async () => {
     if (driverToDelete) {
-      setDrivers(drivers.filter((d) => d.id !== driverToDelete.id));
+      setIsSubmitting(true);
+      try {
+        await deleteDoc(doc(db, "drivers", driverToDelete.id));
+        toast({ title: "Success", description: `Driver "${driverToDelete.name}" deleted.`});
+        fetchDrivers();
+      } catch (error) {
+        console.error("Error deleting driver: ", error);
+        toast({ title: "Error", description: "Failed to delete driver.", variant: "destructive" });
+      } finally {
+        setIsSubmitting(false);
+      }
     }
     setIsDeleteDialogOpen(false);
     setDriverToDelete(null);
@@ -147,16 +211,12 @@ export default function DriversPage() {
 
   const getStatusBadgeVariant = (status: Driver["status"]): "default" | "destructive" | "secondary" => {
     switch (status) {
-      case "Active":
-        return "default"; // uses accent color
-      case "Inactive":
-        return "destructive";
-      case "On Leave":
-        return "secondary"; // uses muted/secondary color
-      default:
-        return "default";
+      case "Active": return "default";
+      case "Inactive": return "destructive";
+      case "On Leave": return "secondary";
+      default: return "default";
     }
-  }
+  };
 
   return (
     <div className="space-y-6">
@@ -167,7 +227,7 @@ export default function DriversPage() {
         </div>
         <Dialog open={isFormDialogOpen} onOpenChange={setIsFormDialogOpen}>
           <DialogTrigger asChild>
-            <Button onClick={openAddForm}>
+            <Button onClick={openAddForm} disabled={isSubmitting}>
               <PlusCircle className="mr-2 h-4 w-4" /> Add New Driver
             </Button>
           </DialogTrigger>
@@ -195,51 +255,35 @@ export default function DriversPage() {
                 <Label htmlFor="joiningDate" className="text-right">Joining Date</Label>
                 <Popover>
                   <PopoverTrigger asChild>
-                    <Button
-                      variant={"outline"}
-                      className={cn(
-                        "col-span-3 justify-start text-left font-normal",
-                        !formData.joiningDate && "text-muted-foreground"
-                      )}
-                    >
+                    <Button variant={"outline"} className={cn("col-span-3 justify-start text-left font-normal", !formData.joiningDate && "text-muted-foreground")}>
                       <CalendarIcon className="mr-2 h-4 w-4" />
                       {formData.joiningDate ? format(formData.joiningDate, "PPP") : <span>Pick a date</span>}
                     </Button>
                   </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0">
-                    <Calendar
-                      mode="single"
-                      selected={formData.joiningDate}
-                      onSelect={handleDateChange}
-                      initialFocus
-                    />
-                  </PopoverContent>
+                  <PopoverContent className="w-auto p-0"><Calendar mode="single" selected={formData.joiningDate} onSelect={handleDateChange} initialFocus /></PopoverContent>
                 </Popover>
               </div>
               <div className="grid grid-cols-4 items-center gap-4">
                 <Label htmlFor="status" className="text-right">Status</Label>
-                <Select value={formData.status} onValueChange={handleSelectChange('status') as (value: Driver["status"]) => void}>
-                  <SelectTrigger className="col-span-3">
-                    <SelectValue placeholder="Select status" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {driverStatuses.map(status => <SelectItem key={status} value={status}>{status}</SelectItem>)}
-                  </SelectContent>
+                <Select value={formData.status} onValueChange={handleSelectChange('status') as (value: FirestoreDriver["status"]) => void}>
+                  <SelectTrigger className="col-span-3"><SelectValue placeholder="Select status" /></SelectTrigger>
+                  <SelectContent>{driverStatuses.map(status => <SelectItem key={status} value={status}>{status}</SelectItem>)}</SelectContent>
                 </Select>
               </div>
               <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="assignedLedger" className="text-right">Ledger A/C</Label>
-                <Input id="assignedLedger" name="assignedLedger" value={formData.assignedLedger} onChange={handleInputChange} className="col-span-3" required />
+                <Label htmlFor="assignedLedgerId" className="text-right">Ledger A/C ID</Label>
+                <Input id="assignedLedgerId" name="assignedLedgerId" value={formData.assignedLedgerId} onChange={handleInputChange} className="col-span-3" required />
               </div>
               <div className="grid grid-cols-4 items-start gap-4">
                 <Label htmlFor="address" className="text-right pt-2">Address</Label>
                 <Textarea id="address" name="address" value={formData.address || ""} onChange={handleInputChange} className="col-span-3" placeholder="(Optional)" rows={3}/>
               </div>
               <DialogFooter>
-                <DialogClose asChild>
-                   <Button type="button" variant="outline">Cancel</Button>
-                </DialogClose>
-                <Button type="submit">Save Driver</Button>
+                <DialogClose asChild><Button type="button" variant="outline" disabled={isSubmitting}>Cancel</Button></DialogClose>
+                <Button type="submit" disabled={isSubmitting}>
+                  {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  Save Driver
+                </Button>
               </DialogFooter>
             </form>
           </DialogContent>
@@ -252,85 +296,66 @@ export default function DriversPage() {
           <CardDescription>View, edit, or add new drivers.</CardDescription>
           <div className="relative mt-4">
             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Search by Name, License, Contact..."
-              className="pl-8"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-            />
+            <Input placeholder="Search by Name, License, Contact..." className="pl-8" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
           </div>
         </CardHeader>
         <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>ID</TableHead>
-                <TableHead>Name</TableHead>
-                <TableHead>License No.</TableHead>
-                <TableHead>Contact No.</TableHead>
-                <TableHead>Joining Date</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Ledger A/C</TableHead>
-                <TableHead>Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredDrivers.length === 0 && (
+          {isLoading ? (
+            <div className="flex justify-center items-center h-24"><Loader2 className="h-8 w-8 animate-spin text-primary" /><p className="ml-2 text-muted-foreground">Loading drivers...</p></div>
+          ) : (
+            <Table>
+              <TableHeader>
                 <TableRow>
-                  <TableCell colSpan={8} className="text-center">No drivers found.</TableCell>
+                  <TableHead>ID</TableHead>
+                  <TableHead>Name</TableHead>
+                  <TableHead>License No.</TableHead>
+                  <TableHead>Contact No.</TableHead>
+                  <TableHead>Joining Date</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Ledger A/C ID</TableHead>
+                  <TableHead>Actions</TableHead>
                 </TableRow>
-              )}
-              {filteredDrivers.map((driver) => (
-                <TableRow key={driver.id}>
-                  <TableCell className="font-medium">{driver.id}</TableCell>
-                  <TableCell>{driver.name}</TableCell>
-                  <TableCell>{driver.licenseNo}</TableCell>
-                  <TableCell>{driver.contactNo}</TableCell>
-                  <TableCell>{driver.joiningDate ? format(driver.joiningDate, "PP") : 'N/A'}</TableCell>
-                  <TableCell>
-                    <Badge 
-                      variant={getStatusBadgeVariant(driver.status)} 
-                      className={driver.status === "Active" ? "bg-accent text-accent-foreground" : ""}
-                    >
-                      {driver.status}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>{driver.assignedLedger}</TableCell>
-                  <TableCell>
-                    <div className="flex gap-2">
-                      <Button variant="outline" size="icon" aria-label="Edit Driver" onClick={() => openEditForm(driver)}>
-                        <Edit className="h-4 w-4" />
-                      </Button>
-                      <AlertDialog open={isDeleteDialogOpen && driverToDelete?.id === driver.id} onOpenChange={(open) => { if(!open) setDriverToDelete(null); setIsDeleteDialogOpen(open);}}>
-                        <AlertDialogTrigger asChild>
-                          <Button variant="destructive" size="icon" aria-label="Delete Driver" onClick={() => handleDeleteClick(driver)}>
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </AlertDialogTrigger>
-                        <AlertDialogContent>
-                          <AlertDialogHeader>
-                            <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
-                            <AlertDialogDescription>
-                              This action cannot be undone. This will permanently delete the driver
-                              "{driverToDelete?.name}".
-                            </AlertDialogDescription>
-                          </AlertDialogHeader>
-                          <AlertDialogFooter>
-                            <AlertDialogCancel onClick={() => {setDriverToDelete(null); setIsDeleteDialogOpen(false);}}>Cancel</AlertDialogCancel>
-                            <AlertDialogAction onClick={confirmDelete}>Delete</AlertDialogAction>
-                          </AlertDialogFooter>
-                        </AlertDialogContent>
-                      </AlertDialog>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {filteredDrivers.length === 0 && !isLoading && (
+                  <TableRow><TableCell colSpan={8} className="text-center h-24">No drivers found.</TableCell></TableRow>
+                )}
+                {filteredDrivers.map((driver) => (
+                  <TableRow key={driver.id}>
+                    <TableCell className="font-medium">{driver.id}</TableCell>
+                    <TableCell>{driver.name}</TableCell>
+                    <TableCell>{driver.licenseNo}</TableCell>
+                    <TableCell>{driver.contactNo}</TableCell>
+                    <TableCell>{driver.joiningDate ? format(driver.joiningDate, "PP") : 'N/A'}</TableCell>
+                    <TableCell><Badge variant={getStatusBadgeVariant(driver.status)} className={driver.status === "Active" ? "bg-accent text-accent-foreground" : ""}>{driver.status}</Badge></TableCell>
+                    <TableCell>{driver.assignedLedgerId}</TableCell>
+                    <TableCell>
+                      <div className="flex gap-2">
+                        <Button variant="outline" size="icon" aria-label="Edit Driver" onClick={() => openEditForm(driver)} disabled={isSubmitting}><Edit className="h-4 w-4" /></Button>
+                        <AlertDialog open={isDeleteDialogOpen && driverToDelete?.id === driver.id} onOpenChange={(open) => { if(!open) setDriverToDelete(null); setIsDeleteDialogOpen(open);}}>
+                          <AlertDialogTrigger asChild>
+                            <Button variant="destructive" size="icon" aria-label="Delete Driver" onClick={() => handleDeleteClick(driver)} disabled={isSubmitting}><Trash2 className="h-4 w-4" /></Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader><AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle><AlertDialogDescription>This action cannot be undone. This will permanently delete the driver "{driverToDelete?.name}".</AlertDialogDescription></AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel onClick={() => {setDriverToDelete(null); setIsDeleteDialogOpen(false);}} disabled={isSubmitting}>Cancel</AlertDialogCancel>
+                              <AlertDialogAction onClick={confirmDelete} disabled={isSubmitting}>
+                                {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                                Delete
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
         </CardContent>
       </Card>
     </div>
   );
 }
-
-    
