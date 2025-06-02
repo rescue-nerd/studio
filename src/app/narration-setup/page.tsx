@@ -1,19 +1,171 @@
+
+"use client";
+
+import { useState, type ChangeEvent, type FormEvent, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Label } from "@/components/ui/label";
-import { PlusCircle, Search, Edit, Trash2 } from "lucide-react";
+import { PlusCircle, Search, Edit, Trash2, Loader2 } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+  DialogClose,
+} from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { db } from "@/lib/firebase";
+import { 
+  collection, 
+  getDocs, 
+  addDoc, 
+  doc, 
+  updateDoc, 
+  deleteDoc, 
+  Timestamp,
+  query,
+  orderBy
+} from "firebase/firestore";
+import type { NarrationTemplate as FirestoreNarrationTemplate } from "@/types/firestore";
+import { useToast } from "@/hooks/use-toast";
 
-// Mock data for narration templates
-const narrationTemplates = [
-  { id: "NAR001", title: "Standard Freight Charge", template: "Being freight charges for consignment no. {{consignment_no}} from {{origin}} to {{destination}}." },
-  { id: "NAR002", title: "Advance Payment Received", template: "Being advance payment received against proforma invoice no. {{proforma_invoice_no}}." },
-  { id: "NAR003", title: "Late Delivery Penalty", template: "Being penalty charged for late delivery of consignment no. {{consignment_no}} as per agreement." },
-];
+interface NarrationTemplate extends FirestoreNarrationTemplate {}
+
+const defaultFormData: Omit<NarrationTemplate, 'id' | 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy'> = {
+  title: "",
+  template: "",
+  applicableTo: [], // Default to empty array, can be enhanced later
+};
+
+const PLACEHOLDER_USER_ID = "system_user_placeholder";
 
 export default function NarrationSetupPage() {
+  const [templates, setTemplates] = useState<NarrationTemplate[]>([]);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isFormOpen, setIsFormOpen] = useState(false);
+  const [editingTemplate, setEditingTemplate] = useState<NarrationTemplate | null>(null);
+  const [formData, setFormData] = useState(defaultFormData);
+  const [isDeleteAlertOpen, setIsDeleteAlertOpen] = useState(false);
+  const [templateToDelete, setTemplateToDelete] = useState<NarrationTemplate | null>(null);
+  const { toast } = useToast();
+
+  const fetchTemplates = async () => {
+    setIsLoading(true);
+    try {
+      const templatesCollectionRef = collection(db, "narrationTemplates");
+      const q = query(templatesCollectionRef, orderBy("title"));
+      const querySnapshot = await getDocs(q);
+      const fetchedTemplates: NarrationTemplate[] = querySnapshot.docs.map(docSnap => {
+        const data = docSnap.data() as FirestoreNarrationTemplate;
+        return { ...data, id: docSnap.id };
+      });
+      setTemplates(fetchedTemplates);
+    } catch (error) {
+      console.error("Error fetching narration templates: ", error);
+      toast({ title: "Error", description: "Failed to fetch narration templates.", variant: "destructive" });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchTemplates();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const handleInputChange = (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({ ...prev, [name]: value }));
+  };
+
+  const openAddForm = () => {
+    setEditingTemplate(null);
+    setFormData(defaultFormData);
+    setIsFormOpen(true);
+  };
+
+  const openEditForm = (template: NarrationTemplate) => {
+    setEditingTemplate(template);
+    const { id, createdAt, createdBy, updatedAt, updatedBy, ...editableData } = template;
+    setFormData(editableData);
+    setIsFormOpen(true);
+  };
+
+  const handleSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!formData.title.trim() || !formData.template.trim()) {
+      toast({ title: "Validation Error", description: "Title and Template text are required.", variant: "destructive" });
+      return;
+    }
+    setIsSubmitting(true);
+
+    const payload: Omit<FirestoreNarrationTemplate, 'id' | 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy'> & Partial<Pick<FirestoreNarrationTemplate, 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy'>> = {
+      ...formData,
+    };
+
+    try {
+      if (editingTemplate) {
+        const templateDocRef = doc(db, "narrationTemplates", editingTemplate.id);
+        await updateDoc(templateDocRef, { ...payload, updatedAt: Timestamp.now(), updatedBy: PLACEHOLDER_USER_ID });
+        toast({ title: "Success", description: "Narration template updated." });
+      } else {
+        await addDoc(collection(db, "narrationTemplates"), { ...payload, createdAt: Timestamp.now(), createdBy: PLACEHOLDER_USER_ID });
+        toast({ title: "Success", description: "Narration template added." });
+      }
+      fetchTemplates();
+      setIsFormOpen(false);
+    } catch (error) {
+      console.error("Error saving template: ", error);
+      toast({ title: "Error", description: "Failed to save template.", variant: "destructive" });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleDeleteClick = (template: NarrationTemplate) => {
+    setTemplateToDelete(template);
+    setIsDeleteAlertOpen(true);
+  };
+
+  const confirmDelete = async () => {
+    if (!templateToDelete) return;
+    setIsSubmitting(true);
+    try {
+      await deleteDoc(doc(db, "narrationTemplates", templateToDelete.id));
+      toast({ title: "Success", description: `Template "${templateToDelete.title}" deleted.` });
+      fetchTemplates();
+    } catch (error) {
+      console.error("Error deleting template: ", error);
+      toast({ title: "Error", description: "Failed to delete template.", variant: "destructive" });
+    } finally {
+      setIsSubmitting(false);
+      setIsDeleteAlertOpen(false);
+      setTemplateToDelete(null);
+    }
+  };
+
+  const filteredTemplates = templates.filter(template =>
+    template.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    template.template.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row justify-between items-center gap-4">
@@ -21,9 +173,39 @@ export default function NarrationSetupPage() {
           <h1 className="text-3xl font-headline font-bold text-foreground">Narration Setup</h1>
           <p className="text-muted-foreground">Create and manage reusable invoice narration templates.</p>
         </div>
-        <Button>
-          <PlusCircle className="mr-2 h-4 w-4" /> Add New Template
-        </Button>
+        <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
+          <DialogTrigger asChild>
+            <Button onClick={openAddForm}>
+              <PlusCircle className="mr-2 h-4 w-4" /> Add New Template
+            </Button>
+          </DialogTrigger>
+          <DialogContent className="sm:max-w-lg">
+            <DialogHeader>
+              <DialogTitle>{editingTemplate ? "Edit Template" : "Add New Template"}</DialogTitle>
+              <DialogDescription>
+                {editingTemplate ? "Update the details of this narration template." : "Create a new reusable narration template."}
+              </DialogDescription>
+            </DialogHeader>
+            <form onSubmit={handleSubmit} className="space-y-4 py-4">
+              <div>
+                <Label htmlFor="title">Template Title</Label>
+                <Input id="title" name="title" value={formData.title} onChange={handleInputChange} placeholder="e.g., Standard Delivery Charges" required />
+              </div>
+              <div>
+                <Label htmlFor="template">Template Text</Label>
+                <Textarea id="template" name="template" value={formData.template} onChange={handleInputChange} placeholder="Enter narration text. Use {{variable_name}} for placeholders." rows={4} required />
+                <p className="text-xs text-muted-foreground mt-1">Example: Being charges for shipment {'{{shipment_id}}'}.</p>
+              </div>
+              <DialogFooter>
+                <DialogClose asChild><Button type="button" variant="outline" disabled={isSubmitting}>Cancel</Button></DialogClose>
+                <Button type="submit" disabled={isSubmitting}>
+                  {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  Save Template
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
       </div>
 
       <Card className="shadow-lg">
@@ -32,55 +214,61 @@ export default function NarrationSetupPage() {
           <CardDescription>Available templates for quick use in billing.</CardDescription>
           <div className="relative mt-4">
             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-            <Input placeholder="Search templates..." className="pl-8" />
+            <Input placeholder="Search templates by title or content..." className="pl-8" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
           </div>
         </CardHeader>
         <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Title</TableHead>
-                <TableHead>Template Preview</TableHead>
-                <TableHead>Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {narrationTemplates.map((template) => (
-                <TableRow key={template.id}>
-                  <TableCell className="font-medium">{template.title}</TableCell>
-                  <TableCell className="text-sm text-muted-foreground truncate max-w-md">{template.template}</TableCell>
-                  <TableCell>
-                    <div className="flex gap-2">
-                      <Button variant="outline" size="icon" aria-label="Edit Template">
-                        <Edit className="h-4 w-4" />
-                      </Button>
-                      <Button variant="destructive" size="icon" aria-label="Delete Template">
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </TableCell>
+          {isLoading ? (
+            <div className="flex justify-center items-center h-24"><Loader2 className="h-8 w-8 animate-spin text-primary" /><p className="ml-2 text-muted-foreground">Loading templates...</p></div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Title</TableHead>
+                  <TableHead>Template Preview</TableHead>
+                  <TableHead>Actions</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
-
-      <Card className="shadow-lg">
-        <CardHeader>
-          <CardTitle className="font-headline text-xl">Add/Edit Narration Template</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div>
-            <Label htmlFor="templateTitle">Template Title</Label>
-            <Input id="templateTitle" placeholder="e.g., Standard Delivery Charges" />
-          </div>
-          <div>
-            <Label htmlFor="templateText">Template Text</Label>
-            <Textarea id="templateText" placeholder="Enter narration text. Use {{variable_name}} for placeholders." rows={4} />
-            <p className="text-xs text-muted-foreground mt-1">Example: Being charges for shipment {'{{shipment_id}}'}.</p>
-          </div>
-          <Button>Save Template</Button>
+              </TableHeader>
+              <TableBody>
+                {filteredTemplates.length === 0 && !isLoading && (
+                  <TableRow><TableCell colSpan={3} className="text-center h-24">No narration templates found.</TableCell></TableRow>
+                )}
+                {filteredTemplates.map((template) => (
+                  <TableRow key={template.id}>
+                    <TableCell className="font-medium">{template.title}</TableCell>
+                    <TableCell className="text-sm text-muted-foreground truncate max-w-md" title={template.template}>{template.template}</TableCell>
+                    <TableCell>
+                      <div className="flex gap-2">
+                        <Button variant="outline" size="icon" aria-label="Edit Template" onClick={() => openEditForm(template)} disabled={isSubmitting}>
+                          <Edit className="h-4 w-4" />
+                        </Button>
+                        <AlertDialog open={isDeleteAlertOpen && templateToDelete?.id === template.id} onOpenChange={(open) => { if(!open) setTemplateToDelete(null); setIsDeleteAlertOpen(open);}}>
+                          <AlertDialogTrigger asChild>
+                            <Button variant="destructive" size="icon" aria-label="Delete Template" onClick={() => handleDeleteClick(template)} disabled={isSubmitting}>
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                              <AlertDialogDescription>This will permanently delete the template "{templateToDelete?.title}".</AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel onClick={() => setIsDeleteAlertOpen(false)} disabled={isSubmitting}>Cancel</AlertDialogCancel>
+                              <AlertDialogAction onClick={confirmDelete} disabled={isSubmitting}>
+                                {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                                Delete
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
         </CardContent>
       </Card>
     </div>
