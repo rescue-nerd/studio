@@ -19,7 +19,7 @@ export interface Branch {
   managerUserId?: string; // Link to User.uid
   contactEmail?: string;
   contactPhone?: string;
-  status?: "Active" | "Inactive"; // Added this field
+  status?: "Active" | "Inactive";
   createdAt: Timestamp;
   updatedAt?: Timestamp;
 }
@@ -45,7 +45,7 @@ export interface Truck {
   id: string; // Document ID
   truckNo: string;
   type: string; // e.g., "6-Wheeler", "10-Wheeler", "Trailer"
-  capacity: string; // e.g., "10 Ton", "15 CBM"
+  capacity?: string; // e.g., "10 Ton", "15 CBM" - Made optional
   ownerName: string;
   ownerPAN?: string;
   status: "Active" | "Inactive" | "Maintenance";
@@ -74,7 +74,7 @@ export interface Godown {
   name: string;
   branchId: string; // Link to Branch.id
   location: string;
-  status: "Active" | "Inactive";
+  status: "Active" | "Inactive" | "Operational";
   createdBy: string; // User.uid
   createdAt: Timestamp;
   updatedAt?: Timestamp;
@@ -83,7 +83,7 @@ export interface Godown {
 export interface Bilti {
   id: string; // Document ID (Bilti No.)
   miti: Timestamp; // Date of Bilti
-  nepaliMiti?: string; // Added for Bikram Sambat date
+  nepaliMiti?: string; 
   consignorId: string; // Link to Party.id
   consigneeId: string; // Link to Party.id
   origin: string; // Could be Branch name or City name

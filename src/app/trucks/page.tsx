@@ -36,7 +36,7 @@ interface Truck {
   id: string;
   truckNo: string;
   type: string;
-  capacity: string;
+  capacity?: string; // Made optional
   ownerName: string;
   ownerPAN?: string;
   status: "Active" | "Inactive" | "Maintenance";
@@ -50,7 +50,7 @@ const initialTrucks: Truck[] = [
   { id: "TRK001", truckNo: "BA 1 KA 1234", type: "6-Wheeler", capacity: "10 Ton", ownerName: "Ram Transport", ownerPAN: "123456789", status: "Active", assignedLedger: "Ledger-RamT" },
   { id: "TRK002", truckNo: "NA 5 KHA 5678", type: "10-Wheeler", capacity: "16 Ton", ownerName: "Sita Logistics", status: "Active", assignedLedger: "Ledger-SitaL" },
   { id: "TRK003", truckNo: "GA 2 PA 9101", type: "Trailer", capacity: "25 Ton", ownerName: "Himalayan Carriers", ownerPAN: "987654321", status: "Maintenance", assignedLedger: "Ledger-HimalC" },
-  { id: "TRK004", truckNo: "LU 3 CHA 1121", type: "Container Truck", capacity: "20 Ton", ownerName: "Everest Freight", status: "Inactive", assignedLedger: "Ledger-EverestF" },
+  { id: "TRK004", truckNo: "LU 3 CHA 1121", type: "Container Truck", ownerName: "Everest Freight", status: "Inactive", assignedLedger: "Ledger-EverestF" },
 ];
 
 const defaultTruckFormData: Omit<Truck, 'id'> = {
@@ -95,6 +95,10 @@ export default function TrucksPage() {
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
+    if (!formData.truckNo || !formData.ownerName || !formData.assignedLedger) {
+        alert("Truck No., Owner Name, and Assigned Ledger are required.");
+        return;
+    }
     if (editingTruck) {
       setTrucks(
         trucks.map((t) =>
@@ -185,7 +189,7 @@ export default function TrucksPage() {
                 <Label htmlFor="capacity" className="text-right">
                   Capacity
                 </Label>
-                <Input id="capacity" name="capacity" value={formData.capacity} onChange={handleInputChange} className="col-span-3" placeholder="e.g., 10 Ton, 16000 KG" required />
+                <Input id="capacity" name="capacity" value={formData.capacity || ""} onChange={handleInputChange} className="col-span-3" placeholder="e.g., 10 Ton (Optional)" />
               </div>
               <div className="grid grid-cols-4 items-center gap-4">
                 <Label htmlFor="ownerName" className="text-right">
@@ -262,7 +266,7 @@ export default function TrucksPage() {
                   <TableCell className="font-medium">{truck.id}</TableCell>
                   <TableCell>{truck.truckNo}</TableCell>
                   <TableCell>{truck.type}</TableCell>
-                  <TableCell>{truck.capacity}</TableCell>
+                  <TableCell>{truck.capacity || 'N/A'}</TableCell>
                   <TableCell>{truck.ownerName}</TableCell>
                   <TableCell>
                     <Badge 
