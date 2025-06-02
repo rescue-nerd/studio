@@ -19,125 +19,72 @@ import {
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { CalendarIcon, Search, Filter, PlusCircle, ChevronsUpDown, Check, FileText, Printer, BadgeAlert, CheckCircle2, XCircle } from "lucide-react";
+import { CalendarIcon, Search, Filter, PlusCircle, ChevronsUpDown, Check, FileText, Printer, BadgeAlert, CheckCircle2, XCircle, Loader2 } from "lucide-react";
 import { Calendar } from "@/components/ui/calendar";
-import { format, parseISO, isValid, subDays, endOfDay, startOfDay } from "date-fns";
+import { format, startOfDay, endOfDay } from "date-fns";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "cmdk";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import { db } from "@/lib/firebase";
+import {
+  collection,
+  query,
+  orderBy,
+  getDocs,
+  addDoc,
+  doc,
+  updateDoc,
+  where,
+  Timestamp,
+  type DocumentData,
+  type QueryDocumentSnapshot,
+} from "firebase/firestore";
+import type { LedgerAccount as FirestoreLedgerAccount, LedgerEntry as FirestoreLedgerEntry, LedgerTransactionType } from "@/types/firestore";
 
+type FirestoreLedgerEntryStatus = FirestoreLedgerEntry["status"];
 
-// Interfaces
-interface LedgerAccount {
-  id: string; 
-  name: string;
-  type: "Party" | "Truck" | "Driver";
-  currentBalance: number;
-  panNo?: string; 
-  truckNo?: string; 
-  licenseNo?: string; 
+// Local interface extending Firestore type to handle Date objects for UI
+interface LedgerAccount extends Omit<FirestoreLedgerAccount, 'createdAt' | 'updatedAt' | 'lastTransactionAt'> {
+  createdAt: Date;
+  updatedAt?: Date;
+  lastTransactionAt?: Date;
 }
-
-type LedgerTransactionType = "Bilti" | "Delivery" | "Rebate" | "Discount" | "Manual Credit" | "Manual Debit" | "Opening Balance";
-type LedgerEntryStatus = "Pending" | "Approved" | "Rejected";
-
-interface LedgerEntry {
-  id: string;
-  accountId: string;
+interface LedgerEntry extends Omit<FirestoreLedgerEntry, 'miti' | 'createdAt' | 'approvedAt'> {
   miti: Date;
-  description: string; 
-  debit: number;
-  credit: number;
-  balance: number; 
-  referenceNo?: string; 
-  transactionType: LedgerTransactionType;
-  status: LedgerEntryStatus;
-  approvalRemarks?: string;
-  createdBy?: string; 
-  createdAt?: Date;
+  createdAt: Date;
+  approvedAt?: Date;
 }
 
+const transactionTypesForFilter: LedgerTransactionType[] = ["Bilti", "Delivery", "Rebate", "Discount", "Manual Credit", "Manual Debit", "Opening Balance", "Payment", "Receipt", "Expense", "Fuel", "Maintenance"];
+const entryStatusesForFilter: FirestoreLedgerEntryStatus[] = ["Pending", "Approved", "Rejected"];
 
-const initialMockAccounts: LedgerAccount[] = [
-  { id: "PTY001", name: "Global Traders (KTM)", type: "Party", currentBalance: 0, panNo: "PAN123KTM" },
-  { id: "PTY002", name: "National Distributors (PKR)", type: "Party", currentBalance: 0, panNo: "PAN456PKR" },
-  { id: "TRK001", name: "BA 1 KA 1234", type: "Truck", currentBalance: 0, truckNo: "BA 1 KA 1234"},
-  { id: "DRV001", name: "Suresh Kumar", type: "Driver", currentBalance: 0, licenseNo: "LIC-12345" },
-];
-
-const initialMockEntries: LedgerEntry[] = [
-  // Party PTY001
-  { id: "LE001", accountId: "PTY001", miti: new Date("2024-07-01"), description: "Opening Balance", debit: 0, credit: 10000, balance: 10000, transactionType: "Opening Balance", status: "Approved", createdBy: "System", createdAt: new Date("2024-07-01") },
-  { id: "LE002", accountId: "PTY001", miti: new Date("2024-07-05"), description: "Freight charges for Bilti BLT-001 (KTM to PKR)", debit: 5000, credit: 0, balance: 15000, referenceNo: "BLT-001", transactionType: "Bilti", status: "Approved", createdBy: "UserA", createdAt: new Date("2024-07-05") },
-  { id: "LE003", accountId: "PTY001", miti: new Date("2024-07-10"), description: "Payment received via Cheque #123", debit: 0, credit: 3000, balance: 12000, transactionType: "Manual Credit", status: "Pending", createdBy: "UserB", createdAt: new Date("2024-07-10") },
-  { id: "LE004", accountId: "PTY001", miti: new Date("2024-07-15"), description: "Rebate on Delivery GDN-001 (Bilti BLT-001). Reason: Damaged goods.", debit: 0, credit: 500, balance: 11500, referenceNo: "GDN-001", transactionType: "Rebate", status: "Approved", createdBy: "UserA", createdAt: new Date("2024-07-15") },
-  
-  // Party PTY002
-  { id: "LE005", accountId: "PTY002", miti: new Date("2024-07-02"), description: "Opening Balance", debit: 0, credit: 0, balance: 0, transactionType: "Opening Balance", status: "Approved", createdBy: "System", createdAt: new Date("2024-07-02") },
-  { id: "LE006", accountId: "PTY002", miti: new Date("2024-07-06"), description: "Freight charges for Bilti BLT-002 (PKR to BRT, To Pay)", debit: 2500, credit: 0, balance: 2500, referenceNo: "BLT-002", transactionType: "Bilti", status: "Approved", createdBy: "UserA", createdAt: new Date("2024-07-06") },
-  { id: "LE007", accountId: "PTY002", miti: new Date("2024-07-12"), description: "Discount on Delivery GDN-002 (Bilti BLT-002). Reason: Early payment discount.", debit: 0, credit: 250, balance: 2250, referenceNo: "GDN-002", transactionType: "Discount", status: "Approved", createdBy: "UserA", createdAt: new Date("2024-07-12") },
-  { id: "LE011", accountId: "PTY002", miti: new Date("2024-07-18"), description: "Received full payment for BLT-002", debit: 0, credit: 2250, balance: 0, referenceNo: "BLT-002", transactionType: "Manual Credit", status: "Approved", createdBy: "UserB", createdAt: new Date("2024-07-18") },
-
-  // Truck TRK001
-  { id: "LE008", accountId: "TRK001", miti: new Date("2024-07-01"), description: "Opening fuel expense allocation", debit: 5000, credit: 0, balance: -5000, transactionType: "Manual Debit", status: "Pending", createdBy: "System", createdAt: new Date("2024-07-01") },
-  { id: "LE009", accountId: "TRK001", miti: new Date("2024-07-05"), description: "Freight income from Bilti BLT-001", debit: 0, credit: 5000, balance: 0, referenceNo: "BLT-001", transactionType: "Bilti", status: "Approved", createdBy: "UserA", createdAt: new Date("2024-07-05") },
-  { id: "LE012", accountId: "TRK001", miti: new Date("2024-07-20"), description: "Maintenance Cost: Tyre Replacement", debit: 1500, credit: 0, balance: -1500, transactionType: "Manual Debit", status: "Approved", createdBy: "UserC", createdAt: new Date("2024-07-20") },
-  
-  // Driver DRV001
-  { id: "LE010", accountId: "DRV001", miti: new Date("2024-07-01"), description: "Salary advance for July", debit: 1000, credit: 0, balance: -1000, transactionType: "Manual Debit", status: "Approved", createdBy: "System", createdAt: new Date("2024-07-01") },
-  { id: "LE013", accountId: "DRV001", miti: new Date("2024-07-25"), description: "Trip Allowance for BLT-001", debit: 0, credit: 200, balance: -800, referenceNo: "BLT-001", transactionType: "Manual Credit", status: "Approved", createdBy: "UserA", createdAt: new Date("2024-07-25") },
-];
-
-initialMockAccounts.forEach(acc => {
-    const relevantEntries = initialMockEntries
-        .filter(e => e.accountId === acc.id && e.status === "Approved") // Only consider approved for initial balance
-        .sort((a, b) => {
-            const dateComparison = a.miti.getTime() - b.miti.getTime();
-            if (dateComparison !== 0) return dateComparison;
-            return (a.createdAt?.getTime() || 0) - (b.createdAt?.getTime() || 0) || a.id.localeCompare(b.id);
-        });
-    
-    let runningBalance = 0;
-    relevantEntries.forEach(entry => {
-      if (entry.transactionType === "Opening Balance") {
-            runningBalance = entry.credit - entry.debit;
-        } else {
-            runningBalance += entry.credit - entry.debit;
-        }
-        // The mock `entry.balance` might be for all entries, not just approved. We care about the actual current balance.
-    });
-    acc.currentBalance = runningBalance;
-});
-
-
-const transactionTypes: LedgerTransactionType[] = ["Bilti", "Delivery", "Rebate", "Discount", "Manual Credit", "Manual Debit", "Opening Balance"];
-const entryStatuses: LedgerEntryStatus[] = ["Pending", "Approved", "Rejected"];
-
-const defaultManualEntryFormData: Omit<LedgerEntry, 'id' | 'balance' | 'accountId' | 'status' | 'approvalRemarks'> & { accountId?: string } = {
+const defaultManualEntryFormData: Omit<LedgerEntry, 'id' | 'balanceAfterTransaction' | 'accountId' | 'status' | 'approvalRemarks' | 'approvedBy' | 'approvedAt' | 'sourceModule' | 'branchId'> = {
   miti: new Date(),
-  description: "", 
+  description: "",
   debit: 0,
   credit: 0,
   referenceNo: "",
-  transactionType: "Manual Credit", 
-  createdBy: "CurrentUser", 
+  transactionType: "Manual Credit" as LedgerTransactionType,
+  createdBy: "CurrentUser", // Placeholder
   createdAt: new Date(),
 };
 
+const PLACEHOLDER_USER_ID = "system_user_placeholder";
+
 
 export default function LedgersPage() {
-  const [ledgerAccounts, setLedgerAccounts] = useState<LedgerAccount[]>(initialMockAccounts);
-  const [ledgerEntries, setLedgerEntries] = useState<LedgerEntry[]>(initialMockEntries);
+  const [allLedgerAccounts, setAllLedgerAccounts] = useState<LedgerAccount[]>([]);
+  const [allLedgerEntries, setAllLedgerEntries] = useState<LedgerEntry[]>([]);
   
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
   const [accountSearchTerm, setAccountSearchTerm] = useState("");
   const [isAccountSelectOpen, setIsAccountSelectOpen] = useState(false);
 
   const [filterType, setFilterType] = useState<LedgerTransactionType | "All">("All");
-  const [filterStatus, setFilterStatus] = useState<LedgerEntryStatus | "All">("All");
+  const [filterStatus, setFilterStatus] = useState<FirestoreLedgerEntryStatus | "All">("All");
   const [filterStartDate, setFilterStartDate] = useState<Date | undefined>(undefined);
   const [filterEndDate, setFilterEndDate] = useState<Date | undefined>(undefined);
 
@@ -145,25 +92,162 @@ export default function LedgersPage() {
   const [manualEntryFormData, setManualEntryFormData] = useState(defaultManualEntryFormData);
 
   const { toast } = useToast();
+  const [isLoadingAccounts, setIsLoadingAccounts] = useState(true);
+  const [isLoadingEntries, setIsLoadingEntries] = useState(false);
+  const [isSubmittingManualEntry, setIsSubmittingManualEntry] = useState(false);
+  const [isUpdatingEntryStatus, setIsUpdatingEntryStatus] = useState<string | null>(null); // Stores ID of entry being updated
 
-  const selectedAccount = useMemo(() => {
-    return ledgerAccounts.find(acc => acc.id === selectedAccountId);
-  }, [selectedAccountId, ledgerAccounts]);
+  const fetchLedgerAccounts = async () => {
+    setIsLoadingAccounts(true);
+    try {
+      const q = query(collection(db, "ledgerAccounts"), orderBy("accountName"));
+      const querySnapshot = await getDocs(q);
+      const fetchedAccounts = querySnapshot.docs.map(docSnap => {
+        const data = docSnap.data() as FirestoreLedgerAccount;
+        return {
+          ...data,
+          id: docSnap.id,
+          createdAt: data.createdAt.toDate(),
+          updatedAt: data.updatedAt?.toDate(),
+          lastTransactionAt: data.lastTransactionAt?.toDate(),
+        } as LedgerAccount;
+      });
+      setAllLedgerAccounts(fetchedAccounts);
+    } catch (error) {
+      console.error("Error fetching ledger accounts:", error);
+      toast({ title: "Error", description: "Failed to fetch ledger accounts.", variant: "destructive"});
+    } finally {
+      setIsLoadingAccounts(false);
+    }
+  };
 
-  const displayedEntries = useMemo(() => {
+  const fetchLedgerEntries = async (accountId: string) => {
+    if (!accountId) return;
+    setIsLoadingEntries(true);
+    try {
+      const q = query(collection(db, "ledgerEntries"), where("accountId", "==", accountId), orderBy("miti", "asc"), orderBy("createdAt", "asc"));
+      const querySnapshot = await getDocs(q);
+      const fetchedEntries = querySnapshot.docs.map(docSnap => {
+        const data = docSnap.data() as FirestoreLedgerEntry;
+        return {
+          ...data,
+          id: docSnap.id,
+          miti: data.miti.toDate(),
+          createdAt: data.createdAt.toDate(),
+          approvedAt: data.approvedAt?.toDate(),
+        } as LedgerEntry;
+      });
+      setAllLedgerEntries(prev => {
+        const otherAccountEntries = prev.filter(e => e.accountId !== accountId);
+        return [...otherAccountEntries, ...fetchedEntries];
+      });
+    } catch (error) {
+      console.error(`Error fetching entries for account ${accountId}:`, error);
+      toast({ title: "Error", description: `Failed to fetch entries for account ${accountId}.`, variant: "destructive"});
+    } finally {
+      setIsLoadingEntries(false);
+    }
+  };
+  
+  useEffect(() => {
+    fetchLedgerAccounts();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (selectedAccountId) {
+      fetchLedgerEntries(selectedAccountId);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedAccountId]);
+
+
+  const selectedAccountDetails = useMemo(() => {
+    return allLedgerAccounts.find(acc => acc.id === selectedAccountId);
+  }, [selectedAccountId, allLedgerAccounts]);
+
+
+  const processedAndFilteredEntries = useMemo(() => {
     if (!selectedAccountId) return [];
-    return ledgerEntries
-      .filter(entry => entry.accountId === selectedAccountId)
+
+    const accountEntries = allLedgerEntries.filter(entry => entry.accountId === selectedAccountId);
+    
+    // Apply filters
+    const filtered = accountEntries
       .filter(entry => filterType === "All" || entry.transactionType === filterType)
       .filter(entry => filterStatus === "All" || entry.status === filterStatus)
       .filter(entry => !filterStartDate || entry.miti >= startOfDay(filterStartDate))
-      .filter(entry => !filterEndDate || entry.miti <= endOfDay(filterEndDate))
-      .sort((a, b) => { 
-          const dateComparison = b.miti.getTime() - a.miti.getTime();
-          if (dateComparison !== 0) return dateComparison;
-          return (b.createdAt?.getTime() || 0) - (a.createdAt?.getTime() || 0) || b.id.localeCompare(a.id);
-      });
-  }, [selectedAccountId, ledgerEntries, filterType, filterStatus, filterStartDate, filterEndDate]);
+      .filter(entry => !filterEndDate || entry.miti <= endOfDay(filterEndDate));
+
+    // Sort for balance calculation: by miti, then by createdAt, then by status (Approved first), then by ID
+    const sortedForBalance = [...filtered].sort((a, b) => {
+        const dateComparison = a.miti.getTime() - b.miti.getTime();
+        if (dateComparison !== 0) return dateComparison;
+        
+        // Prioritize Opening Balance
+        if (a.transactionType === "Opening Balance") return -1;
+        if (b.transactionType === "Opening Balance") return 1;
+
+        const createdAtComparison = (a.createdAt?.getTime() || 0) - (b.createdAt?.getTime() || 0);
+        if (createdAtComparison !== 0) return createdAtComparison;
+        
+        // Prioritize Approved entries for stable balance calculation
+        if (a.status === "Approved" && b.status !== "Approved") return -1;
+        if (a.status !== "Approved" && b.status === "Approved") return 1;
+
+        return a.id.localeCompare(b.id);
+    });
+
+    let runningBalance = 0;
+    const entriesWithBalance = sortedForBalance.map(entry => {
+      let balanceAfterThisEntry = runningBalance; // Balance *before* this entry if it's not approved
+      if (entry.status === "Approved" || entry.transactionType === "Opening Balance") {
+         if (entry.transactionType === "Opening Balance") {
+            runningBalance = entry.credit - entry.debit;
+         } else {
+            runningBalance += entry.credit - entry.debit;
+         }
+         balanceAfterThisEntry = runningBalance;
+      }
+      return { ...entry, balanceAfterTransaction: balanceAfterThisEntry };
+    });
+
+    // Sort for display: most recent first
+    return entriesWithBalance.sort((a, b) => {
+        const dateComparison = b.miti.getTime() - a.miti.getTime();
+        if (dateComparison !== 0) return dateComparison;
+        return (b.createdAt?.getTime() || 0) - (a.createdAt?.getTime() || 0) || b.id.localeCompare(a.id);
+    });
+
+  }, [selectedAccountId, allLedgerEntries, filterType, filterStatus, filterStartDate, filterEndDate]);
+
+
+  const currentAccountBalance = useMemo(() => {
+    if (!selectedAccountId) return 0;
+    // Find the last *approved* entry after sorting by miti and createdAt
+    const approvedEntries = allLedgerEntries
+        .filter(e => e.accountId === selectedAccountId && (e.status === "Approved" || e.transactionType === "Opening Balance"))
+        .sort((a, b) => {
+            const dateComparison = a.miti.getTime() - b.miti.getTime();
+            if (dateComparison !== 0) return dateComparison;
+            if (a.transactionType === "Opening Balance") return -1;
+            if (b.transactionType === "Opening Balance") return 1;
+            const createdAtComparison = (a.createdAt?.getTime() || 0) - (b.createdAt?.getTime() || 0);
+            if (createdAtComparison !== 0) return createdAtComparison;
+            return a.id.localeCompare(b.id);
+        });
+
+    let runningBalance = 0;
+    approvedEntries.forEach(entry => {
+        if (entry.transactionType === "Opening Balance") {
+            runningBalance = entry.credit - entry.debit;
+        } else {
+            runningBalance += entry.credit - entry.debit;
+        }
+    });
+    return runningBalance;
+  }, [selectedAccountId, allLedgerEntries]);
+
 
   const handleAccountSelect = (accountId: string) => {
     setSelectedAccountId(accountId);
@@ -182,49 +266,14 @@ export default function LedgersPage() {
   };
 
   const handleManualEntryDateChange = (date?: Date) => {
-    if (date) setManualEntryFormData(prev => ({ ...prev, miti: date, createdAt: new Date() }));
+    if (date) setManualEntryFormData(prev => ({ ...prev, miti: date }));
   };
   
   const handleManualEntryTypeChange = (value: LedgerTransactionType) => {
     setManualEntryFormData(prev => ({...prev, transactionType: value}));
   };
 
-
-  const recalculateBalances = (accountId: string, entries: LedgerEntry[]): LedgerEntry[] => {
-    const accountEntriesSorted = entries
-      .filter(e => e.accountId === accountId)
-      .sort((a, b) => {
-        const dateComparison = a.miti.getTime() - b.miti.getTime();
-        if (dateComparison !== 0) return dateComparison;
-        if (a.transactionType === "Opening Balance") return -1;
-        if (b.transactionType === "Opening Balance") return 1;
-        return (a.createdAt?.getTime() || 0) - (b.createdAt?.getTime() || 0) || a.id.localeCompare(b.id);
-      });
-
-    let currentRunningBalance = 0;
-    const recalculated = accountEntriesSorted.map(entry => {
-      if (entry.status === "Approved" || entry.transactionType === "Opening Balance") { // Opening balance is always 'approved' in effect for balance calculation
-        if (entry.transactionType === "Opening Balance") {
-          currentRunningBalance = entry.credit - entry.debit;
-        } else {
-          currentRunningBalance += entry.credit - entry.debit;
-        }
-      }
-      return { ...entry, balance: currentRunningBalance };
-    });
-    
-    // Update the main account's currentBalance
-    setLedgerAccounts(prevAccounts => 
-        prevAccounts.map(acc => 
-            acc.id === accountId ? { ...acc, currentBalance: currentRunningBalance } : acc
-        )
-    );
-    
-    return entries.map(origEntry => recalculated.find(r => r.id === origEntry.id) || origEntry);
-  };
-
-
-  const handleManualEntrySubmit = (e: FormEvent) => {
+  const handleManualEntrySubmit = async (e: FormEvent) => {
     e.preventDefault();
     if (!selectedAccountId) {
         toast({ title: "Error", description: "Please select an account first.", variant: "destructive"});
@@ -242,72 +291,105 @@ export default function LedgersPage() {
         toast({ title: "Validation Error", description: "Cannot have both Debit and Credit amounts for a single entry.", variant: "destructive"});
         return;
     }
-
-    const newEntryId = `LE-MAN-${Date.now()}`;
+    setIsSubmittingManualEntry(true);
     
-    const newEntry: LedgerEntry = {
-      id: newEntryId,
+    const newEntryPayload: Omit<FirestoreLedgerEntry, 'id' | 'balanceAfterTransaction'> = {
       accountId: selectedAccountId,
-      miti: manualEntryFormData.miti,
+      miti: Timestamp.fromDate(manualEntryFormData.miti),
+      nepaliMiti: manualEntryFormData.nepaliMiti || "", // Assuming you add nepaliMiti to form
       description: manualEntryFormData.description,
       debit: manualEntryFormData.debit,
       credit: manualEntryFormData.credit,
-      balance: 0, // Will be recalculated
-      referenceNo: manualEntryFormData.referenceNo,
+      referenceNo: manualEntryFormData.referenceNo || "",
       transactionType: manualEntryFormData.transactionType,
-      status: "Pending", // New manual entries are pending
-      createdBy: "CurrentUser", 
-      createdAt: new Date(),
+      status: "Pending", 
+      createdBy: PLACEHOLDER_USER_ID, 
+      createdAt: Timestamp.now(),
+      sourceModule: "Manual",
     };
 
-    setLedgerEntries(prevEntries => recalculateBalances(selectedAccountId, [...prevEntries, newEntry]));
-    toast({ title: "Manual Entry Submitted", description: `Entry for ${selectedAccount?.name} submitted for approval.` });
-    setIsManualEntryDialogOpen(false);
-    setManualEntryFormData({...defaultManualEntryFormData, miti: new Date(), createdAt: new Date()}); 
+    try {
+        const docRef = await addDoc(collection(db, "ledgerEntries"), newEntryPayload);
+        const newEntryForState: LedgerEntry = {
+            ...newEntryPayload,
+            id: docRef.id,
+            miti: newEntryPayload.miti.toDate(),
+            createdAt: newEntryPayload.createdAt.toDate(),
+        };
+        setAllLedgerEntries(prev => [...prev, newEntryForState]); // Add to local state to refresh UI
+        toast({ title: "Manual Entry Submitted", description: `Entry for ${selectedAccountDetails?.accountName} submitted for approval.` });
+        setIsManualEntryDialogOpen(false);
+        setManualEntryFormData({...defaultManualEntryFormData, miti: new Date(), createdAt: new Date()}); 
+    } catch (error) {
+        console.error("Error submitting manual entry: ", error);
+        toast({ title: "Error", description: "Failed to submit manual entry.", variant: "destructive"});
+    } finally {
+        setIsSubmittingManualEntry(false);
+    }
   };
   
-  const filteredAccounts = ledgerAccounts.filter(acc => 
-    acc.name.toLowerCase().includes(accountSearchTerm.toLowerCase()) ||
+  const filteredAccountsForSelect = allLedgerAccounts.filter(acc => 
+    acc.accountName.toLowerCase().includes(accountSearchTerm.toLowerCase()) ||
     acc.id.toLowerCase().includes(accountSearchTerm.toLowerCase()) ||
     (acc.panNo && acc.panNo.toLowerCase().includes(accountSearchTerm.toLowerCase())) ||
-    (acc.truckNo && acc.truckNo.toLowerCase().includes(accountSearchTerm.toLowerCase())) ||
-    (acc.licenseNo && acc.licenseNo.toLowerCase().includes(accountSearchTerm.toLowerCase()))
+    (acc.truckNo && acc.truckNo.toLowerCase().includes(accountSearchTerm.toLowerCase()))
   );
 
   const handleViewDetails = (entry: LedgerEntry) => {
-    alert(`Entry ID: ${entry.id}\nAccount: ${selectedAccount?.name}\nMiti: ${format(entry.miti, "PP")}\nDescription: ${entry.description}\nRef: ${entry.referenceNo || 'N/A'}\nType: ${entry.transactionType}\nStatus: ${entry.status}\n${entry.approvalRemarks ? `Remarks: ${entry.approvalRemarks}\n` : ""}Created: ${entry.createdAt ? format(entry.createdAt, 'Pp') : 'N/A'} by ${entry.createdBy || 'N/A'}`);
+    alert(`Entry ID: ${entry.id}\nAccount: ${selectedAccountDetails?.accountName}\nMiti: ${format(entry.miti, "PP")}\nDescription: ${entry.description}\nRef: ${entry.referenceNo || 'N/A'}\nType: ${entry.transactionType}\nStatus: ${entry.status}\n${entry.approvalRemarks ? `Remarks: ${entry.approvalRemarks}\n` : ""}Created: ${entry.createdAt ? format(entry.createdAt, 'Pp') : 'N/A'} by ${entry.createdBy || 'N/A'}`);
+  };
+
+  const handleUpdateEntryStatus = async (entryId: string, newStatus: FirestoreLedgerEntryStatus, remarks?: string) => {
+    if (!selectedAccountId) return;
+    setIsUpdatingEntryStatus(entryId);
+    try {
+        const entryDocRef = doc(db, "ledgerEntries", entryId);
+        const updatePayload: Partial<FirestoreLedgerEntry> = {
+            status: newStatus,
+            approvedBy: PLACEHOLDER_USER_ID, // Replace with actual user ID
+            approvedAt: Timestamp.now(),
+            approvalRemarks: remarks || `${newStatus} by ${PLACEHOLDER_USER_ID}`,
+        };
+        await updateDoc(entryDocRef, updatePayload);
+        
+        // Update local state
+        setAllLedgerEntries(prevEntries => 
+            prevEntries.map(entry => 
+                entry.id === entryId ? { 
+                    ...entry, 
+                    status: newStatus, 
+                    approvedBy: PLACEHOLDER_USER_ID, 
+                    approvedAt: updatePayload.approvedAt!.toDate(),
+                    approvalRemarks: updatePayload.approvalRemarks 
+                } : entry
+            )
+        );
+        toast({ title: `Entry ${newStatus}`, description: `Entry ${entryId} has been ${newStatus.toLowerCase()}.` });
+    } catch (error) {
+        console.error(`Error updating entry ${entryId} to ${newStatus}:`, error);
+        toast({ title: "Error", description: `Failed to update entry status.`, variant: "destructive"});
+    } finally {
+        setIsUpdatingEntryStatus(null);
+    }
   };
 
   const handleApproveEntry = (entryId: string) => {
-    let updatedEntries = ledgerEntries.map(entry => 
-        entry.id === entryId ? { ...entry, status: "Approved" as LedgerEntryStatus, approvalRemarks: "Approved by SuperAdmin" } : entry
-    );
-    setLedgerEntries(recalculateBalances(selectedAccountId!, updatedEntries));
-    toast({ title: "Entry Approved", description: `Entry ${entryId} has been approved.` });
+    handleUpdateEntryStatus(entryId, "Approved");
   };
 
   const handleRejectEntry = (entryId: string) => {
     const remarks = window.prompt("Enter rejection remarks (optional):");
-    let updatedEntries = ledgerEntries.map(entry => 
-        entry.id === entryId ? { ...entry, status: "Rejected" as LedgerEntryStatus, approvalRemarks: remarks || "Rejected by SuperAdmin" } : entry
-    );
-    // Balances might need recalculation if a rejection impacts future calculations, but for this simulation, we'll keep it simple.
-    // If rejection means the transaction is void, it shouldn't affect the running balance if it was pending.
-    // If it was approved and then rejected (not typical), then balance recalc is crucial.
-    // For now, if it was Pending, its financial impact wasn't yet "live".
-    setLedgerEntries(recalculateBalances(selectedAccountId!, updatedEntries));
-    toast({ title: "Entry Rejected", description: `Entry ${entryId} has been rejected.` });
+    handleUpdateEntryStatus(entryId, "Rejected", remarks || undefined);
   };
 
-  const getStatusBadgeVariant = (status: LedgerEntryStatus) => {
+  const getStatusBadgeVariant = (status: FirestoreLedgerEntryStatus) => {
     switch (status) {
-      case "Approved": return "default"; // Default is often green-ish in themes or primary
-      case "Pending": return "secondary"; // Yellow or Gray
-      case "Rejected": return "destructive"; // Red
+      case "Approved": return "default"; 
+      case "Pending": return "secondary"; 
+      case "Rejected": return "destructive";
       default: return "outline";
     }
   };
-
 
   return (
     <div className="space-y-6">
@@ -317,8 +399,8 @@ export default function LedgersPage() {
           <p className="text-muted-foreground">Track income, expenses, and balances for trucks, drivers, and parties.</p>
         </div>
         <div className="flex gap-2 flex-wrap">
-            <Button variant="outline" onClick={() => alert("Export to PDF (not implemented)")} disabled={!selectedAccountId || displayedEntries.length === 0}><FileText className="mr-2 h-4 w-4"/> Export PDF</Button>
-            <Button variant="outline" onClick={() => alert("Print Ledger (not implemented)")} disabled={!selectedAccountId || displayedEntries.length === 0}><Printer className="mr-2 h-4 w-4"/> Print Ledger</Button>
+            <Button variant="outline" onClick={() => alert("Export to PDF (not implemented)")} disabled={!selectedAccountId || processedAndFilteredEntries.length === 0}><FileText className="mr-2 h-4 w-4"/> Export PDF</Button>
+            <Button variant="outline" onClick={() => alert("Print Ledger (not implemented)")} disabled={!selectedAccountId || processedAndFilteredEntries.length === 0}><Printer className="mr-2 h-4 w-4"/> Print Ledger</Button>
         </div>
       </div>
 
@@ -328,17 +410,17 @@ export default function LedgersPage() {
             <div>
                 <CardTitle className="font-headline text-xl">Ledger Statement</CardTitle>
                 <CardDescription>
-                    View statements and add manual entries. Transactions from Bilti/Delivery modules are (simulated as) auto-posted.
+                    View statements and add manual entries.
                 </CardDescription>
             </div>
             <Dialog open={isManualEntryDialogOpen} onOpenChange={setIsManualEntryDialogOpen}>
               <DialogTrigger asChild>
-                <Button disabled={!selectedAccountId}><PlusCircle className="mr-2 h-4 w-4"/> Add Manual Entry</Button>
+                <Button disabled={!selectedAccountId || isSubmittingManualEntry}><PlusCircle className="mr-2 h-4 w-4"/> Add Manual Entry</Button>
               </DialogTrigger>
               <DialogContent className="sm:max-w-md">
                 <DialogHeader>
                   <DialogTitle>Add Manual Ledger Entry</DialogTitle>
-                  <DialogDescription>For account: <span className="font-semibold">{selectedAccount?.name || "N/A"}</span>. Submitted entries will be 'Pending' approval.</DialogDescription>
+                  <DialogDescription>For account: <span className="font-semibold">{selectedAccountDetails?.accountName || "N/A"}</span>. Submitted entries will be 'Pending' approval.</DialogDescription>
                 </DialogHeader>
                 <form onSubmit={handleManualEntrySubmit} className="space-y-3 py-2">
                     <div>
@@ -354,8 +436,12 @@ export default function LedgersPage() {
                         </Popover>
                     </div>
                     <div>
+                        <Label htmlFor="manualNepaliMiti">Nepali Miti (Optional)</Label>
+                        <Input id="manualNepaliMiti" name="nepaliMiti" value={manualEntryFormData.nepaliMiti || ""} onChange={handleManualEntryChange} placeholder="e.g., 2081-04-15"/>
+                    </div>
+                    <div>
                         <Label htmlFor="manualDescription">Description / Memo <span className="text-destructive">*</span></Label>
-                        <Textarea id="manualDescription" name="description" value={manualEntryFormData.description} onChange={handleManualEntryChange} required rows={3} placeholder="Reason for entry, e.g., Cash deposit, Opening fuel expenses"/>
+                        <Textarea id="manualDescription" name="description" value={manualEntryFormData.description} onChange={handleManualEntryChange} required rows={3} placeholder="Reason for entry, e.g., Cash deposit"/>
                     </div>
                     <div className="grid grid-cols-2 gap-3">
                         <div>
@@ -378,13 +464,16 @@ export default function LedgersPage() {
                             <SelectContent>
                                 <SelectItem value="Manual Credit">Manual Credit</SelectItem>
                                 <SelectItem value="Manual Debit">Manual Debit</SelectItem>
-                                <SelectItem value="Opening Balance">Opening Balance</SelectItem> {/* Note: Opening Balance might need special handling for approval if it sets base balance */}
+                                <SelectItem value="Opening Balance">Opening Balance</SelectItem>
                             </SelectContent>
                         </Select>
                     </div>
                     <DialogFooter className="pt-4 border-t">
-                        <DialogClose asChild><Button type="button" variant="outline">Cancel</Button></DialogClose>
-                        <Button type="submit">Submit for Approval</Button>
+                        <DialogClose asChild><Button type="button" variant="outline" disabled={isSubmittingManualEntry}>Cancel</Button></DialogClose>
+                        <Button type="submit" disabled={isSubmittingManualEntry}>
+                            {isSubmittingManualEntry && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                            Submit for Approval
+                        </Button>
                     </DialogFooter>
                 </form>
               </DialogContent>
@@ -396,9 +485,9 @@ export default function LedgersPage() {
               <Label htmlFor="ledgerAccountSelect">Select Ledger Account</Label>
               <Popover open={isAccountSelectOpen} onOpenChange={setIsAccountSelectOpen}>
                 <PopoverTrigger asChild>
-                  <Button variant="outline" role="combobox" aria-expanded={isAccountSelectOpen} className="w-full justify-between">
-                    {selectedAccount ? `${selectedAccount.name} (${selectedAccount.type})` : "Select account..."}
-                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                  <Button variant="outline" role="combobox" aria-expanded={isAccountSelectOpen} className="w-full justify-between" disabled={isLoadingAccounts}>
+                    {isLoadingAccounts ? <><Loader2 className="mr-2 h-4 w-4 animate-spin"/> Loading Accounts...</> : selectedAccountDetails ? `${selectedAccountDetails.accountName} (${selectedAccountDetails.accountType})` : "Select account..."}
+                    {!isLoadingAccounts && <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />}
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
@@ -407,15 +496,15 @@ export default function LedgersPage() {
                     <CommandEmpty>No account found.</CommandEmpty>
                     <CommandList>
                       <ScrollArea className="h-48">
-                        {filteredAccounts.map((account) => (
+                        {filteredAccountsForSelect.map((account) => (
                           <CommandItem
                             key={account.id}
-                            value={`${account.name} ${account.id} ${account.type} ${account.panNo || ''} ${account.truckNo || ''}`}
+                            value={`${account.accountName} ${account.id} ${account.accountType} ${account.panNo || ''} ${account.truckNo || ''}`}
                             onSelect={() => handleAccountSelect(account.id)}
                             className="cursor-pointer"
                           >
                             <Check className={cn("mr-2 h-4 w-4", selectedAccountId === account.id ? "opacity-100" : "opacity-0")}/>
-                            {account.name} ({account.type}) - {account.id}
+                            {account.accountName} ({account.accountType}) - {account.id}
                           </CommandItem>
                         ))}
                       </ScrollArea>
@@ -426,7 +515,7 @@ export default function LedgersPage() {
             </div>
             <div>
                 <Label>Current Balance (Approved)</Label>
-                <Input value={selectedAccount ? selectedAccount.currentBalance.toFixed(2) : "N/A"} readOnly className="font-bold text-lg bg-muted" />
+                <Input value={selectedAccountDetails ? currentAccountBalance.toFixed(2) : "N/A"} readOnly className="font-bold text-lg bg-muted" />
             </div>
           </div>
 
@@ -441,17 +530,17 @@ export default function LedgersPage() {
                   <SelectTrigger id="filterType"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="All">All Types</SelectItem>
-                    {transactionTypes.map(type => <SelectItem key={type} value={type}>{type}</SelectItem>)}
+                    {transactionTypesForFilter.map(type => <SelectItem key={type} value={type}>{type}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
               <div>
                 <Label htmlFor="filterStatus">Status</Label>
-                <Select value={filterStatus} onValueChange={(value) => setFilterStatus(value as LedgerEntryStatus | "All")}>
+                <Select value={filterStatus} onValueChange={(value) => setFilterStatus(value as FirestoreLedgerEntryStatus | "All")}>
                   <SelectTrigger id="filterStatus"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="All">All Statuses</SelectItem>
-                    {entryStatuses.map(st => <SelectItem key={st} value={st}>{st}</SelectItem>)}
+                    {entryStatusesForFilter.map(st => <SelectItem key={st} value={st}>{st}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
@@ -482,7 +571,9 @@ export default function LedgersPage() {
             </div>
           </div>
 
-          {selectedAccountId ? (
+          {isLoadingEntries && <div className="flex justify-center items-center h-24"><Loader2 className="h-8 w-8 animate-spin text-primary" /><p className="ml-2 text-muted-foreground">Loading entries...</p></div>}
+          
+          {!isLoadingEntries && selectedAccountId ? (
             <ScrollArea className="max-h-[500px]">
               <Table>
                 <TableHeader className="sticky top-0 bg-background z-10">
@@ -498,10 +589,10 @@ export default function LedgersPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {displayedEntries.length === 0 && (
+                  {processedAndFilteredEntries.length === 0 && (
                     <TableRow><TableCell colSpan={8} className="text-center h-24">No ledger entries found for the selected account and filters.</TableCell></TableRow>
                   )}
-                  {displayedEntries.map((entry) => (
+                  {processedAndFilteredEntries.map((entry) => (
                     <TableRow key={entry.id}>
                       <TableCell>{format(entry.miti, "PP")}</TableCell>
                       <TableCell className="max-w-xs truncate" title={entry.description}>
@@ -520,18 +611,31 @@ export default function LedgersPage() {
                       </TableCell>
                       <TableCell className="text-right">{entry.debit > 0 ? entry.debit.toFixed(2) : "-"}</TableCell>
                       <TableCell className="text-right">{entry.credit > 0 ? entry.credit.toFixed(2) : "-"}</TableCell>
-                      <TableCell className="text-right font-medium">{entry.status === "Approved" || entry.transactionType === "Opening Balance" ? entry.balance.toFixed(2) : "-"}</TableCell>
+                      <TableCell className="text-right font-medium">
+                        {(entry.status === "Approved" || entry.transactionType === "Opening Balance") ? entry.balanceAfterTransaction?.toFixed(2) : "-"}
+                      </TableCell>
                       <TableCell>
-                        <div className="flex gap-1">
-                            <Button variant="link" size="sm" onClick={() => handleViewDetails(entry)} className="px-1">Details</Button>
-                            {/* Conceptually, these buttons would only be visible/enabled for users with approval rights */}
+                        <div className="flex gap-1 items-center">
+                            <Button variant="link" size="sm" onClick={() => handleViewDetails(entry)} className="px-1 h-auto py-0">Details</Button>
                             {entry.status === "Pending" && (
                                 <>
-                                <Button variant="outline" size="sm" onClick={() => handleApproveEntry(entry.id)} className="px-1 text-green-600 border-green-600 hover:bg-green-100 hover:text-green-700">
-                                    <CheckCircle2 className="mr-1 h-3 w-3"/>Approve
+                                <Button 
+                                    variant="outline" 
+                                    size="sm" 
+                                    onClick={() => handleApproveEntry(entry.id)} 
+                                    className="px-1 text-green-600 border-green-600 hover:bg-green-100 hover:text-green-700 h-auto py-0.5"
+                                    disabled={isUpdatingEntryStatus === entry.id}
+                                >
+                                    {isUpdatingEntryStatus === entry.id ? <Loader2 className="mr-1 h-3 w-3 animate-spin"/> : <CheckCircle2 className="mr-1 h-3 w-3"/>}Approve
                                 </Button>
-                                <Button variant="outline" size="sm" onClick={() => handleRejectEntry(entry.id)} className="px-1 text-red-600 border-red-600 hover:bg-red-100 hover:text-red-700">
-                                    <XCircle className="mr-1 h-3 w-3"/>Reject
+                                <Button 
+                                    variant="outline" 
+                                    size="sm" 
+                                    onClick={() => handleRejectEntry(entry.id)} 
+                                    className="px-1 text-red-600 border-red-600 hover:bg-red-100 hover:text-red-700 h-auto py-0.5"
+                                    disabled={isUpdatingEntryStatus === entry.id}
+                                >
+                                     {isUpdatingEntryStatus === entry.id ? <Loader2 className="mr-1 h-3 w-3 animate-spin"/> : <XCircle className="mr-1 h-3 w-3"/>}Reject
                                 </Button>
                                 </>
                             )}
@@ -543,7 +647,7 @@ export default function LedgersPage() {
               </Table>
             </ScrollArea>
           ) : (
-            <div className="text-center py-10 text-muted-foreground">
+            !isLoadingEntries && <div className="text-center py-10 text-muted-foreground">
               <p>Please select a ledger account to view its statement.</p>
             </div>
           )}
@@ -551,10 +655,17 @@ export default function LedgersPage() {
          <CardFooter>
             <p className="text-xs text-muted-foreground flex items-start gap-1">
                 <BadgeAlert className="h-4 w-4 mt-0.5 text-orange-500 shrink-0"/>
-                <span>This ledger is a frontend simulation. Automatic entries from Bilti/Delivery and balance calculations are representative. Full transactional integrity, audit trails, approval workflows, and real-time data require robust backend integration.</span>
+                <span>
+                    Balances are calculated client-side based on fetched and filtered entries. 
+                    The 'Current Balance' at the top reflects the sum of all approved entries and opening balances for the selected account.
+                    Persistent, authoritative balance updates ideally require backend processing.
+                </span>
             </p>
         </CardFooter>
       </Card>
     </div>
   );
 }
+
+
+    
