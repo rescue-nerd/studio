@@ -39,62 +39,84 @@ interface LedgerAccount {
   licenseNo?: string; // For drivers
 }
 
+type LedgerTransactionType = "Bilti" | "Delivery" | "Rebate" | "Discount" | "Manual Credit" | "Manual Debit" | "Opening Balance";
+
 interface LedgerEntry {
   id: string;
   accountId: string;
   miti: Date;
-  description: string;
+  description: string; // Will include main description and memo/reason
   debit: number;
   credit: number;
   balance: number; // Running balance after this entry
   referenceNo?: string; // e.g., Bilti No, Delivery No
-  transactionType: "Bilti" | "Delivery" | "Rebate" | "Discount" | "Manual Credit" | "Manual Debit" | "Opening Balance";
+  transactionType: LedgerTransactionType;
+  // Simulated audit fields
+  createdBy?: string; // User ID or system
+  createdAt?: Date;
 }
 
-// Mock Data
+// Mock Data - More Detailed
 const initialMockAccounts: LedgerAccount[] = [
-  { id: "PTY001", name: "Global Traders (KTM)", type: "Party", currentBalance: 15000, panNo: "PAN123KTM" },
-  { id: "PTY002", name: "National Distributors (PKR)", type: "Party", currentBalance: -5250, panNo: "PAN456PKR" },
-  { id: "TRK001", name: "BA 1 KA 1234", type: "Truck", currentBalance: 25000, truckNo: "BA 1 KA 1234"},
-  { id: "DRV001", name: "Suresh Kumar", type: "Driver", currentBalance: 1200, licenseNo: "LIC-12345" },
+  { id: "PTY001", name: "Global Traders (KTM)", type: "Party", currentBalance: 0, panNo: "PAN123KTM" },
+  { id: "PTY002", name: "National Distributors (PKR)", type: "Party", currentBalance: 0, panNo: "PAN456PKR" },
+  { id: "TRK001", name: "BA 1 KA 1234", type: "Truck", currentBalance: 0, truckNo: "BA 1 KA 1234"},
+  { id: "DRV001", name: "Suresh Kumar", type: "Driver", currentBalance: 0, licenseNo: "LIC-12345" },
 ];
 
 const initialMockEntries: LedgerEntry[] = [
   // Party PTY001
-  { id: "LE001", accountId: "PTY001", miti: new Date("2024-07-01"), description: "Opening Balance", debit: 0, credit: 10000, balance: 10000, transactionType: "Opening Balance" },
-  { id: "LE002", accountId: "PTY001", miti: new Date("2024-07-05"), description: "Freight charges for Bilti BLT-001", debit: 5000, credit: 0, balance: 15000, referenceNo: "BLT-001", transactionType: "Bilti" },
-  { id: "LE003", accountId: "PTY001", miti: new Date("2024-07-10"), description: "Payment received against BLT-001", debit: 0, credit: 3000, balance: 12000, referenceNo: "BLT-001", transactionType: "Manual Credit" },
-  { id: "LE004", accountId: "PTY001", miti: new Date("2024-07-15"), description: "Rebate on Delivery GDN-001 (Bilti BLT-001) - Damaged goods", debit: 0, credit: 500, balance: 11500, referenceNo: "GDN-001", transactionType: "Rebate" },
+  { id: "LE001", accountId: "PTY001", miti: new Date("2024-07-01"), description: "Opening Balance", debit: 0, credit: 10000, balance: 10000, transactionType: "Opening Balance", createdBy: "System", createdAt: new Date("2024-07-01") },
+  { id: "LE002", accountId: "PTY001", miti: new Date("2024-07-05"), description: "Freight charges for Bilti BLT-001 (KTM to PKR)", debit: 5000, credit: 0, balance: 15000, referenceNo: "BLT-001", transactionType: "Bilti", createdBy: "UserA", createdAt: new Date("2024-07-05") },
+  { id: "LE003", accountId: "PTY001", miti: new Date("2024-07-10"), description: "Payment received via Cheque #123", debit: 0, credit: 3000, balance: 12000, transactionType: "Manual Credit", createdBy: "UserB", createdAt: new Date("2024-07-10") },
+  { id: "LE004", accountId: "PTY001", miti: new Date("2024-07-15"), description: "Rebate on Delivery GDN-001 (Bilti BLT-001). Reason: Damaged goods.", debit: 0, credit: 500, balance: 11500, referenceNo: "GDN-001", transactionType: "Rebate", createdBy: "UserA", createdAt: new Date("2024-07-15") },
+  
   // Party PTY002
-  { id: "LE005", accountId: "PTY002", miti: new Date("2024-07-02"), description: "Opening Balance", debit: 0, credit: 0, balance: 0, transactionType: "Opening Balance" },
-  { id: "LE006", accountId: "PTY002", miti: new Date("2024-07-06"), description: "Freight charges for Bilti BLT-002 (To Pay)", debit: 2500, credit: 0, balance: 2500, referenceNo: "BLT-002", transactionType: "Bilti" },
-  { id: "LE007", accountId: "PTY002", miti: new Date("2024-07-12"), description: "Discount on Delivery GDN-002 (Bilti BLT-002) - Early payment", debit: 0, credit: 250, balance: 2250, referenceNo: "GDN-002", transactionType: "Discount" },
+  { id: "LE005", accountId: "PTY002", miti: new Date("2024-07-02"), description: "Opening Balance", debit: 0, credit: 0, balance: 0, transactionType: "Opening Balance", createdBy: "System", createdAt: new Date("2024-07-02") },
+  { id: "LE006", accountId: "PTY002", miti: new Date("2024-07-06"), description: "Freight charges for Bilti BLT-002 (PKR to BRT, To Pay)", debit: 2500, credit: 0, balance: 2500, referenceNo: "BLT-002", transactionType: "Bilti", createdBy: "UserA", createdAt: new Date("2024-07-06") },
+  { id: "LE007", accountId: "PTY002", miti: new Date("2024-07-12"), description: "Discount on Delivery GDN-002 (Bilti BLT-002). Reason: Early payment discount.", debit: 0, credit: 250, balance: 2250, referenceNo: "GDN-002", transactionType: "Discount", createdBy: "UserA", createdAt: new Date("2024-07-12") },
+  { id: "LE011", accountId: "PTY002", miti: new Date("2024-07-18"), description: "Received full payment for BLT-002", debit: 0, credit: 2250, balance: 0, referenceNo: "BLT-002", transactionType: "Manual Credit", createdBy: "UserB", createdAt: new Date("2024-07-18") },
+
   // Truck TRK001
-  { id: "LE008", accountId: "TRK001", miti: new Date("2024-07-01"), description: "Opening fuel expense", debit: 5000, credit: 0, balance: -5000, transactionType: "Manual Debit" },
-  { id: "LE009", accountId: "TRK001", miti: new Date("2024-07-05"), description: "Freight income from Bilti BLT-001", debit: 0, credit: 5000, balance: 0, referenceNo: "BLT-001", transactionType: "Bilti" },
+  { id: "LE008", accountId: "TRK001", miti: new Date("2024-07-01"), description: "Opening fuel expense allocation", debit: 5000, credit: 0, balance: -5000, transactionType: "Manual Debit", createdBy: "System", createdAt: new Date("2024-07-01") },
+  { id: "LE009", accountId: "TRK001", miti: new Date("2024-07-05"), description: "Freight income from Bilti BLT-001", debit: 0, credit: 5000, balance: 0, referenceNo: "BLT-001", transactionType: "Bilti", createdBy: "UserA", createdAt: new Date("2024-07-05") },
+  { id: "LE012", accountId: "TRK001", miti: new Date("2024-07-20"), description: "Maintenance Cost: Tyre Replacement", debit: 1500, credit: 0, balance: -1500, transactionType: "Manual Debit", createdBy: "UserC", createdAt: new Date("2024-07-20") },
+  
   // Driver DRV001
-  { id: "LE010", accountId: "DRV001", miti: new Date("2024-07-01"), description: "Salary advance", debit: 1000, credit: 0, balance: -1000, transactionType: "Manual Debit" },
+  { id: "LE010", accountId: "DRV001", miti: new Date("2024-07-01"), description: "Salary advance for July", debit: 1000, credit: 0, balance: -1000, transactionType: "Manual Debit", createdBy: "System", createdAt: new Date("2024-07-01") },
+  { id: "LE013", accountId: "DRV001", miti: new Date("2024-07-25"), description: "Trip Allowance for BLT-001", debit: 0, credit: 200, balance: -800, referenceNo: "BLT-001", transactionType: "Manual Credit", createdBy: "UserA", createdAt: new Date("2024-07-25") },
 ];
-// Adjust initial balances based on mock entries
+
+// Recalculate initial balances based on mock entries
 initialMockAccounts.forEach(acc => {
-    const relevantEntries = initialMockEntries.filter(e => e.accountId === acc.id).sort((a,b) => a.miti.getTime() - b.miti.getTime());
-    if (relevantEntries.length > 0) {
-        acc.currentBalance = relevantEntries[relevantEntries.length - 1].balance;
-    } else {
-        acc.currentBalance = 0; // Or set to an opening balance if defined differently
-    }
+    const relevantEntries = initialMockEntries
+        .filter(e => e.accountId === acc.id)
+        .sort((a, b) => {
+            const dateComparison = a.miti.getTime() - b.miti.getTime();
+            if (dateComparison !== 0) return dateComparison;
+            // If dates are same, sort by creation time or ID for stability
+            return (a.createdAt?.getTime() || 0) - (b.createdAt?.getTime() || 0) || a.id.localeCompare(b.id);
+        });
+    
+    let runningBalance = 0;
+    relevantEntries.forEach(entry => {
+        runningBalance = entry.balance; // Assuming mock entries have correct running balance
+    });
+    acc.currentBalance = runningBalance;
 });
 
 
-const transactionTypes: LedgerEntry["transactionType"][] = ["Bilti", "Delivery", "Rebate", "Discount", "Manual Credit", "Manual Debit", "Opening Balance"];
+const transactionTypes: LedgerTransactionType[] = ["Bilti", "Delivery", "Rebate", "Discount", "Manual Credit", "Manual Debit", "Opening Balance"];
 
 const defaultManualEntryFormData: Omit<LedgerEntry, 'id' | 'balance' | 'accountId'> & { accountId?: string } = {
   miti: new Date(),
-  description: "",
+  description: "", // This will serve as Reason/Memo
   debit: 0,
   credit: 0,
   referenceNo: "",
-  transactionType: "Manual Credit",
+  transactionType: "Manual Credit", // Default type
+  createdBy: "CurrentUser", // Placeholder
+  createdAt: new Date(),
 };
 
 
@@ -106,7 +128,7 @@ export default function LedgersPage() {
   const [accountSearchTerm, setAccountSearchTerm] = useState("");
   const [isAccountSelectOpen, setIsAccountSelectOpen] = useState(false);
 
-  const [filterType, setFilterType] = useState<LedgerEntry["transactionType"] | "All">("All");
+  const [filterType, setFilterType] = useState<LedgerTransactionType | "All">("All");
   const [filterStartDate, setFilterStartDate] = useState<Date | undefined>(undefined);
   const [filterEndDate, setFilterEndDate] = useState<Date | undefined>(undefined);
 
@@ -126,12 +148,17 @@ export default function LedgersPage() {
       .filter(entry => filterType === "All" || entry.transactionType === filterType)
       .filter(entry => !filterStartDate || entry.miti >= startOfDay(filterStartDate))
       .filter(entry => !filterEndDate || entry.miti <= endOfDay(filterEndDate))
-      .sort((a, b) => b.miti.getTime() - a.miti.getTime()); // Show newest first
+      .sort((a, b) => { // Sort by date descending, then by creation or ID for stability
+          const dateComparison = b.miti.getTime() - a.miti.getTime();
+          if (dateComparison !== 0) return dateComparison;
+          return (b.createdAt?.getTime() || 0) - (a.createdAt?.getTime() || 0) || b.id.localeCompare(a.id);
+      });
   }, [selectedAccountId, ledgerEntries, filterType, filterStartDate, filterEndDate]);
 
   const handleAccountSelect = (accountId: string) => {
     setSelectedAccountId(accountId);
     setIsAccountSelectOpen(false);
+    setAccountSearchTerm(""); // Clear search term after selection
   };
 
   const handleManualEntryChange = (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -145,10 +172,10 @@ export default function LedgersPage() {
   };
 
   const handleManualEntryDateChange = (date?: Date) => {
-    if (date) setManualEntryFormData(prev => ({ ...prev, miti: date }));
+    if (date) setManualEntryFormData(prev => ({ ...prev, miti: date, createdAt: new Date() }));
   };
   
-  const handleManualEntryTypeChange = (value: LedgerEntry["transactionType"]) => {
+  const handleManualEntryTypeChange = (value: LedgerTransactionType) => {
     setManualEntryFormData(prev => ({...prev, transactionType: value}));
   };
 
@@ -160,46 +187,47 @@ export default function LedgersPage() {
         return;
     }
     if (!manualEntryFormData.description.trim()) {
-        toast({ title: "Error", description: "Description/Memo is required for manual entry.", variant: "destructive"});
+        toast({ title: "Validation Error", description: "Description / Memo is required for manual entry.", variant: "destructive"});
         return;
     }
     if (manualEntryFormData.debit === 0 && manualEntryFormData.credit === 0) {
-        toast({ title: "Error", description: "Either Debit or Credit amount must be provided.", variant: "destructive"});
+        toast({ title: "Validation Error", description: "Either Debit or Credit amount must be non-zero.", variant: "destructive"});
         return;
     }
     if (manualEntryFormData.debit > 0 && manualEntryFormData.credit > 0) {
-        toast({ title: "Error", description: "Cannot have both Debit and Credit amounts.", variant: "destructive"});
+        toast({ title: "Validation Error", description: "Cannot have both Debit and Credit amounts for a single entry.", variant: "destructive"});
         return;
     }
 
-    const newEntryId = `LE${Date.now()}`;
-    let newBalance = selectedAccount?.currentBalance || 0;
-    if (manualEntryFormData.transactionType.includes("Credit") || manualEntryFormData.credit > 0) {
-        newBalance += manualEntryFormData.credit;
-    } else { // Debit or Opening Balance treated as debit if no credit
-        newBalance -= manualEntryFormData.debit;
-    }
+    const newEntryId = `LE-MAN-${Date.now()}`;
     
-    const newEntry: LedgerEntry = {
+    const newEntryBase: Omit<LedgerEntry, 'balance'> = {
       id: newEntryId,
       accountId: selectedAccountId,
       miti: manualEntryFormData.miti,
       description: manualEntryFormData.description,
       debit: manualEntryFormData.debit,
       credit: manualEntryFormData.credit,
-      balance: newBalance, // This would be more complex with full history recalculation
       referenceNo: manualEntryFormData.referenceNo,
       transactionType: manualEntryFormData.transactionType,
+      createdBy: "CurrentUser", // Placeholder for actual user
+      createdAt: new Date(),
     };
 
     // Simulate recalculating subsequent balances and updating account balance
-    // In a real system, this would be DB-driven and more robust.
-    const updatedEntries = [...ledgerEntries, newEntry]
-        .filter(entry => entry.accountId === selectedAccountId)
-        .sort((a, b) => a.miti.getTime() - b.miti.getTime() || a.id.localeCompare(b.id));
+    // This is a simplified frontend simulation. A real backend would handle this atomically.
+    const accountEntriesSorted = [...ledgerEntries.filter(e => e.accountId === selectedAccountId), { ...newEntryBase, balance: 0 }] // Add new entry temporarily
+        .sort((a, b) => {
+            const dateComparison = a.miti.getTime() - b.miti.getTime();
+            if (dateComparison !== 0) return dateComparison;
+            if (a.transactionType === "Opening Balance") return -1; // Opening balance always first on same date
+            if (b.transactionType === "Opening Balance") return 1;
+             // For same-day entries, if one is new, it might go last unless createdAt is set precisely
+            return (a.createdAt?.getTime() || 0) - (b.createdAt?.getTime() || 0) || a.id.localeCompare(b.id);
+        });
     
     let currentRunningBalance = 0;
-    const recalculatedEntriesForAccount = updatedEntries.map(entry => {
+    const recalculatedEntriesForAccount = accountEntriesSorted.map(entry => {
         if (entry.transactionType === "Opening Balance") {
             currentRunningBalance = entry.credit - entry.debit;
         } else {
@@ -217,9 +245,9 @@ export default function LedgersPage() {
         )
     );
 
-    toast({ title: "Manual Entry Added", description: `Entry for ${selectedAccount?.name} saved.` });
+    toast({ title: "Manual Entry Added", description: `Entry for ${selectedAccount?.name} saved successfully.` });
     setIsManualEntryDialogOpen(false);
-    setManualEntryFormData(defaultManualEntryFormData);
+    setManualEntryFormData({...defaultManualEntryFormData, miti: new Date(), createdAt: new Date()}); // Reset form
   };
   
   const filteredAccounts = ledgerAccounts.filter(acc => 
@@ -230,6 +258,12 @@ export default function LedgersPage() {
     (acc.licenseNo && acc.licenseNo.toLowerCase().includes(accountSearchTerm.toLowerCase()))
   );
 
+  const handleViewDetails = (entry: LedgerEntry) => {
+    // In a real app, this would open a modal with full entry details
+    // including createdBy, createdAt, and link to source document if available.
+    alert(`View Details for Entry ID: ${entry.id}\nDescription: ${entry.description}\nReference: ${entry.referenceNo || 'N/A'}\nType: ${entry.transactionType}\nCreated: ${entry.createdAt ? format(entry.createdAt, 'Pp') : 'N/A'} by ${entry.createdBy || 'N/A'}`);
+  };
+
 
   return (
     <div className="space-y-6">
@@ -238,9 +272,9 @@ export default function LedgersPage() {
           <h1 className="text-3xl font-headline font-bold text-foreground">Ledger / Accounting</h1>
           <p className="text-muted-foreground">Track income, expenses, and balances for trucks, drivers, and parties.</p>
         </div>
-        <div className="flex gap-2">
-            <Button variant="outline" onClick={() => alert("Export to PDF (not implemented)")}><FileText className="mr-2 h-4 w-4"/> Export PDF</Button>
-            <Button variant="outline" onClick={() => alert("Print Ledger (not implemented)")}><Printer className="mr-2 h-4 w-4"/> Print Ledger</Button>
+        <div className="flex gap-2 flex-wrap">
+            <Button variant="outline" onClick={() => alert("Export to PDF (not implemented)")} disabled={!selectedAccountId || displayedEntries.length === 0}><FileText className="mr-2 h-4 w-4"/> Export PDF</Button>
+            <Button variant="outline" onClick={() => alert("Print Ledger (not implemented)")} disabled={!selectedAccountId || displayedEntries.length === 0}><Printer className="mr-2 h-4 w-4"/> Print Ledger</Button>
         </div>
       </div>
 
@@ -248,9 +282,9 @@ export default function LedgersPage() {
         <CardHeader>
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
             <div>
-                <CardTitle className="font-headline text-xl">Ledger Management</CardTitle>
+                <CardTitle className="font-headline text-xl">Ledger Statement</CardTitle>
                 <CardDescription>
-                    View statements and add manual entries. Bilti/Delivery related entries are (simulated as) auto-posted.
+                    View statements and add manual entries. Transactions from Bilti/Delivery modules are (simulated as) auto-posted.
                 </CardDescription>
             </div>
             <Dialog open={isManualEntryDialogOpen} onOpenChange={setIsManualEntryDialogOpen}>
@@ -277,7 +311,7 @@ export default function LedgersPage() {
                     </div>
                     <div>
                         <Label htmlFor="manualDescription">Description / Memo <span className="text-destructive">*</span></Label>
-                        <Textarea id="manualDescription" name="description" value={manualEntryFormData.description} onChange={handleManualEntryChange} required rows={3}/>
+                        <Textarea id="manualDescription" name="description" value={manualEntryFormData.description} onChange={handleManualEntryChange} required rows={3} placeholder="Reason for entry, e.g., Cash deposit, Opening fuel expenses"/>
                     </div>
                     <div className="grid grid-cols-2 gap-3">
                         <div>
@@ -291,11 +325,11 @@ export default function LedgersPage() {
                     </div>
                      <div>
                         <Label htmlFor="manualRefNo">Reference No. (Optional)</Label>
-                        <Input id="manualRefNo" name="referenceNo" value={manualEntryFormData.referenceNo || ""} onChange={handleManualEntryChange}/>
+                        <Input id="manualRefNo" name="referenceNo" value={manualEntryFormData.referenceNo || ""} onChange={handleManualEntryChange} placeholder="e.g., Cheque No., Bilti No."/>
                     </div>
                     <div>
                         <Label htmlFor="manualTransactionType">Transaction Type</Label>
-                        <Select value={manualEntryFormData.transactionType} onValueChange={handleManualEntryTypeChange} required>
+                        <Select value={manualEntryFormData.transactionType} onValueChange={handleManualEntryTypeChange as (value: string)=>void} required>
                             <SelectTrigger><SelectValue placeholder="Select type" /></SelectTrigger>
                             <SelectContent>
                                 <SelectItem value="Manual Credit">Manual Credit</SelectItem>
@@ -325,14 +359,14 @@ export default function LedgersPage() {
                 </PopoverTrigger>
                 <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
                   <Command>
-                    <CommandInput placeholder="Search account (Name, ID, PAN, Truck No)..." onValueChange={setAccountSearchTerm} />
+                    <CommandInput placeholder="Search account (Name, ID, PAN, Truck No)..." onValueChange={setAccountSearchTerm} value={accountSearchTerm}/>
                     <CommandEmpty>No account found.</CommandEmpty>
                     <CommandList>
                       <ScrollArea className="h-48">
                         {filteredAccounts.map((account) => (
                           <CommandItem
                             key={account.id}
-                            value={account.name}
+                            value={`${account.name} ${account.id} ${account.type} ${account.panNo || ''} ${account.truckNo || ''}`}
                             onSelect={() => handleAccountSelect(account.id)}
                             className="cursor-pointer"
                           >
@@ -359,7 +393,7 @@ export default function LedgersPage() {
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div>
                 <Label htmlFor="filterType">Transaction Type</Label>
-                <Select value={filterType} onValueChange={(value) => setFilterType(value as LedgerEntry["transactionType"] | "All")}>
+                <Select value={filterType} onValueChange={(value) => setFilterType(value as LedgerTransactionType | "All")}>
                   <SelectTrigger id="filterType"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="All">All Types</SelectItem>
@@ -410,7 +444,7 @@ export default function LedgersPage() {
                 </TableHeader>
                 <TableBody>
                   {displayedEntries.length === 0 && (
-                    <TableRow><TableCell colSpan={7} className="text-center h-24">No ledger entries found for the selected criteria.</TableCell></TableRow>
+                    <TableRow><TableCell colSpan={7} className="text-center h-24">No ledger entries found for the selected account and filters.</TableCell></TableRow>
                   )}
                   {displayedEntries.map((entry) => (
                     <TableRow key={entry.id}>
@@ -421,7 +455,7 @@ export default function LedgersPage() {
                       <TableCell className="text-right">{entry.credit > 0 ? entry.credit.toFixed(2) : "-"}</TableCell>
                       <TableCell className="text-right font-medium">{entry.balance.toFixed(2)}</TableCell>
                       <TableCell>
-                        <Button variant="link" size="sm" onClick={() => alert(`View details for entry ${entry.id} (not implemented)`)}>Details</Button>
+                        <Button variant="link" size="sm" onClick={() => handleViewDetails(entry)}>Details</Button>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -436,7 +470,7 @@ export default function LedgersPage() {
         </CardContent>
          <CardFooter>
             <p className="text-xs text-muted-foreground">
-                This ledger is a frontend simulation. Automatic entries from Bilti/Delivery and balance calculations are representative. Full transactional integrity and real-time data require backend integration.
+                This ledger is a frontend simulation. Automatic entries from Bilti/Delivery and balance calculations are representative. Full transactional integrity, audit trails, and real-time data require robust backend integration.
             </p>
         </CardFooter>
       </Card>
@@ -444,4 +478,3 @@ export default function LedgersPage() {
   );
 }
 
-    
