@@ -13,7 +13,14 @@ export interface User {
   autoDataSyncEnabled?: boolean;
 }
 
-export interface Branch {
+interface Auditable {
+  createdBy: string; // User.uid
+  createdAt: Timestamp;
+  updatedBy?: string; // User.uid
+  updatedAt?: Timestamp;
+}
+
+export interface Branch extends Auditable {
   id: string; // Document ID
   name: string;
   location: string;
@@ -22,13 +29,9 @@ export interface Branch {
   contactEmail?: string;
   contactPhone?: string;
   status?: "Active" | "Inactive";
-  createdAt: Timestamp;
-  createdBy?: string; // User.uid
-  updatedAt?: Timestamp;
-  updatedBy?: string; // User.uid
 }
 
-export interface Party {
+export interface Party extends Auditable {
   id: string; // Document ID
   name: string;
   type: "Consignor" | "Consignee" | "Both";
@@ -40,13 +43,9 @@ export interface Party {
   country?: string;
   assignedLedgerId: string; // Link to LedgerAccount.id
   status: "Active" | "Inactive";
-  createdBy: string; // User.uid
-  createdAt: Timestamp;
-  updatedAt?: Timestamp;
-  updatedBy?: string; // User.uid
 }
 
-export interface Truck {
+export interface Truck extends Auditable {
   id: string; // Document ID
   truckNo: string;
   type: string; // e.g., "6-Wheeler", "10-Wheeler", "Trailer"
@@ -55,13 +54,9 @@ export interface Truck {
   ownerPAN?: string;
   status: "Active" | "Inactive" | "Maintenance";
   assignedLedgerId: string; // Link to LedgerAccount.id
-  createdBy: string; // User.uid
-  createdAt: Timestamp;
-  updatedAt?: Timestamp;
-  updatedBy?: string; // User.uid
 }
 
-export interface Driver {
+export interface Driver extends Auditable {
   id: string; // Document ID
   name: string;
   licenseNo: string;
@@ -70,25 +65,17 @@ export interface Driver {
   joiningDate?: Timestamp; // Stored as Timestamp in Firestore
   status: "Active" | "Inactive" | "On Leave";
   assignedLedgerId: string; // Link to LedgerAccount.id
-  createdBy: string; // User.uid
-  createdAt: Timestamp;
-  updatedAt?: Timestamp;
-  updatedBy?: string; // User.uid
 }
 
-export interface Godown {
+export interface Godown extends Auditable {
   id: string; // Document ID
   name: string;
   branchId: string; // Link to Branch.id
   location: string;
   status: "Active" | "Inactive" | "Operational";
-  createdBy: string; // User.uid
-  createdAt: Timestamp;
-  updatedAt?: Timestamp;
-  updatedBy?: string; // User.uid
 }
 
-export interface Bilti {
+export interface Bilti extends Auditable {
   id: string; // Document ID (Bilti No.)
   miti: Timestamp; // Date of Bilti
   nepaliMiti?: string;
@@ -107,13 +94,9 @@ export interface Bilti {
   status: "Pending" | "Manifested" | "Received" | "Delivered" | "Cancelled";
   manifestId?: string; // Link to Manifest.id if part of a manifest
   goodsDeliveryNoteId?: string; // Link to GoodsDelivery.id if delivered
-  createdBy: string; // User.uid
-  createdAt: Timestamp;
-  updatedAt?: Timestamp;
-  updatedBy?: string; // User.uid
 }
 
-export interface Manifest {
+export interface Manifest extends Auditable {
   id: string; // Document ID (Manifest No.)
   miti: Timestamp; // Date of Manifest
   nepaliMiti?: string;
@@ -125,13 +108,9 @@ export interface Manifest {
   remarks?: string;
   status: "Open" | "In Transit" | "Completed" | "Cancelled" | "Received";
   goodsReceiptId?: string; // Link to GoodsReceipt.id if received
-  createdBy: string; // User.uid
-  createdAt: Timestamp;
-  updatedAt?: Timestamp;
-  updatedBy?: string; // User.uid
 }
 
-export interface GoodsReceipt {
+export interface GoodsReceipt extends Auditable {
   id: string; // Document ID (GRN No.)
   miti: Timestamp; // Date of Receipt
   nepaliMiti?: string;
@@ -141,36 +120,29 @@ export interface GoodsReceipt {
   remarks?: string;
   shortages?: string; // Details of any shortages
   damages?: string; // Details of any damages
-  receivedBy: string; // User.uid
-  createdBy: string; // User.uid
-  createdAt: Timestamp;
-  updatedAt?: Timestamp;
-  updatedBy?: string; // User.uid
+  // receivedBy field was present, changed to createdBy from Auditable
 }
 
 export interface DeliveredBiltiItem {
   biltiId: string; // Link to Bilti.id
+  biltiData?: Bilti; // For UI purposes, not stored in Firestore directly in this sub-object
   rebateAmount: number;
-  rebateReason?: string;
+  rebateReason: string;
   discountAmount: number;
-  discountReason?: string;
+  discountReason: string;
 }
 
-export interface GoodsDelivery {
+export interface GoodsDelivery extends Auditable {
   id: string; // Document ID (Delivery Note No.)
   miti: Timestamp; // Date of Delivery
   nepaliMiti?: string;
-  deliveredBiltis: DeliveredBiltiItem[];
+  deliveredBiltis: DeliveredBiltiItem[]; // Note: biltiData is for UI only, not stored in this array in Firestore.
   overallRemarks?: string;
   deliveredToName?: string; // Name of person receiving
   deliveredToContact?: string; // Contact of person receiving
-  createdBy: string; // User.uid
-  createdAt: Timestamp;
-  updatedAt?: Timestamp;
-  updatedBy?: string; // User.uid
 }
 
-export interface LedgerAccount {
+export interface LedgerAccount extends Auditable {
   id: string; // Document ID (often same as accountId for simplicity)
   accountId: string; // The ID of the entity this ledger belongs to (e.g., Party.id, Truck.id)
   accountName: string; // Name of the party, truck no., driver name
@@ -179,10 +151,6 @@ export interface LedgerAccount {
   panNo?: string; // If Party
   truckNo?: string; // If Truck
   lastTransactionAt?: Timestamp;
-  createdAt: Timestamp;
-  createdBy: string; // User.uid
-  updatedAt?: Timestamp;
-  updatedBy?: string; // User.uid
 }
 
 export type LedgerTransactionType =
@@ -200,7 +168,7 @@ export type LedgerTransactionType =
   | "Maintenance"
   | string; // Allow for future custom types
 
-export interface LedgerEntry {
+export interface LedgerEntry extends Auditable {
   id: string; // Document ID
   accountId: string; // Link to LedgerAccount.id
   miti: Timestamp; // Date of transaction
@@ -215,23 +183,19 @@ export interface LedgerEntry {
   approvalRemarks?: string;
   approvedBy?: string; // User.uid
   approvedAt?: Timestamp;
-  createdBy: string; // User.uid
-  createdAt: Timestamp;
-  updatedAt?: Timestamp;
-  updatedBy?: string; // User.uid
   sourceModule?: "Bilti" | "GoodsDelivery" | "GoodsReceipt" | "Manual" | "Payment" | string;
   branchId?: string; // Branch associated with this transaction, if applicable
 }
 
 // --- Settings / Configurations ---
-export interface AuditableConfig {
+interface AuditableConfigBase { // Renamed from AuditableConfig to avoid conflict, and made fields optional for base
   createdBy?: string;
   createdAt?: Timestamp;
   updatedBy?: string;
   updatedAt?: Timestamp;
 }
 
-export interface DocumentNumberingConfig extends AuditableConfig {
+export interface DocumentNumberingConfig extends AuditableConfigBase {
   id: string; // Document ID
   documentType: string;
   prefix?: string;
@@ -242,14 +206,14 @@ export interface DocumentNumberingConfig extends AuditableConfig {
   perBranch: boolean;
 }
 
-export interface NarrationTemplate extends AuditableConfig {
+export interface NarrationTemplate extends AuditableConfigBase {
   id: string; // Document ID
   title: string;
   template: string;
   applicableTo?: string[];
 }
 
-export interface InvoiceLineCustomization extends AuditableConfig {
+export interface InvoiceLineCustomization extends AuditableConfigBase {
   id: string; // Document ID
   fieldName: string;
   label: string;
@@ -263,7 +227,7 @@ export interface InvoiceLineCustomization extends AuditableConfig {
 
 // Location and Unit Types with Auditing
 // Combined Auditable fields for consistency
-interface AuditableEntity {
+interface AuditableEntity { // This was already defined, I'll keep it
     id: string;
     createdBy: string;
     createdAt: Timestamp;

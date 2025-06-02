@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
-import { PlusCircle, Search, Edit, Trash2, PackageOpen, ListChecks } from "lucide-react";
+import { PlusCircle, Search, Edit, Trash2, PackageOpen, ListChecks, Loader2 } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -36,53 +36,71 @@ import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import SmartBiltiMultiSelectDialog from "@/components/shared/smart-bilti-multi-select-dialog";
-import type { Party, Bilti } from "@/app/invoicing/page"; // Assuming interfaces are from invoicing
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { db } from "@/lib/firebase";
+import { 
+  collection, 
+  getDocs, 
+  addDoc, 
+  doc, 
+  updateDoc, 
+  deleteDoc, 
+  Timestamp,
+  query,
+  orderBy,
+  writeBatch,
+  where,
+  documentId
+} from "firebase/firestore";
+import type { 
+  GoodsDelivery as FirestoreGoodsDelivery, 
+  Bilti as FirestoreBilti, 
+  Party as FirestoreParty,
+  DeliveredBiltiItem as FirestoreDeliveredBiltiItem
+} from "@/types/firestore";
 
 
-interface DeliveredBiltiItem {
-  biltiId: string;
-  biltiData?: Bilti; // Full bilti data for display and context
-  rebateAmount: number;
-  rebateReason: string;
-  discountAmount: number;
-  discountReason: string;
-}
-
-interface GoodsDelivery {
-  id: string; // Delivery Note No.
+// Local Interfaces
+interface GoodsDelivery extends Omit<FirestoreGoodsDelivery, 'miti' | 'createdAt' | 'updatedAt' | 'deliveredBiltis'> {
+  id: string;
   miti: Date;
-  deliveredBiltis: DeliveredBiltiItem[];
-  overallRemarks: string; 
+  deliveredBiltis: DeliveredBiltiItemUI[]; // UI version with full Bilti data
+  createdAt?: Date | Timestamp;
+  updatedAt?: Date | Timestamp;
 }
+// For UI, to hold full Bilti data. When saving to Firestore, only biltiId and rebate/discount info are stored.
+interface DeliveredBiltiItemUI extends FirestoreDeliveredBiltiItem {
+  biltiData?: Bilti; // Full bilti data for display and context, not stored directly in Firestore sub-object
+}
+interface Bilti extends Omit<FirestoreBilti, 'miti' | 'createdAt' | 'updatedAt'> {
+  id: string;
+  miti: Date;
+  createdAt?: Date | Timestamp;
+  updatedAt?: Date | Timestamp;
+}
+interface Party extends FirestoreParty {}
 
-// Mock Data
-const initialMockParties: Party[] = [
-  { id: "PTY001", name: "Global Traders (KTM)", type: "Both", contactNo:"98001", panNo:"PAN1", address:"KTM", assignedLedger:"L1", status:"Active"},
-  { id: "PTY002", name: "National Distributors (PKR)", type: "Both", contactNo:"98002", panNo:"PAN2", address:"PKR", assignedLedger:"L2", status:"Active"},
-];
-const initialBiltisPendingDelivery: Bilti[] = [
-  { id: "BLT-001", miti: new Date("2024-07-01"), consignorId: "PTY001", consigneeId: "PTY002", origin: "KTM", destination: "Pokhara Hub", description:"E", packages:10, totalAmount:500, payMode:"To Pay", truckId:"T1", driverId:"D1", status: "Received" },
-  { id: "BLT-002", miti: new Date("2024-07-02"), consignorId: "PTY002", consigneeId: "PTY001", origin: "PKR", destination: "Biratnagar Depot", description:"G", packages:5, totalAmount:200, payMode:"Paid", truckId:"T2", driverId:"D2", status: "Received" },
-  { id: "BLT-003", miti: new Date("2024-07-03"), consignorId: "PTY001", consigneeId: "PTY001", origin: "KTM", destination: "Kathmandu Main", description:"H", packages:12, totalAmount:600, payMode:"To Pay", truckId:"T1", driverId:"D1", status: "Received" },
-  { id: "BLT-004", miti: new Date("2024-07-04"), consignorId: "PTY001", consigneeId: "PTY002", origin: "KTM", destination: "Pokhara Hub", description:"X", packages:8, totalAmount:400, payMode:"Paid", truckId:"T1", driverId:"D1", status: "Received" },
-];
 
-const defaultGoodsDeliveryFormData: Omit<GoodsDelivery, 'id'> = {
+const defaultGoodsDeliveryFormData: Omit<GoodsDelivery, 'id' | 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy' | 'nepaliMiti' | 'deliveredToName' | 'deliveredToContact'> = {
   miti: new Date(),
   deliveredBiltis: [],
   overallRemarks: "",
 };
 
+const PLACEHOLDER_USER_ID = "system_user_placeholder";
+
 export default function GoodsDeliveryPage() {
   const [goodsDeliveries, setGoodsDeliveries] = useState<GoodsDelivery[]>([]);
-  const [biltisMasterList, setBiltisMasterList] = useState<Bilti[]>(initialBiltisPendingDelivery); // Master list of all Biltis
-  const [parties] = useState<Party[]>(initialMockParties);
+  const [biltisForSelection, setBiltisForSelection] = useState<Bilti[]>([]);
+  const [allBiltisMaster, setAllBiltisMaster] = useState<Bilti[]>([]);
+  const [parties, setParties] = useState<Party[]>([]);
 
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [isFormDialogOpen, setIsFormDialogOpen] = useState(false);
   const [editingDelivery, setEditingDelivery] = useState<GoodsDelivery | null>(null);
-  const [formData, setFormData] = useState<Omit<GoodsDelivery, 'id'>>(defaultGoodsDeliveryFormData);
+  const [formData, setFormData] = useState<Omit<GoodsDelivery, 'id' | 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy' | 'nepaliMiti' | 'deliveredToName' | 'deliveredToContact'>>(defaultGoodsDeliveryFormData);
   
   const { toast } = useToast();
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
@@ -90,20 +108,79 @@ export default function GoodsDeliveryPage() {
   
   const [isBiltiSelectDialogOpen, setIsBiltiSelectDialogOpen] = useState(false);
 
+  const fetchMasterData = async () => {
+    try {
+      const [biltisSnap, partiesSnap] = await Promise.all([
+        getDocs(query(collection(db, "biltis"))), // Fetch all biltis
+        getDocs(query(collection(db, "parties"), orderBy("name"))),
+      ]);
+
+      const allFetchedBiltis = biltisSnap.docs.map(d => {
+        const data = d.data() as FirestoreBilti;
+        return { ...data, id: d.id, miti: data.miti.toDate() } as Bilti;
+      });
+      setAllBiltisMaster(allFetchedBiltis);
+      setBiltisForSelection(allFetchedBiltis.filter(b => b.status === "Received"));
+
+      setParties(partiesSnap.docs.map(d => ({ ...d.data(), id: d.id } as Party)));
+
+    } catch (error) {
+      console.error("Error fetching master data for goods delivery: ", error);
+      toast({ title: "Error", description: "Failed to load required data.", variant: "destructive" });
+    }
+  };
+
+  const fetchGoodsDeliveries = async () => {
+    try {
+      const deliveriesCollectionRef = collection(db, "goodsDeliveries");
+      const q = query(deliveriesCollectionRef, orderBy("createdAt", "desc"));
+      const querySnapshot = await getDocs(q);
+      const fetchedDeliveries: GoodsDelivery[] = querySnapshot.docs.map(docSnap => {
+        const data = docSnap.data() as FirestoreGoodsDelivery;
+        // Populate biltiData for UI display
+        const populatedDeliveredBiltis: DeliveredBiltiItemUI[] = data.deliveredBiltis.map(item => ({
+            ...item,
+            biltiData: allBiltisMaster.find(b => b.id === item.biltiId)
+        }));
+        return { 
+            ...data, 
+            id: docSnap.id, 
+            miti: data.miti.toDate(),
+            deliveredBiltis: populatedDeliveredBiltis
+        };
+      });
+      setGoodsDeliveries(fetchedDeliveries);
+    } catch (error) {
+      console.error("Error fetching goods deliveries: ", error);
+      toast({ title: "Error", description: "Failed to fetch goods deliveries.", variant: "destructive" });
+    }
+  };
+
+  useEffect(() => {
+    const loadAllData = async () => {
+        setIsLoading(true);
+        await fetchMasterData();
+        await fetchGoodsDeliveries(); // Depends on allBiltisMaster being populated from fetchMasterData
+        setIsLoading(false);
+    }
+    loadAllData();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+
   const handleInputChange = (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
   
-  const handlePerBiltiInputChange = (biltiId: string, fieldName: keyof Omit<DeliveredBiltiItem, 'biltiId'|'biltiData'>, value: string | number) => {
+  const handlePerBiltiInputChange = (biltiId: string, fieldName: keyof Omit<DeliveredBiltiItemUI, 'biltiId'|'biltiData'>, value: string | number) => {
     setFormData(prev => ({
       ...prev,
       deliveredBiltis: prev.deliveredBiltis.map(item => 
-        item.biltiId === biltiId ? { ...item, [fieldName]: value } : item
+        item.biltiId === biltiId ? { ...item, [fieldName]: typeof value === 'string' ? value : Number(value) } : item
       )
     }));
   };
-
 
   const handleDateChange = (date: Date | undefined) => {
     if (date) {
@@ -112,89 +189,142 @@ export default function GoodsDeliveryPage() {
   };
   
   const handleBiltiSelectionConfirm = (selectedIds: Set<string>) => {
-    const newDeliveredBiltis: DeliveredBiltiItem[] = Array.from(selectedIds).map(id => {
-      // Find if this bilti was already in formData to preserve its rebate/discount details
+    const newDeliveredBiltisUI: DeliveredBiltiItemUI[] = Array.from(selectedIds).map(id => {
       const existingItem = formData.deliveredBiltis.find(item => item.biltiId === id);
       if (existingItem) return existingItem;
       
-      // If new, add it with default rebate/discount
-      const biltiData = biltisMasterList.find(b => b.id === id);
+      const biltiData = allBiltisMaster.find(b => b.id === id);
       return {
         biltiId: id,
-        biltiData: biltiData || undefined, // Store full bilti data
+        biltiData: biltiData,
         rebateAmount: 0,
         rebateReason: "",
         discountAmount: 0,
         discountReason: "",
       };
     });
-    setFormData(prev => ({ ...prev, deliveredBiltis: newDeliveredBiltis }));
-  };
-
-
-  const generateDeliveryNoteNo = (): string => {
-    const nextId = goodsDeliveries.length + 1 + Math.floor(Math.random() * 100);
-    return `GDN-${String(nextId).padStart(3, '0')}`;
+    setFormData(prev => ({ ...prev, deliveredBiltis: newDeliveredBiltisUI }));
   };
 
   const openAddForm = () => {
     setEditingDelivery(null);
     setFormData({...defaultGoodsDeliveryFormData, miti: new Date() });
+    setBiltisForSelection(allBiltisMaster.filter(b => b.status === "Received"));
     setIsFormDialogOpen(true);
   };
 
   const openEditForm = (delivery: GoodsDelivery) => {
     setEditingDelivery(delivery);
-    // Ensure biltiData is populated for editing
-    const populatedDeliveredBiltis = delivery.deliveredBiltis.map(item => ({
+    const { id, createdAt, createdBy, updatedAt, updatedBy, ...editableData } = delivery;
+    // Ensure biltiData is populated for editing, if not already from fetch
+    const populatedBiltis = editableData.deliveredBiltis.map(item => ({
         ...item,
-        biltiData: biltisMasterList.find(b => b.id === item.biltiId)
+        biltiData: item.biltiData || allBiltisMaster.find(b => b.id === item.biltiId)
     }));
-    setFormData({...delivery, deliveredBiltis: populatedDeliveredBiltis});
+    setFormData({...editableData, deliveredBiltis: populatedBiltis, nepaliMiti: delivery.nepaliMiti || ""});
+    setBiltisForSelection(allBiltisMaster.filter(b => b.status === "Received" || delivery.deliveredBiltis.some(db => db.biltiId === b.id)));
     setIsFormDialogOpen(true);
   };
   
   const getPartyName = (partyId?: string) => parties.find(p => p.id === partyId)?.name || "N/A";
 
-  const handleSubmit = (e: FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     if (formData.deliveredBiltis.length === 0) { 
         toast({ title: "No Biltis Selected", description: "Please select at least one Bilti for delivery.", variant: "destructive" });
         return;
     }
 
-    // Validation for rebate/discount reasons
     for (const item of formData.deliveredBiltis) {
       if (item.rebateAmount > 0 && !item.rebateReason.trim()) {
-        toast({ title: "Missing Rebate Reason", description: `Please provide a reason for rebate on Bilti ${item.biltiId}.`, variant: "destructive" });
+        toast({ title: "Missing Rebate Reason", description: `Please provide a reason for rebate on Bilti ${item.biltiData?.id || item.biltiId}.`, variant: "destructive" });
         return;
       }
       if (item.discountAmount > 0 && !item.discountReason.trim()) {
-        toast({ title: "Missing Discount Reason", description: `Please provide a reason for discount on Bilti ${item.biltiId}.`, variant: "destructive" });
+        toast({ title: "Missing Discount Reason", description: `Please provide a reason for discount on Bilti ${item.biltiData?.id || item.biltiId}.`, variant: "destructive" });
         return;
       }
     }
+    setIsSubmitting(true);
+
+    // Prepare deliveredBiltis for Firestore (without biltiData)
+    const firestoreDeliveredBiltis: FirestoreDeliveredBiltiItem[] = formData.deliveredBiltis.map(item => ({
+        biltiId: item.biltiId,
+        rebateAmount: item.rebateAmount,
+        rebateReason: item.rebateReason,
+        discountAmount: item.discountAmount,
+        discountReason: item.discountReason,
+    }));
+
+    const deliveryDataPayload: Omit<FirestoreGoodsDelivery, 'id' | 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy'> & Partial<Pick<FirestoreGoodsDelivery, 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy'>> = {
+      miti: Timestamp.fromDate(formData.miti),
+      nepaliMiti: formData.nepaliMiti || "",
+      deliveredBiltis: firestoreDeliveredBiltis,
+      overallRemarks: formData.overallRemarks || "",
+      deliveredToName: formData.deliveredToName || "",
+      deliveredToContact: formData.deliveredToContact || "",
+    };
+
+    const batch = writeBatch(db);
 
     if (editingDelivery) {
-      const updatedDelivery: GoodsDelivery = { ...formData, id: editingDelivery.id };
-      setGoodsDeliveries(goodsDeliveries.map(d => d.id === editingDelivery.id ? updatedDelivery : d));
-      // Simulate updating Bilti statuses (complex if a Bilti is removed from delivery note)
-      // For simplicity, we'll just show a success message
-      toast({ title: "Goods Delivery Updated", description: `Delivery Note ${updatedDelivery.id} updated. Ledger entries for rebates/discounts (simulated) adjusted.` });
-    } else {
-      const newDelivery: GoodsDelivery = { ...formData, id: generateDeliveryNoteNo() };
-      setGoodsDeliveries(prevDeliveries => [...prevDeliveries, newDelivery]);
-      
-      // Simulate updating Bilti statuses to "Delivered"
-      setBiltisMasterList(prevBiltis => 
-        prevBiltis.map(b => 
-          newDelivery.deliveredBiltis.some(db => db.biltiId === b.id) ? {...b, status: "Delivered"} : b
-        )
-      );
-      toast({ title: "Goods Delivery Recorded", description: `Delivery Note ${newDelivery.id} created. Selected Biltis (simulated) marked 'Delivered'. Ledger entries for rebates/discounts (simulated) posted.` });
+      try {
+        const deliveryDocRef = doc(db, "goodsDeliveries", editingDelivery.id);
+        batch.update(deliveryDocRef, {
+            ...deliveryDataPayload,
+            updatedAt: Timestamp.now(),
+            updatedBy: PLACEHOLDER_USER_ID,
+        });
+
+        // Biltis removed from this delivery should become "Received"
+        const biltisNoLongerDelivered = editingDelivery.deliveredBiltis.filter(
+            oldItem => !formData.deliveredBiltis.some(newItem => newItem.biltiId === oldItem.biltiId)
+        );
+        biltisNoLongerDelivered.forEach(item => {
+            const biltiDocRef = doc(db, "biltis", item.biltiId);
+            batch.update(biltiDocRef, { status: "Received", goodsDeliveryNoteId: null });
+        });
+
+        // Biltis added or kept in this delivery should be "Delivered"
+        formData.deliveredBiltis.forEach(item => {
+            const biltiDocRef = doc(db, "biltis", item.biltiId);
+            batch.update(biltiDocRef, { status: "Delivered", goodsDeliveryNoteId: editingDelivery.id });
+        });
+        
+        await batch.commit();
+        toast({ title: "Goods Delivery Updated", description: `Delivery Note ${editingDelivery.id} updated.` });
+      } catch (error) {
+        console.error("Error updating goods delivery: ", error);
+        toast({ title: "Error", description: "Failed to update goods delivery.", variant: "destructive" });
+      }
+    } else { // Adding new delivery
+      try {
+        const deliveryCollectionRef = collection(db, "goodsDeliveries");
+        const newDeliveryDocRef = doc(deliveryCollectionRef); // Generate ID upfront
+
+        batch.set(newDeliveryDocRef, {
+            ...deliveryDataPayload,
+            createdBy: PLACEHOLDER_USER_ID,
+            createdAt: Timestamp.now(),
+        });
+
+        formData.deliveredBiltis.forEach(item => {
+            const biltiDocRef = doc(db, "biltis", item.biltiId);
+            batch.update(biltiDocRef, { status: "Delivered", goodsDeliveryNoteId: newDeliveryDocRef.id });
+        });
+        
+        await batch.commit();
+        toast({ title: "Goods Delivery Recorded", description: `Delivery Note created. Biltis marked 'Delivered'.` });
+      } catch (error) {
+        console.error("Error adding goods delivery: ", error);
+        toast({ title: "Error", description: "Failed to record goods delivery.", variant: "destructive" });
+      }
     }
+    setIsSubmitting(false);
     setIsFormDialogOpen(false);
     setEditingDelivery(null);
+    fetchGoodsDeliveries();
+    fetchMasterData(); // Refresh biltis list for selection
   };
 
   const handleDeleteClick = (delivery: GoodsDelivery) => {
@@ -202,17 +332,29 @@ export default function GoodsDeliveryPage() {
     setIsDeleteDialogOpen(true);
   };
 
-  const confirmDelete = () => {
+  const confirmDelete = async () => {
     if (deliveryToDelete) {
-      setGoodsDeliveries(goodsDeliveries.filter((d) => d.id !== deliveryToDelete.id));
-      
-      // Simulate reverting Bilti statuses to "Received"
-      setBiltisMasterList(prevBiltis => 
-         prevBiltis.map(b => 
-          deliveryToDelete.deliveredBiltis.some(db => db.biltiId === b.id) ? {...b, status: "Received"} : b
-        )
-      );
-      toast({ title: "Goods Delivery Deleted", description: `Delivery Note ${deliveryToDelete.id} deleted. Bilti statuses (simulated) reverted. Ledger entries (simulated) reversed.` });
+      setIsSubmitting(true);
+      const batch = writeBatch(db);
+      try {
+        const deliveryDocRef = doc(db, "goodsDeliveries", deliveryToDelete.id);
+        batch.delete(deliveryDocRef);
+
+        deliveryToDelete.deliveredBiltis.forEach(item => {
+          const biltiDocRef = doc(db, "biltis", item.biltiId);
+          batch.update(biltiDocRef, { status: "Received", goodsDeliveryNoteId: null });
+        });
+
+        await batch.commit();
+        toast({ title: "Goods Delivery Deleted", description: `Delivery Note ${deliveryToDelete.id} deleted. Bilti statuses reverted.` });
+        fetchGoodsDeliveries();
+        fetchMasterData(); // Refresh biltis
+      } catch (error) {
+        console.error("Error deleting goods delivery: ", error);
+        toast({ title: "Error", description: "Failed to delete goods delivery.", variant: "destructive" });
+      } finally {
+        setIsSubmitting(false);
+      }
     }
     setIsDeleteDialogOpen(false);
     setDeliveryToDelete(null);
@@ -220,18 +362,16 @@ export default function GoodsDeliveryPage() {
 
   const filteredDeliveries = goodsDeliveries.filter(delivery => 
     delivery.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    delivery.deliveredBiltis.some(db => db.biltiId.toLowerCase().includes(searchTerm.toLowerCase()))
+    delivery.deliveredBiltis.some(db => db.biltiId.toLowerCase().includes(searchTerm.toLowerCase())) ||
+    (delivery.nepaliMiti && delivery.nepaliMiti.toLowerCase().includes(searchTerm.toLowerCase()))
   );
   
-  const availableBiltisForSelection = biltisMasterList.filter(b => b.status === "Received" || (editingDelivery && editingDelivery.deliveredBiltis.some(db => db.biltiId === b.id)));
-
-
   return (
     <div className="space-y-6">
        <SmartBiltiMultiSelectDialog
         isOpen={isBiltiSelectDialogOpen}
         onOpenChange={setIsBiltiSelectDialogOpen}
-        availableBiltis={availableBiltisForSelection}
+        availableBiltis={biltisForSelection} // Pass only "Received" or current editing's biltis
         parties={parties}
         selectedBiltiIds={new Set(formData.deliveredBiltis.map(item => item.biltiId))}
         onSelectionConfirm={handleBiltiSelectionConfirm}
@@ -241,14 +381,14 @@ export default function GoodsDeliveryPage() {
       <div className="flex flex-col md:flex-row justify-between items-center gap-4">
         <div>
           <h1 className="text-3xl font-headline font-bold text-foreground flex items-center"><PackageOpen className="mr-3 h-8 w-8 text-primary"/>Goods Delivery</h1>
-          <p className="text-muted-foreground ml-11">Mark goods as delivered to the consignee, manage rebates & discounts.</p>
+          <p className="text-muted-foreground ml-11">Mark goods as delivered, manage rebates & discounts.</p>
         </div>
         <Dialog open={isFormDialogOpen} onOpenChange={(isOpen) => {
             setIsFormDialogOpen(isOpen);
             if (!isOpen) {setEditingDelivery(null);}
         }}>
           <DialogTrigger asChild>
-            <Button onClick={openAddForm}>
+            <Button onClick={openAddForm} disabled={isSubmitting || isLoading}>
               <PlusCircle className="mr-2 h-4 w-4" /> New Goods Delivery
             </Button>
           </DialogTrigger>
@@ -267,7 +407,7 @@ export default function GoodsDeliveryPage() {
                     <Input id="deliveryNoteNo" value={editingDelivery ? editingDelivery.id : "Auto-Generated"} readOnly className="bg-muted md:col-span-3 col-span-4" />
                   </div>
                   <div className="grid grid-cols-4 items-center gap-4">
-                    <Label htmlFor="miti" className="text-right md:col-span-1 col-span-4">Miti (Date)</Label>
+                    <Label htmlFor="miti" className="text-right md:col-span-1 col-span-4">Miti (AD)</Label>
                     <Popover>
                       <PopoverTrigger asChild className="md:col-span-3 col-span-4">
                         <Button variant={"outline"} className={cn("w-full justify-start text-left font-normal", !formData.miti && "text-muted-foreground")}>
@@ -278,6 +418,10 @@ export default function GoodsDeliveryPage() {
                       <PopoverContent className="w-auto p-0"><Calendar mode="single" selected={formData.miti} onSelect={handleDateChange} initialFocus /></PopoverContent>
                     </Popover>
                   </div>
+                   <div className="grid grid-cols-4 items-center gap-4">
+                    <Label htmlFor="nepaliMiti" className="text-right md:col-span-1 col-span-4">Nepali Miti</Label>
+                    <Input id="nepaliMiti" name="nepaliMiti" value={formData.nepaliMiti || ""} onChange={handleInputChange} className="md:col-span-3 col-span-4" placeholder="e.g., 2081-04-01" />
+                  </div>
                   
                   <div className="grid grid-cols-4 items-center gap-4">
                     <Label htmlFor="biltiSelectionButton" className="text-right md:col-span-1 col-span-4">Select Biltis</Label>
@@ -287,9 +431,10 @@ export default function GoodsDeliveryPage() {
                         id="biltiSelectionButton"
                         className="md:col-span-3 col-span-4 justify-start" 
                         onClick={() => setIsBiltiSelectDialogOpen(true)}
+                        disabled={isLoading || biltisForSelection.length === 0}
                     >
                         <ListChecks className="mr-2 h-4 w-4"/>
-                        {formData.deliveredBiltis.length > 0 ? `Selected ${formData.deliveredBiltis.length} Bilti(s)` : "Click to Select Biltis..."}
+                        {formData.deliveredBiltis.length > 0 ? `Selected ${formData.deliveredBiltis.length} Bilti(s)` : (isLoading ? "Loading Biltis..." : (biltisForSelection.length === 0 ? "No Biltis (status 'Received')" : "Click to Select Biltis..."))}
                     </Button>
                   </div>
 
@@ -300,7 +445,7 @@ export default function GoodsDeliveryPage() {
                         {formData.deliveredBiltis.map((item, index) => (
                           <div key={item.biltiId} className="p-3 border rounded-md bg-secondary/30 space-y-2">
                             <div className="flex justify-between items-center">
-                                <p className="font-semibold text-sm">{item.biltiId} - {getPartyName(item.biltiData?.consigneeId)}</p>
+                                <p className="font-semibold text-sm">{item.biltiData?.id || item.biltiId} - {getPartyName(item.biltiData?.consigneeId)}</p>
                                 <p className="text-xs text-muted-foreground">To: {item.biltiData?.destination}</p>
                             </div>
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -328,7 +473,14 @@ export default function GoodsDeliveryPage() {
                       </CardContent>
                     </Card>
                   )}
-
+                   <div className="grid grid-cols-4 items-center gap-4">
+                    <Label htmlFor="deliveredToName" className="text-right md:col-span-1 col-span-4">Delivered To Name</Label>
+                    <Input id="deliveredToName" name="deliveredToName" value={formData.deliveredToName || ""} onChange={handleInputChange} className="md:col-span-3 col-span-4" placeholder="(Optional)"/>
+                  </div>
+                  <div className="grid grid-cols-4 items-center gap-4">
+                    <Label htmlFor="deliveredToContact" className="text-right md:col-span-1 col-span-4">Delivered To Contact</Label>
+                    <Input id="deliveredToContact" name="deliveredToContact" value={formData.deliveredToContact || ""} onChange={handleInputChange} className="md:col-span-3 col-span-4" placeholder="(Optional)"/>
+                  </div>
                   <div className="grid grid-cols-4 items-start gap-4 mt-2">
                     <Label htmlFor="overallRemarks" className="text-right pt-2 md:col-span-1 col-span-4">Overall Remarks</Label>
                     <Textarea id="overallRemarks" name="overallRemarks" value={formData.overallRemarks} onChange={handleInputChange} placeholder="General remarks for this delivery note..." className="md:col-span-3 col-span-4" rows={3}/>
@@ -336,8 +488,11 @@ export default function GoodsDeliveryPage() {
                 </div>
               </ScrollArea>
               <DialogFooter className="pt-4 border-t mt-auto">
-                <DialogClose asChild><Button type="button" variant="outline">Cancel</Button></DialogClose>
-                <Button type="submit">{editingDelivery ? "Update Delivery" : "Save Delivery"}</Button>
+                <DialogClose asChild><Button type="button" variant="outline" disabled={isSubmitting}>Cancel</Button></DialogClose>
+                <Button type="submit" disabled={isSubmitting || isLoading}>
+                    {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                    {editingDelivery ? "Update Delivery" : "Save Delivery"}
+                </Button>
               </DialogFooter>
             </form>
           </DialogContent>
@@ -350,24 +505,27 @@ export default function GoodsDeliveryPage() {
           <CardDescription>View all recorded goods deliveries.</CardDescription>
           <div className="relative mt-4">
             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-            <Input placeholder="Search Deliveries (Note No, Bilti No)..." className="pl-8" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
+            <Input placeholder="Search Deliveries (Note No, Bilti No, BS Date)..." className="pl-8" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
           </div>
         </CardHeader>
         <CardContent>
+         {isLoading && goodsDeliveries.length === 0 ? (
+            <div className="flex justify-center items-center h-24"><Loader2 className="h-8 w-8 animate-spin text-primary" /><p className="ml-2 text-muted-foreground">Loading deliveries...</p></div>
+          ) : (
           <Table>
             <TableHeader>
               <TableRow>
                 <TableHead>Delivery Note No.</TableHead>
-                <TableHead>Miti</TableHead>
+                <TableHead>Miti (AD)</TableHead>
+                <TableHead>Miti (BS)</TableHead>
                 <TableHead># Biltis</TableHead>
                 <TableHead>Total Rebate</TableHead>
                 <TableHead>Total Discount</TableHead>
-                <TableHead>Overall Remarks</TableHead>
                 <TableHead>Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredDeliveries.length === 0 && <TableRow><TableCell colSpan={7} className="text-center h-24">No goods deliveries found.</TableCell></TableRow>}
+              {filteredDeliveries.length === 0 && !isLoading && <TableRow><TableCell colSpan={7} className="text-center h-24">No goods deliveries found.</TableCell></TableRow>}
               {filteredDeliveries.map((delivery) => {
                 const totalRebate = delivery.deliveredBiltis.reduce((sum, item) => sum + item.rebateAmount, 0);
                 const totalDiscount = delivery.deliveredBiltis.reduce((sum, item) => sum + item.discountAmount, 0);
@@ -375,29 +533,32 @@ export default function GoodsDeliveryPage() {
                 <TableRow key={delivery.id}>
                   <TableCell className="font-medium">{delivery.id}</TableCell>
                   <TableCell>{format(delivery.miti, "PP")}</TableCell>
+                  <TableCell>{delivery.nepaliMiti || "N/A"}</TableCell>
                   <TableCell>{delivery.deliveredBiltis.length}</TableCell>
                   <TableCell>{totalRebate.toFixed(2)}</TableCell>
                   <TableCell>{totalDiscount.toFixed(2)}</TableCell>
-                  <TableCell className="max-w-xs truncate">{delivery.overallRemarks || "N/A"}</TableCell>
                   <TableCell>
                     <div className="flex gap-1">
-                      <Button variant="outline" size="icon" aria-label="Edit Delivery" onClick={() => openEditForm(delivery)}>
+                      <Button variant="outline" size="icon" aria-label="Edit Delivery" onClick={() => openEditForm(delivery)} disabled={isSubmitting}>
                         <Edit className="h-4 w-4" />
                       </Button>
                       <AlertDialog open={isDeleteDialogOpen && deliveryToDelete?.id === delivery.id} onOpenChange={(open) => { if(!open) setDeliveryToDelete(null); setIsDeleteDialogOpen(open);}}>
                         <AlertDialogTrigger asChild>
-                           <Button variant="destructive" size="icon" aria-label="Delete Delivery" onClick={() => handleDeleteClick(delivery)}>
+                           <Button variant="destructive" size="icon" aria-label="Delete Delivery" onClick={() => handleDeleteClick(delivery)} disabled={isSubmitting}>
                             <Trash2 className="h-4 w-4" />
                           </Button>
                         </AlertDialogTrigger>
                         <AlertDialogContent>
                           <AlertDialogHeader>
                             <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
-                            <AlertDialogDescription>This will permanently delete Delivery Note "{deliveryToDelete?.id}". This might require manual adjustments to Bilti status and ledger entries.</AlertDialogDescription>
+                            <AlertDialogDescription>This will permanently delete Delivery Note "{deliveryToDelete?.id}" and revert associated Bilti statuses.</AlertDialogDescription>
                           </AlertDialogHeader>
                           <AlertDialogFooter>
-                            <AlertDialogCancel onClick={() => {setDeliveryToDelete(null); setIsDeleteDialogOpen(false);}}>Cancel</AlertDialogCancel>
-                            <AlertDialogAction onClick={confirmDelete}>Delete</AlertDialogAction>
+                            <AlertDialogCancel onClick={() => {setDeliveryToDelete(null); setIsDeleteDialogOpen(false);}} disabled={isSubmitting}>Cancel</AlertDialogCancel>
+                            <AlertDialogAction onClick={confirmDelete} disabled={isSubmitting}>
+                               {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                                Delete
+                            </AlertDialogAction>
                           </AlertDialogFooter>
                         </AlertDialogContent>
                       </AlertDialog>
@@ -407,13 +568,16 @@ export default function GoodsDeliveryPage() {
               )})}
             </TableBody>
           </Table>
+          )}
         </CardContent>
          <CardFooter>
             <p className="text-xs text-muted-foreground">
-                Ledger updates for rebates/discounts (simulated) are posted upon saving a delivery. Bilti statuses are also updated (simulated).
+                Ledger updates for rebates/discounts are simulated. Bilti statuses are updated in Firestore.
             </p>
         </CardFooter>
       </Card>
     </div>
   );
 }
+
+    
