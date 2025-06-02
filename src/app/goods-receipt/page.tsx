@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
-import { PlusCircle, Search, Edit, Trash2, ArchiveRestore } from "lucide-react";
+import { PlusCircle, Search, Edit, Trash2, ArchiveRestore, CalendarIcon, ChevronsUpDown, Check } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -29,25 +29,25 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { CalendarIcon } from "lucide-react";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "cmdk";
 import { Calendar } from "@/components/ui/calendar";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
+import { ScrollArea } from "@/components/ui/scroll-area";
 
 // Interfaces
-interface Branch { // Reusing Branch from Manifest or define specifically
+interface Branch { 
   id: string;
   name: string;
 }
-interface Godown { // Reusing Godown from godowns/page.tsx or define specifically
+interface Godown { 
   id: string;
   name: string;
   branchId: string;
 }
-interface Manifest { // From manifests/page.tsx
+interface Manifest { 
   id: string;
   miti: Date;
   truckId: string;
@@ -55,16 +55,15 @@ interface Manifest { // From manifests/page.tsx
   fromBranchId: string;
   toBranchId: string;
   attachedBiltiIds: string[];
-  status?: "Open" | "In Transit" | "Completed" | "Cancelled" | "Received"; // Added Received
+  status?: "Open" | "In Transit" | "Completed" | "Cancelled" | "Received"; 
 }
 interface GoodsReceipt {
   id: string;
   miti: Date;
   manifestId: string;
-  receivingBranchId?: string; // Optional if godown is used
-  receivingGodownId?: string; // Optional if branch is used
+  receivingBranchId?: string; 
+  receivingGodownId?: string; 
   remarks: string;
-  // In a real app, you'd have details of items received, shortages, damages per Bilti/item
 }
 
 // Mock Data
@@ -80,13 +79,13 @@ const initialMockGodowns: Godown[] = [
 const initialManifestsPendingReceipt: Manifest[] = [
   { id: "MAN-001", miti: new Date("2024-07-10"), truckId: "TRK001", driverId: "DRV001", fromBranchId: "BRN001", toBranchId: "BRN002", attachedBiltiIds: ["BLT-001", "BLT-003"], status: "In Transit" },
   { id: "MAN-002", miti: new Date("2024-07-11"), truckId: "TRK002", driverId: "DRV002", fromBranchId: "BRN002", toBranchId: "BRN003", attachedBiltiIds: ["BLT-002"], status: "In Transit" },
+  { id: "MAN-003", miti: new Date("2024-07-12"), truckId: "TRK001", driverId: "DRV001", fromBranchId: "BRN003", toBranchId: "BRN001", attachedBiltiIds: ["BLT-004"], status: "In Transit" },
 ];
 
 const defaultGoodsReceiptFormData: Omit<GoodsReceipt, 'id'> = {
   miti: new Date(),
   manifestId: "",
   receivingBranchId: "",
-  // receivingGodownId: "", // Enable if godown level receipt is primary
   remarks: "",
 };
 
@@ -94,8 +93,7 @@ export default function GoodsReceiptPage() {
   const [goodsReceipts, setGoodsReceipts] = useState<GoodsReceipt[]>([]);
   const [manifestsPendingReceipt, setManifestsPendingReceipt] = useState<Manifest[]>(initialManifestsPendingReceipt);
   const [branches] = useState<Branch[]>(initialMockBranches);
-  const [godowns] = useState<Godown[]>(initialMockGodowns); // For godown selection
-
+  
   const [searchTerm, setSearchTerm] = useState("");
   const [isFormDialogOpen, setIsFormDialogOpen] = useState(false);
   const [editingReceipt, setEditingReceipt] = useState<GoodsReceipt | null>(null);
@@ -104,6 +102,10 @@ export default function GoodsReceiptPage() {
   const { toast } = useToast();
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [receiptToDelete, setReceiptToDelete] = useState<GoodsReceipt | null>(null);
+
+  const [isManifestPopoverOpen, setIsManifestPopoverOpen] = useState(false);
+  const [isBranchPopoverOpen, setIsBranchPopoverOpen] = useState(false);
+
 
   const handleInputChange = (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
@@ -137,18 +139,19 @@ export default function GoodsReceiptPage() {
     setIsFormDialogOpen(true);
   };
   
-  const getManifestDisplay = (manifestId: string) => {
-    const manifest = manifestsPendingReceipt.find(m => m.id === manifestId) || initialManifestsPendingReceipt.find(m => m.id === manifestId) ; // Also check original list if it got "received"
-    if (!manifest) return "N/A";
-    return `${manifest.id} (From: ${getBranchName(manifest.fromBranchId)} To: ${getBranchName(manifest.toBranchId)})`;
+  const getManifestDisplay = (manifestId?: string) => {
+    const manifest = manifestsPendingReceipt.find(m => m.id === manifestId) || 
+                     initialManifestsPendingReceipt.find(m => m.id === manifestId) ||
+                     (editingReceipt && editingReceipt.manifestId === manifestId ? initialManifestsPendingReceipt.find(m => m.id === editingReceipt.manifestId) : undefined) ;
+    if (!manifest) return "Select Manifest...";
+    return `${manifest.id} (To: ${getBranchName(manifest.toBranchId)})`;
   }
-  const getBranchName = (branchId?: string) => branches.find(b => b.id === branchId)?.name || "N/A";
-  // const getGodownName = (godownId?: string) => godowns.find(g => g.id === godownId)?.name || "N/A";
+  const getBranchName = (branchId?: string) => branches.find(b => b.id === branchId)?.name || "Select Receiving Branch...";
 
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
-    if (!formData.manifestId || !formData.receivingBranchId) { // Basic validation
+    if (!formData.manifestId || !formData.receivingBranchId) { 
         toast({ title: "Missing Fields", description: "Manifest and Receiving Branch are required.", variant: "destructive" });
         return;
     }
@@ -156,15 +159,13 @@ export default function GoodsReceiptPage() {
     if (editingReceipt) {
       const updatedReceipt: GoodsReceipt = { ...formData, id: editingReceipt.id };
       setGoodsReceipts(goodsReceipts.map(r => r.id === editingReceipt.id ? updatedReceipt : r));
-      // Status update for manifest is complex, simulate with toast
-      toast({ title: "Goods Receipt Updated", description: `Receipt ${updatedReceipt.id} updated. Manifest status (simulated) may need re-evaluation.` });
+      toast({ title: "Goods Receipt Updated", description: `Receipt ${updatedReceipt.id} updated.` });
     } else {
       const newReceipt: GoodsReceipt = { ...formData, id: generateReceiptNo() };
       setGoodsReceipts(prevReceipts => [...prevReceipts, newReceipt]);
-      // Simulate updating manifest status to "Received" and removing from pending list
       setManifestsPendingReceipt(prevManifests => 
         prevManifests.map(m => m.id === newReceipt.manifestId ? {...m, status: "Received"} : m)
-                     .filter(m => m.id !== newReceipt.manifestId || m.status !== "Received") // Effectively removes it
+                     .filter(m => m.id !== newReceipt.manifestId || m.status !== "Received") 
       );
       toast({ title: "Goods Receipt Created", description: `Receipt ${newReceipt.id} created. Manifest ${newReceipt.manifestId} (simulated) marked as 'Received'.` });
     }
@@ -180,8 +181,6 @@ export default function GoodsReceiptPage() {
   const confirmDelete = () => {
     if (receiptToDelete) {
       setGoodsReceipts(goodsReceipts.filter((r) => r.id !== receiptToDelete.id));
-      // Simulate reverting manifest status if needed. This is complex.
-      // For now, just inform user.
       const originalManifest = initialManifestsPendingReceipt.find(m => m.id === receiptToDelete.manifestId);
       if(originalManifest && !manifestsPendingReceipt.find(m => m.id === receiptToDelete.manifestId)){
         setManifestsPendingReceipt(prev => [...prev, {...originalManifest, status: "In Transit"}]);
@@ -196,6 +195,8 @@ export default function GoodsReceiptPage() {
     receipt.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
     receipt.manifestId.toLowerCase().includes(searchTerm.toLowerCase())
   );
+
+  const manifestsForSelection = manifestsPendingReceipt.filter(m => m.status === "In Transit" || (editingReceipt && m.id === editingReceipt.manifestId));
 
   return (
     <div className="space-y-6">
@@ -238,25 +239,97 @@ export default function GoodsReceiptPage() {
                     <PopoverContent className="w-auto p-0"><Calendar mode="single" selected={formData.miti} onSelect={handleDateChange} initialFocus /></PopoverContent>
                   </Popover>
                 </div>
+                
                 <div className="grid grid-cols-4 items-center gap-4">
                   <Label htmlFor="manifestId" className="text-right md:col-span-1 col-span-4">Manifest</Label>
-                  <Select name="manifestId" value={formData.manifestId} onValueChange={handleSelectChange('manifestId')} required>
-                    <SelectTrigger className="md:col-span-3 col-span-4"><SelectValue placeholder="Select Manifest" /></SelectTrigger>
-                    <SelectContent>
-                      {manifestsPendingReceipt.filter(m => m.status === "In Transit" || (editingReceipt && m.id === editingReceipt.manifestId)).map(m => 
-                        <SelectItem key={m.id} value={m.id}>{m.id} (To: {getBranchName(m.toBranchId)})</SelectItem>
-                      )}
-                    </SelectContent>
-                  </Select>
+                  <Popover open={isManifestPopoverOpen} onOpenChange={setIsManifestPopoverOpen}>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        role="combobox"
+                        aria-expanded={isManifestPopoverOpen}
+                        className="md:col-span-3 col-span-4 justify-between w-full"
+                      >
+                        {getManifestDisplay(formData.manifestId)}
+                        <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
+                      <Command>
+                        <CommandInput placeholder="Search manifest..." />
+                        <CommandEmpty>No manifest found.</CommandEmpty>
+                        <CommandList>
+                          <ScrollArea className="h-48">
+                            {manifestsForSelection.map((manifest) => (
+                              <CommandItem
+                                key={manifest.id}
+                                value={manifest.id}
+                                onSelect={(currentValue) => {
+                                  handleSelectChange('manifestId')(currentValue === formData.manifestId ? "" : currentValue);
+                                  setIsManifestPopoverOpen(false);
+                                }}
+                              >
+                                <Check
+                                  className={cn(
+                                    "mr-2 h-4 w-4",
+                                    formData.manifestId === manifest.id ? "opacity-100" : "opacity-0"
+                                  )}
+                                />
+                                {manifest.id} (To: {getBranchName(manifest.toBranchId)})
+                              </CommandItem>
+                            ))}
+                          </ScrollArea>
+                        </CommandList>
+                      </Command>
+                    </PopoverContent>
+                  </Popover>
                 </div>
+
                 <div className="grid grid-cols-4 items-center gap-4">
                   <Label htmlFor="receivingBranchId" className="text-right md:col-span-1 col-span-4">Receiving Branch</Label>
-                  <Select name="receivingBranchId" value={formData.receivingBranchId || ""} onValueChange={handleSelectChange('receivingBranchId')} required>
-                    <SelectTrigger className="md:col-span-3 col-span-4"><SelectValue placeholder="Select Receiving Branch" /></SelectTrigger>
-                    <SelectContent>{branches.map(b => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}</SelectContent>
-                  </Select>
+                   <Popover open={isBranchPopoverOpen} onOpenChange={setIsBranchPopoverOpen}>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        role="combobox"
+                        aria-expanded={isBranchPopoverOpen}
+                        className="md:col-span-3 col-span-4 justify-between w-full"
+                      >
+                        {getBranchName(formData.receivingBranchId)}
+                        <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
+                      <Command>
+                        <CommandInput placeholder="Search branch..." />
+                        <CommandEmpty>No branch found.</CommandEmpty>
+                        <CommandList>
+                          <ScrollArea className="h-48">
+                            {branches.map((branch) => (
+                              <CommandItem
+                                key={branch.id}
+                                value={branch.id}
+                                onSelect={(currentValue) => {
+                                  handleSelectChange('receivingBranchId')(currentValue === formData.receivingBranchId ? "" : currentValue);
+                                  setIsBranchPopoverOpen(false);
+                                }}
+                              >
+                                <Check
+                                  className={cn(
+                                    "mr-2 h-4 w-4",
+                                    formData.receivingBranchId === branch.id ? "opacity-100" : "opacity-0"
+                                  )}
+                                />
+                                {branch.name}
+                              </CommandItem>
+                            ))}
+                          </ScrollArea>
+                        </CommandList>
+                      </Command>
+                    </PopoverContent>
+                  </Popover>
                 </div>
-                {/* Add Godown selection if needed based on selected branch */}
+                
                 <div className="grid grid-cols-4 items-start gap-4">
                   <Label htmlFor="remarks" className="text-right pt-2 md:col-span-1 col-span-4">Remarks</Label>
                   <Textarea id="remarks" name="remarks" value={formData.remarks} onChange={handleInputChange} placeholder="Note any shortages, damages, or other observations." className="md:col-span-3 col-span-4" rows={4}/>
