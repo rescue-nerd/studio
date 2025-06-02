@@ -51,7 +51,7 @@ import {
   serverTimestamp,
   deleteDoc,
   runTransaction,
-  type DocumentSnapshot,
+  type DocumentSnapshot
 } from "firebase/firestore";
 import type {
   Daybook as FirestoreDaybook,
@@ -59,7 +59,7 @@ import type {
   Branch as FirestoreBranch,
   Bilti as FirestoreBilti,
   Party as FirestoreParty,
-  LedgerAccount as FirestoreLedgerAccount,
+  LedgerAccount as FirestoreLedgerAccount
 } from "@/types/firestore";
 
 // --- Local Interfaces (extending Firestore for UI, e.g. Date objects) ---
@@ -763,3 +763,6 @@ export default function DaybookPage() {
     </div>
   );
 }
+
+    
+
