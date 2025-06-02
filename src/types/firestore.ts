@@ -262,3 +262,28 @@ export interface Auditable {
   updatedBy?: string; // User.uid
   updatedAt?: Timestamp;
 }
+
+// Location and Unit Types with Auditing
+export interface Country extends Auditable {
+  id: string;
+  name: string;
+  code: string;
+}
+export interface State extends Auditable {
+  id: string;
+  name: string;
+  countryId: string; // Link to Country.id
+}
+export interface City extends Auditable {
+  id: string;
+  name: string;
+  stateId: string; // Link to State.id
+}
+export interface Unit extends Auditable {
+  id: string;
+  name: string;
+  symbol: string;
+  type: "Weight" | "Distance" | "Volume" | "Other";
+}
+
+    
