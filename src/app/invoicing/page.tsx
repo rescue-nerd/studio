@@ -26,8 +26,7 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
+} from "@/components/ui/alert-dialog"; // Removed AlertDialogTrigger as it's used with asChild
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
@@ -37,12 +36,19 @@ import { Calendar } from "@/components/ui/calendar";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
+import SmartPartySelectDialog from "@/components/shared/smart-party-select-dialog";
+
 
 // Interfaces
-interface Party {
+export interface Party { // Exporting for use in SmartPartySelectDialog
   id: string;
   name: string;
   type: "Consignor" | "Consignee" | "Both";
+  contactNo: string;
+  panNo?: string;
+  address?: string;
+  assignedLedger: string;
+  status: "Active" | "Inactive";
 }
 interface Truck {
   id: string;
@@ -61,20 +67,19 @@ interface Bilti {
   destination: string;
   description: string;
   packages: number;
-  weight?: number; // Optional for now
+  weight?: number; 
   rate: number;
   totalAmount: number;
   payMode: "Paid" | "To Pay" | "Due";
   truckId: string;
   driverId: string;
-  status?: string; // e.g., "Pending", "Manifested", "Delivered"
+  status?: string; 
 }
 
-// Mock Data (replace with actual data fetching)
-const mockParties: Party[] = [
-  { id: "PTY001", name: "Global Traders (KTM)", type: "Both" },
-  { id: "PTY002", name: "National Distributors (PKR)", type: "Both" },
-  { id: "PTY003", name: "Himalayan Goods Co. (BRT)", type: "Both" },
+const initialMockParties: Party[] = [
+  { id: "PTY001", name: "Global Traders (KTM)", type: "Both", contactNo: "9800000001", panNo: "PAN123KTM", address: "Kathmandu", assignedLedger: "Ledger-GT-KTM", status: "Active" },
+  { id: "PTY002", name: "National Distributors (PKR)", type: "Both", contactNo: "9800000002", panNo: "PAN456PKR", address: "Pokhara", assignedLedger: "Ledger-ND-PKR", status: "Active" },
+  { id: "PTY003", name: "Himalayan Goods Co. (BRT)", type: "Both", contactNo: "9800000003", panNo: "PAN789BRT", address: "Biratnagar", assignedLedger: "Ledger-HGC-BRT", status: "Inactive" },
 ];
 const mockTrucks: Truck[] = [
   { id: "TRK001", truckNo: "BA 1 KA 1234" },
@@ -104,6 +109,7 @@ const defaultBiltiFormData: Omit<Bilti, 'id' | 'totalAmount' | 'status'> = {
 
 export default function InvoicingPage() {
   const [biltis, setBiltis] = useState<Bilti[]>([]);
+  const [parties, setParties] = useState<Party[]>(initialMockParties); // Manage parties in state
   const [searchTerm, setSearchTerm] = useState("");
   const [isFormDialogOpen, setIsFormDialogOpen] = useState(false);
   const [editingBilti, setEditingBilti] = useState<Bilti | null>(null);
@@ -112,6 +118,13 @@ export default function InvoicingPage() {
   const { toast } = useToast();
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [biltiToDelete, setBiltiToDelete] = useState<Bilti | null>(null);
+
+  const [isConsignorSelectOpen, setIsConsignorSelectOpen] = useState(false);
+  const [isConsigneeSelectOpen, setIsConsigneeSelectOpen] = useState(false);
+
+  const [selectedConsignor, setSelectedConsignor] = useState<Party | null>(null);
+  const [selectedConsignee, setSelectedConsignee] = useState<Party | null>(null);
+
 
   useEffect(() => {
     const calculatedTotal = (formData.packages || 0) * (formData.rate || 0);
@@ -139,24 +152,41 @@ export default function InvoicingPage() {
   };
 
   const generateBiltiNo = (): string => {
-    const nextId = biltis.length + 1 + Math.floor(Math.random() * 100); // Add some randomness
+    const nextId = biltis.length + 1 + Math.floor(Math.random() * 100);
     return `BLT-${String(nextId).padStart(3, '0')}`;
   };
 
   const openAddForm = () => {
     setEditingBilti(null);
     setFormData({...defaultBiltiFormData, miti: new Date() });
+    setSelectedConsignor(null);
+    setSelectedConsignee(null);
     setTotalAmount(0);
     setIsFormDialogOpen(true);
   };
 
   const openEditForm = (bilti: Bilti) => {
     setEditingBilti(bilti);
-    // Make sure to destructure all relevant fields, including optional ones.
-    const { totalAmount, status, ...editableData } = bilti;
-    setFormData(editableData); 
-    setTotalAmount(bilti.totalAmount); // Use the stored total amount for editing
+    const { totalAmount, status, consignorId, consigneeId, ...editableData } = bilti;
+    setFormData({...editableData, consignorId, consigneeId}); 
+    setSelectedConsignor(parties.find(p => p.id === consignorId) || null);
+    setSelectedConsignee(parties.find(p => p.id === consigneeId) || null);
+    setTotalAmount(bilti.totalAmount);
     setIsFormDialogOpen(true);
+  };
+
+  const handlePartyAdd = (newParty: Party) => {
+    setParties(prevParties => [...prevParties, newParty]);
+     toast({ title: "Party Added", description: `${newParty.name} has been added to master records.` });
+  };
+
+  const handleConsignorSelect = (party: Party) => {
+    setFormData(prev => ({...prev, consignorId: party.id}));
+    setSelectedConsignor(party);
+  };
+  const handleConsigneeSelect = (party: Party) => {
+     setFormData(prev => ({...prev, consigneeId: party.id}));
+    setSelectedConsignee(party);
   };
 
 
@@ -171,15 +201,14 @@ export default function InvoicingPage() {
         return;
     }
     
-    // Recalculate total amount on save/update to ensure it's current
     const currentTotalAmount = (formData.packages || 0) * (formData.rate || 0);
 
     if (editingBilti) {
       const updatedBilti: Bilti = {
         ...formData,
         id: editingBilti.id,
-        totalAmount: currentTotalAmount, // Use recalculated total
-        status: editingBilti.status, // Preserve existing status
+        totalAmount: currentTotalAmount,
+        status: editingBilti.status,
       };
       setBiltis(biltis.map(b => b.id === editingBilti.id ? updatedBilti : b));
       toast({ title: "Bilti Updated", description: `Bilti ${updatedBilti.id} has been updated.` });
@@ -188,20 +217,18 @@ export default function InvoicingPage() {
         ...formData,
         id: generateBiltiNo(),
         totalAmount: currentTotalAmount,
-        status: "Pending", // Initial status for new Bilti
+        status: "Pending", 
       };
       setBiltis(prevBiltis => [...prevBiltis, newBilti]);
       toast({ title: "Bilti Created", description: `Bilti ${newBilti.id} has been created successfully.` });
     }
-
-    // Placeholder for Ledger Updates
-    // updateLedgers(newBilti); 
-
     setIsFormDialogOpen(false);
     setEditingBilti(null);
+    setSelectedConsignor(null);
+    setSelectedConsignee(null);
   };
   
-  const getPartyName = (partyId: string) => mockParties.find(p => p.id === partyId)?.name || "N/A";
+  const getPartyName = (partyId: string) => parties.find(p => p.id === partyId)?.name || "N/A";
   const getTruckNo = (truckId: string) => mockTrucks.find(t => t.id === truckId)?.truckNo || "N/A";
   const getDriverName = (driverId: string) => mockDrivers.find(d => d.id === driverId)?.name || "N/A";
 
@@ -228,12 +255,36 @@ export default function InvoicingPage() {
 
   return (
     <div className="space-y-6">
+      <SmartPartySelectDialog 
+        isOpen={isConsignorSelectOpen}
+        onOpenChange={setIsConsignorSelectOpen}
+        parties={parties}
+        onPartySelect={handleConsignorSelect}
+        onPartyAdd={handlePartyAdd}
+        dialogTitle="Select Consignor"
+      />
+      <SmartPartySelectDialog 
+        isOpen={isConsigneeSelectOpen}
+        onOpenChange={setIsConsigneeSelectOpen}
+        parties={parties}
+        onPartySelect={handleConsigneeSelect}
+        onPartyAdd={handlePartyAdd}
+        dialogTitle="Select Consignee"
+      />
+
       <div className="flex flex-col md:flex-row justify-between items-center gap-4">
         <div>
           <h1 className="text-3xl font-headline font-bold text-foreground">Bilti / Invoicing</h1>
           <p className="text-muted-foreground">Create and manage shipment billing entries (Biltis/Invoices).</p>
         </div>
-        <Dialog open={isFormDialogOpen} onOpenChange={setIsFormDialogOpen}>
+        <Dialog open={isFormDialogOpen} onOpenChange={(isOpen) => {
+            setIsFormDialogOpen(isOpen);
+            if (!isOpen) {
+                setEditingBilti(null); // Clear editing state when dialog closes
+                setSelectedConsignor(null);
+                setSelectedConsignee(null);
+            }
+        }}>
           <DialogTrigger asChild>
             <Button onClick={openAddForm}>
               <PlusCircle className="mr-2 h-4 w-4" /> New Bilti / Invoice
@@ -275,21 +326,17 @@ export default function InvoicingPage() {
                 <div className="grid md:grid-cols-2 gap-4">
                   <div>
                     <Label htmlFor="consignorId">Consignor</Label>
-                    <Select value={formData.consignorId} onValueChange={handleSelectChange('consignorId')} required>
-                      <SelectTrigger><SelectValue placeholder="Select Consignor" /></SelectTrigger>
-                      <SelectContent>
-                        {mockParties.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
+                    <Button type="button" variant="outline" className="w-full justify-start" onClick={() => setIsConsignorSelectOpen(true)}>
+                        {selectedConsignor ? selectedConsignor.name : "Select Consignor"}
+                    </Button>
+                     <Input type="hidden" value={formData.consignorId} />
                   </div>
                   <div>
                     <Label htmlFor="consigneeId">Consignee</Label>
-                    <Select value={formData.consigneeId} onValueChange={handleSelectChange('consigneeId')} required>
-                      <SelectTrigger><SelectValue placeholder="Select Consignee" /></SelectTrigger>
-                      <SelectContent>
-                        {mockParties.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
+                     <Button type="button" variant="outline" className="w-full justify-start" onClick={() => setIsConsigneeSelectOpen(true)}>
+                        {selectedConsignee ? selectedConsignee.name : "Select Consignee"}
+                    </Button>
+                    <Input type="hidden" value={formData.consigneeId} />
                   </div>
                 </div>
 
@@ -331,7 +378,7 @@ export default function InvoicingPage() {
                   </div>
                    <div>
                     <Label htmlFor="payMode">Pay Mode</Label>
-                    <Select value={formData.payMode} onValueChange={handleSelectChange('payMode')} required>
+                    <Select value={formData.payMode} onValueChange={handleSelectChange('payMode') as (value: Bilti["payMode"])=>void} required>
                       <SelectTrigger><SelectValue placeholder="Select Pay Mode" /></SelectTrigger>
                       <SelectContent>
                         {payModes.map(mode => <SelectItem key={mode} value={mode}>{mode}</SelectItem>)}
@@ -436,11 +483,11 @@ export default function InvoicingPage() {
                         <Edit className="h-4 w-4" />
                       </Button>
                        <AlertDialog open={isDeleteDialogOpen && biltiToDelete?.id === bilti.id} onOpenChange={(open) => { if(!open) setBiltiToDelete(null); setIsDeleteDialogOpen(open);}}>
-                        <AlertDialogTrigger asChild>
+                         <AlertDialogTrigger asChild>
                            <Button variant="destructive" size="icon" aria-label="Delete Bilti" onClick={() => handleDeleteClick(bilti)}>
                             <Trash2 className="h-4 w-4" />
                           </Button>
-                        </AlertDialogTrigger>
+                         </AlertDialogTrigger>
                         <AlertDialogContent>
                           <AlertDialogHeader>
                             <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
@@ -470,4 +517,6 @@ export default function InvoicingPage() {
     </div>
   );
 }
+    
+
     
