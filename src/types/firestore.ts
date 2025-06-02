@@ -55,7 +55,7 @@ export interface Truck extends Auditable {
   ownerPAN?: string;
   status: "Active" | "Inactive" | "Maintenance";
   assignedLedgerId: string; // Link to LedgerAccount.id
-  updatedBy?: string; // Added this based on previous step
+  updatedBy?: string;
 }
 
 export interface Driver extends Auditable {
@@ -67,7 +67,7 @@ export interface Driver extends Auditable {
   joiningDate?: Timestamp; // Stored as Timestamp in Firestore
   status: "Active" | "Inactive" | "On Leave";
   assignedLedgerId: string; // Link to LedgerAccount.id
-  updatedBy?: string; // Added this based on previous step
+  updatedBy?: string;
 }
 
 export interface Godown extends Auditable {
@@ -76,7 +76,7 @@ export interface Godown extends Auditable {
   branchId: string; // Link to Branch.id
   location: string;
   status: "Active" | "Inactive" | "Operational";
-  updatedBy?: string; // Added this based on previous step
+  updatedBy?: string;
 }
 
 export interface Bilti extends Auditable {
@@ -85,50 +85,58 @@ export interface Bilti extends Auditable {
   nepaliMiti?: string;
   consignorId: string; // Link to Party.id
   consigneeId: string; // Link to Party.id
-  origin: string; // Could be Branch name or City name
-  destination: string; // Could be Branch name or City name
-  description: string; // Description of goods
+  origin: string;
+  destination: string;
+  description: string;
   packages: number;
-  weight?: number; // Optional weight in KG
-  rate: number; // Rate per package or per KG (context dependent)
+  weight?: number;
+  rate: number;
   totalAmount: number;
   payMode: "Paid" | "To Pay" | "Due";
-  truckId: string; // Link to Truck.id
-  driverId: string; // Link to Driver.id
-  status: "Pending" | "Manifested" | "Received" | "Delivered" | "Cancelled" | "Paid"; // Added "Paid" status
-  manifestId?: string; // Link to Manifest.id if part of a manifest
-  goodsDeliveryNoteId?: string; // Link to GoodsDelivery.id if delivered
+  truckId: string;
+  driverId: string;
+  status: "Pending" | "Manifested" | "Received" | "Delivered" | "Paid" | "Cancelled";
+  manifestId?: string;
+  goodsDeliveryNoteId?: string;
+  cashCollectionStatus?: "Pending" | "Partial" | "Collected";
+  deliveryExpenses?: Array<{
+    daybookTransactionId: string;
+    amount: number;
+    description: string;
+    miti: Timestamp;
+  }>;
+  daybookCashInRef?: string; // Reference to the Daybook transaction ID that collected cash for this Bilti
 }
 
 export interface Manifest extends Auditable {
   id: string; // Document ID (Manifest No.)
   miti: Timestamp; // Date of Manifest
   nepaliMiti?: string;
-  truckId: string; // Link to Truck.id
-  driverId: string; // Link to Driver.id
-  fromBranchId: string; // Link to Branch.id
-  toBranchId: string; // Link to Branch.id
-  attachedBiltiIds: string[]; // Array of Bilti.id
+  truckId: string;
+  driverId: string;
+  fromBranchId: string;
+  toBranchId: string;
+  attachedBiltiIds: string[];
   remarks?: string;
   status: "Open" | "In Transit" | "Completed" | "Cancelled" | "Received";
-  goodsReceiptId?: string; // Link to GoodsReceipt.id if received
+  goodsReceiptId?: string;
 }
 
 export interface GoodsReceipt extends Auditable {
   id: string; // Document ID (GRN No.)
   miti: Timestamp; // Date of Receipt
   nepaliMiti?: string;
-  manifestId: string; // Link to Manifest.id
-  receivingBranchId: string; // Link to Branch.id
-  receivingGodownId?: string; // Link to Godown.id (optional)
+  manifestId: string;
+  receivingBranchId: string;
+  receivingGodownId?: string;
   remarks?: string;
-  shortages?: string; // Details of any shortages
-  damages?: string; // Details of any damages
+  shortages?: string;
+  damages?: string;
 }
 
 export interface DeliveredBiltiItem {
-  biltiId: string; // Link to Bilti.id
-  biltiData?: Bilti; // For UI purposes, not stored in Firestore directly in this sub-object
+  biltiId: string;
+  biltiData?: Bilti;
   rebateAmount: number;
   rebateReason: string;
   discountAmount: number;
@@ -141,18 +149,18 @@ export interface GoodsDelivery extends Auditable {
   nepaliMiti?: string;
   deliveredBiltis: DeliveredBiltiItem[];
   overallRemarks?: string;
-  deliveredToName?: string; // Name of person receiving
-  deliveredToContact?: string; // Contact of person receiving
+  deliveredToName?: string;
+  deliveredToContact?: string;
 }
 
 export interface LedgerAccount extends Auditable {
-  id: string; // Document ID (often same as accountId for simplicity)
-  accountId: string; // The ID of the entity this ledger belongs to (e.g., Party.id, Truck.id)
-  accountName: string; // Name of the party, truck no., driver name
+  id: string;
+  accountId: string;
+  accountName: string;
   accountType: "Party" | "Truck" | "Driver" | "Branch" | "Expense" | "Income" | "Bank" | "Cash" | string;
-  currentBalance: number; // Denormalized; should be updated by backend functions
-  panNo?: string; // If Party
-  truckNo?: string; // If Truck
+  currentBalance: number;
+  panNo?: string;
+  truckNo?: string;
   lastTransactionAt?: Timestamp;
 }
 
@@ -169,30 +177,29 @@ export type LedgerTransactionType =
   | "Expense"
   | "Fuel"
   | "Maintenance"
-  | "DaybookCashIn" // Added for Daybook
-  | "DaybookCashOut" // Added for Daybook
-  | string; // Allow for future custom types
+  | "DaybookCashIn"
+  | "DaybookCashOut"
+  | string;
 
 export interface LedgerEntry extends Auditable {
-  id: string; // Document ID
-  accountId: string; // Link to LedgerAccount.id
-  miti: Timestamp; // Date of transaction
+  id: string;
+  accountId: string;
+  miti: Timestamp;
   nepaliMiti?: string;
   description: string;
   debit: number;
   credit: number;
-  balanceAfterTransaction?: number; // Running balance after this specific entry in sequence for that account
-  referenceNo?: string; // e.g., Bilti.id, GoodsDelivery.id, Cheque No., DaybookTransaction.id
+  balanceAfterTransaction?: number;
+  referenceNo?: string;
   transactionType: LedgerTransactionType;
   status: "Pending" | "Approved" | "Rejected";
   approvalRemarks?: string;
-  approvedBy?: string; // User.uid
+  approvedBy?: string;
   approvedAt?: Timestamp;
   sourceModule?: "Bilti" | "GoodsDelivery" | "GoodsReceipt" | "Manual" | "Payment" | "Daybook" | string;
-  branchId?: string; // Branch associated with this transaction, if applicable
+  branchId?: string;
 }
 
-// --- Settings / Configurations ---
 interface AuditableConfig extends Auditable {}
 
 export interface DocumentNumberingConfig extends AuditableConfig {
@@ -225,7 +232,6 @@ export interface InvoiceLineCustomization extends AuditableConfig {
   isEnabled: boolean;
 }
 
-// Location and Unit Types with Auditing
 export interface Country extends Auditable {
   id: string;
   name: string;
@@ -234,12 +240,12 @@ export interface Country extends Auditable {
 export interface State extends Auditable {
   id: string;
   name: string;
-  countryId: string; // Link to Country.id
+  countryId: string;
 }
 export interface City extends Auditable {
   id: string;
   name: string;
-  stateId: string; // Link to State.id
+  stateId: string;
 }
 export interface Unit extends Auditable {
   id: string;
@@ -249,38 +255,47 @@ export interface Unit extends Auditable {
 }
 
 // --- Daybook Module ---
+export type DaybookTransactionType =
+  | "Cash In (Delivery/Receipt)"
+  | "Delivery Expense (Cash Out)"
+  | "Cash Out (Expense/Supplier/Other)"
+  | "Cash In (Other)"
+  | "Cash Out (Other)"
+  | "Cash In (from Party Payment)"
+  | "Cash Out (to Driver/Staff, Petty Expense)"
+  | "Adjustment/Correction";
+  // Removed | string; to make it a stricter enum based on user requirements
+
 export interface DaybookTransaction {
-  id: string; // Local unique ID for the transaction (e.g., UUID generated client-side)
-  transactionType: "DeliveryCashIn" | "OtherCashIn" | "ExpenseCashOut" | "Adjustment";
+  id: string; // Local unique ID for the transaction
+  transactionType: DaybookTransactionType;
   amount: number;
-  referenceId?: string; // Bilti.id or GoodsDelivery.id for DeliveryCashIn
-  partyId?: string; // Link to Party.id (for OtherCashIn, ExpenseCashOut where applicable)
+  referenceId?: string; // Bilti.id or GoodsDelivery.id
+  partyId?: string; // Link to Party.id
   ledgerAccountId?: string; // Link to LedgerAccount.id (e.g., for specific cash/bank ledger, or expense ledger)
-  expenseHead?: string; // For ExpenseCashOut (could be a predefined list or free text, or linked to an expense ledger)
+  expenseHead?: string; // For "Cash Out (Expense/Supplier/Other)" or "Delivery Expense (Cash Out)"
   description: string;
   supportingDocUrl?: string; // URL to Firebase Storage
-  autoLinked: boolean; // True if linked to a Bilti/Delivery for cash-in
-  reasonForAdjustment?: string; // If transactionType is "Adjustment"
+  autoLinked: boolean; // True if 'Cash In (Delivery/Receipt)' or 'Delivery Expense (Cash Out)' and successfully linked
+  reasonForAdjustment?: string; // If transactionType is "Adjustment/Correction"
   createdBy: string; // User.uid
   createdAt: Timestamp;
 }
 
 export interface Daybook extends Auditable {
-  id: string; // Firestore Document ID
-  branchId: string; // Link to Branch.id
-  nepaliMiti: string; // e.g., "2081-04-15" - Key for daily record per branch
-  englishMiti: Timestamp; // English date for easier querying/sorting by Firestore
+  id: string; // Firestore Document ID (e.g., branchId_nepaliMiti or auto-ID)
+  branchId: string;
+  nepaliMiti: string;
+  englishMiti: Timestamp;
   openingBalance: number;
-  totalCashIn: number; // Calculated from transactions
-  totalCashOut: number; // Calculated from transactions
-  closingBalance: number; // Calculated: openingBalance + totalCashIn - totalCashOut
+  totalCashIn: number; // Calculated
+  totalCashOut: number; // Calculated
+  closingBalance: number; // Calculated
   status: "Draft" | "Pending Approval" | "Approved" | "Rejected";
-  transactions: DaybookTransaction[]; // Array of transaction objects
-  submittedBy?: string; // User.uid
+  transactions: DaybookTransaction[];
+  submittedBy?: string;
   submittedAt?: Timestamp;
-  approvedBy?: string; // User.uid
+  approvedBy?: string;
   approvedAt?: Timestamp;
-  approvalRemarks?: string; // Remarks on approval or rejection
+  approvalRemarks?: string;
 }
-
-    
