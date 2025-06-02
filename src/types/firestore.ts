@@ -1,3 +1,4 @@
+
 import type { Timestamp } from 'firebase/firestore';
 
 export interface User {
@@ -54,6 +55,7 @@ export interface Truck extends Auditable {
   ownerPAN?: string;
   status: "Active" | "Inactive" | "Maintenance";
   assignedLedgerId: string; // Link to LedgerAccount.id
+  updatedBy?: string; // Added this based on previous step
 }
 
 export interface Driver extends Auditable {
@@ -65,6 +67,7 @@ export interface Driver extends Auditable {
   joiningDate?: Timestamp; // Stored as Timestamp in Firestore
   status: "Active" | "Inactive" | "On Leave";
   assignedLedgerId: string; // Link to LedgerAccount.id
+  updatedBy?: string; // Added this based on previous step
 }
 
 export interface Godown extends Auditable {
@@ -73,6 +76,7 @@ export interface Godown extends Auditable {
   branchId: string; // Link to Branch.id
   location: string;
   status: "Active" | "Inactive" | "Operational";
+  updatedBy?: string; // Added this based on previous step
 }
 
 export interface Bilti extends Auditable {
@@ -91,7 +95,7 @@ export interface Bilti extends Auditable {
   payMode: "Paid" | "To Pay" | "Due";
   truckId: string; // Link to Truck.id
   driverId: string; // Link to Driver.id
-  status: "Pending" | "Manifested" | "Received" | "Delivered" | "Cancelled";
+  status: "Pending" | "Manifested" | "Received" | "Delivered" | "Cancelled" | "Paid"; // Added "Paid" status
   manifestId?: string; // Link to Manifest.id if part of a manifest
   goodsDeliveryNoteId?: string; // Link to GoodsDelivery.id if delivered
 }
@@ -120,7 +124,6 @@ export interface GoodsReceipt extends Auditable {
   remarks?: string;
   shortages?: string; // Details of any shortages
   damages?: string; // Details of any damages
-  // receivedBy field was present, changed to createdBy from Auditable
 }
 
 export interface DeliveredBiltiItem {
@@ -136,7 +139,7 @@ export interface GoodsDelivery extends Auditable {
   id: string; // Document ID (Delivery Note No.)
   miti: Timestamp; // Date of Delivery
   nepaliMiti?: string;
-  deliveredBiltis: DeliveredBiltiItem[]; // Note: biltiData is for UI only, not stored in this array in Firestore.
+  deliveredBiltis: DeliveredBiltiItem[];
   overallRemarks?: string;
   deliveredToName?: string; // Name of person receiving
   deliveredToContact?: string; // Contact of person receiving
@@ -166,6 +169,8 @@ export type LedgerTransactionType =
   | "Expense"
   | "Fuel"
   | "Maintenance"
+  | "DaybookCashIn" // Added for Daybook
+  | "DaybookCashOut" // Added for Daybook
   | string; // Allow for future custom types
 
 export interface LedgerEntry extends Auditable {
@@ -177,26 +182,21 @@ export interface LedgerEntry extends Auditable {
   debit: number;
   credit: number;
   balanceAfterTransaction?: number; // Running balance after this specific entry in sequence for that account
-  referenceNo?: string; // e.g., Bilti.id, GoodsDelivery.id, Cheque No.
+  referenceNo?: string; // e.g., Bilti.id, GoodsDelivery.id, Cheque No., DaybookTransaction.id
   transactionType: LedgerTransactionType;
-  status: "Pending" | "Approved" | "Rejected"; // For manual entries/vouchers needing approval
+  status: "Pending" | "Approved" | "Rejected";
   approvalRemarks?: string;
   approvedBy?: string; // User.uid
   approvedAt?: Timestamp;
-  sourceModule?: "Bilti" | "GoodsDelivery" | "GoodsReceipt" | "Manual" | "Payment" | string;
+  sourceModule?: "Bilti" | "GoodsDelivery" | "GoodsReceipt" | "Manual" | "Payment" | "Daybook" | string;
   branchId?: string; // Branch associated with this transaction, if applicable
 }
 
 // --- Settings / Configurations ---
-interface AuditableConfigBase { // Renamed from AuditableConfig to avoid conflict, and made fields optional for base
-  createdBy?: string;
-  createdAt?: Timestamp;
-  updatedBy?: string;
-  updatedAt?: Timestamp;
-}
+interface AuditableConfig extends Auditable {}
 
-export interface DocumentNumberingConfig extends AuditableConfigBase {
-  id: string; // Document ID
+export interface DocumentNumberingConfig extends AuditableConfig {
+  id: string;
   documentType: string;
   prefix?: string;
   suffix?: string;
@@ -206,15 +206,15 @@ export interface DocumentNumberingConfig extends AuditableConfigBase {
   perBranch: boolean;
 }
 
-export interface NarrationTemplate extends AuditableConfigBase {
-  id: string; // Document ID
+export interface NarrationTemplate extends AuditableConfig {
+  id: string;
   title: string;
   template: string;
   applicableTo?: string[];
 }
 
-export interface InvoiceLineCustomization extends AuditableConfigBase {
-  id: string; // Document ID
+export interface InvoiceLineCustomization extends AuditableConfig {
+  id: string;
   fieldName: string;
   label: string;
   type: "Text" | "Number" | "Currency" | "Percentage" | "Date" | "Textarea" | "Boolean" | "Select";
@@ -226,29 +226,61 @@ export interface InvoiceLineCustomization extends AuditableConfigBase {
 }
 
 // Location and Unit Types with Auditing
-// Combined Auditable fields for consistency
-interface AuditableEntity { // This was already defined, I'll keep it
-    id: string;
-    createdBy: string;
-    createdAt: Timestamp;
-    updatedBy?: string;
-    updatedAt?: Timestamp;
-}
-
-export interface Country extends AuditableEntity {
+export interface Country extends Auditable {
+  id: string;
   name: string;
   code: string;
 }
-export interface State extends AuditableEntity {
+export interface State extends Auditable {
+  id: string;
   name: string;
   countryId: string; // Link to Country.id
 }
-export interface City extends AuditableEntity {
+export interface City extends Auditable {
+  id: string;
   name: string;
   stateId: string; // Link to State.id
 }
-export interface Unit extends AuditableEntity {
+export interface Unit extends Auditable {
+  id: string;
   name: string;
   symbol: string;
   type: "Weight" | "Distance" | "Volume" | "Other";
 }
+
+// --- Daybook Module ---
+export interface DaybookTransaction {
+  id: string; // Local unique ID for the transaction (e.g., UUID generated client-side)
+  transactionType: "DeliveryCashIn" | "OtherCashIn" | "ExpenseCashOut" | "Adjustment";
+  amount: number;
+  referenceId?: string; // Bilti.id or GoodsDelivery.id for DeliveryCashIn
+  partyId?: string; // Link to Party.id (for OtherCashIn, ExpenseCashOut where applicable)
+  ledgerAccountId?: string; // Link to LedgerAccount.id (e.g., for specific cash/bank ledger, or expense ledger)
+  expenseHead?: string; // For ExpenseCashOut (could be a predefined list or free text, or linked to an expense ledger)
+  description: string;
+  supportingDocUrl?: string; // URL to Firebase Storage
+  autoLinked: boolean; // True if linked to a Bilti/Delivery for cash-in
+  reasonForAdjustment?: string; // If transactionType is "Adjustment"
+  createdBy: string; // User.uid
+  createdAt: Timestamp;
+}
+
+export interface Daybook extends Auditable {
+  id: string; // Firestore Document ID
+  branchId: string; // Link to Branch.id
+  nepaliMiti: string; // e.g., "2081-04-15" - Key for daily record per branch
+  englishMiti: Timestamp; // English date for easier querying/sorting by Firestore
+  openingBalance: number;
+  totalCashIn: number; // Calculated from transactions
+  totalCashOut: number; // Calculated from transactions
+  closingBalance: number; // Calculated: openingBalance + totalCashIn - totalCashOut
+  status: "Draft" | "Pending Approval" | "Approved" | "Rejected";
+  transactions: DaybookTransaction[]; // Array of transaction objects
+  submittedBy?: string; // User.uid
+  submittedAt?: Timestamp;
+  approvedBy?: string; // User.uid
+  approvedAt?: Timestamp;
+  approvalRemarks?: string; // Remarks on approval or rejection
+}
+
+    

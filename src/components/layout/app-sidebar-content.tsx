@@ -24,15 +24,16 @@ import {
   Truck,
   Settings,
   LogOut,
-  Car, // Replaced SteeringWheel with Car
+  Car, 
   Users2,
   Warehouse,
   Receipt,
   ClipboardList,
   ArchiveRestore,
   PackageOpen,
-  BookMarked,
-  BarChartBig
+  BookMarked, // Used for Ledgers
+  BarChartBig,
+  BookOpenCheck // Used for Daybook
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -49,7 +50,7 @@ const navStructure = [
       { href: '/branch-management', label: 'Branches', icon: Building2 },
       { href: '/locations', label: 'Locations & Units', icon: MapPin },
       { href: '/trucks', label: 'Trucks', icon: Truck },
-      { href: '/drivers', label: 'Drivers', icon: Car }, // Used Car icon
+      { href: '/drivers', label: 'Drivers', icon: Car }, 
       { href: '/parties', label: 'Parties', icon: Users2 },
       { href: '/godowns', label: 'Godowns', icon: Warehouse },
     ]
@@ -67,13 +68,13 @@ const navStructure = [
     groupLabel: "Finance",
     items: [
       { href: '/ledgers', label: 'Ledgers', icon: BookMarked },
+      { href: '/daybook', label: 'Daybook', icon: BookOpenCheck },
     ]
   },
   {
     groupLabel: "Analytics & AI",
     items: [
       { href: '/reports', label: 'Reports', icon: BarChartBig },
-      // { href: '/route-optimization', label: 'Route Optimization', icon: Waypoints }, // Removed Route Optimization
     ]
   },
   {
@@ -171,3 +172,5 @@ export default function AppSidebarContent() {
     </>
   );
 }
+
+    
