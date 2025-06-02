@@ -60,9 +60,10 @@ interface Driver {
   name: string;
   assignedLedger: string; // Crucial for ledger linking
 }
-interface Bilti {
+export interface Bilti {
   id: string; 
   miti: Date;
+  nepaliMiti?: string; // Added for Bikram Sambat date
   consignorId: string;
   consigneeId: string;
   origin: string;
@@ -120,6 +121,7 @@ const payModes: Bilti["payMode"][] = ["Paid", "To Pay", "Due"];
 
 const defaultBiltiFormData: Omit<Bilti, 'id' | 'totalAmount' | 'status'> = {
   miti: new Date(),
+  nepaliMiti: "",
   consignorId: "",
   consigneeId: "",
   origin: locationOptions[0]?.value || "",
@@ -184,7 +186,7 @@ export default function InvoicingPage() {
 
   const openAddForm = () => {
     setEditingBilti(null);
-    setFormData({...defaultBiltiFormData, miti: new Date() });
+    setFormData({...defaultBiltiFormData, miti: new Date(), nepaliMiti: "" });
     setSelectedConsignor(null);
     setSelectedConsignee(null);
     setTotalAmount(0);
@@ -194,10 +196,10 @@ export default function InvoicingPage() {
   const openEditForm = (bilti: Bilti) => {
     setEditingBilti(bilti);
     const { totalAmount, status, consignorId, consigneeId, ...editableData } = bilti; // Exclude totalAmount and status
-    setFormData({...editableData, consignorId, consigneeId}); 
+    setFormData({...editableData, consignorId, consigneeId, nepaliMiti: bilti.nepaliMiti || ""}); 
     setSelectedConsignor(parties.find(p => p.id === consignorId) || null);
     setSelectedConsignee(parties.find(p => p.id === consigneeId) || null);
-    setTotalAmount(bilti.totalAmount); // Set total amount from original bilti, it will re-calc if packages/rate change
+    setTotalAmount(bilti.totalAmount); 
     setIsFormDialogOpen(true);
   };
 
@@ -234,32 +236,27 @@ export default function InvoicingPage() {
         ...formData,
         id: editingBilti.id,
         totalAmount: currentTotalAmount,
-        status: editingBilti.status, // Retain original status or update if status management is added
+        status: editingBilti.status, 
+        nepaliMiti: formData.nepaliMiti,
       };
       setBiltis(biltis.map(b => b.id === editingBilti.id ? updatedBilti : b));
       toast({ 
         title: "Bilti Updated", 
         description: `Bilti ${updatedBilti.id} updated. Ledger entries (simulated) adjusted for Party, Truck, and Driver.` 
       });
-      // TODO: Backend Call - Identify changes in Bilti (amount, parties, truck, driver, payMode).
-      // TODO: Backend Call - Reverse/adjust previous ledger entries for old values if necessary.
-      // TODO: Backend Call - Post new/updated ledger entries for Party, Truck, and Driver based on updatedBilti.
     } else {
       const newBilti: Bilti = {
         ...formData,
         id: generateBiltiNo(),
         totalAmount: currentTotalAmount,
-        status: "Pending", // Default status for new bilti
+        status: "Pending", 
+        nepaliMiti: formData.nepaliMiti,
       };
       setBiltis(prevBiltis => [...prevBiltis, newBilti]);
       toast({ 
         title: "Bilti Created", 
         description: `Bilti ${newBilti.id} created. Ledger entries (simulated) posted for Party, Truck, and Driver.` 
       });
-      // TODO: Backend Call - Post ledger entry for Consignor (partyId: newBilti.consignorId, amount: newBilti.totalAmount, type: 'debit/credit', biltiRef: newBilti.id, date: newBilti.miti)
-      // TODO: Backend Call - Post ledger entry for Consignee (partyId: newBilti.consigneeId, amount: newBilti.totalAmount, type: 'debit/credit', biltiRef: newBilti.id, date: newBilti.miti) - Logic depends on Pay Mode
-      // TODO: Backend Call - Post ledger entry for Truck (truckId: newBilti.truckId, amount: newBilti.totalAmount, type: 'income/expense', biltiRef: newBilti.id, date: newBilti.miti)
-      // TODO: Backend Call - Post ledger entry for Driver (driverId: newBilti.driverId, amount: /* if applicable */, type: 'advance/commission', biltiRef: newBilti.id, date: newBilti.miti)
     }
     setIsFormDialogOpen(false);
     setEditingBilti(null);
@@ -275,7 +272,8 @@ export default function InvoicingPage() {
     bilti.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
     getPartyName(bilti.consignorId).toLowerCase().includes(searchTerm.toLowerCase()) ||
     getPartyName(bilti.consigneeId).toLowerCase().includes(searchTerm.toLowerCase()) ||
-    bilti.destination.toLowerCase().includes(searchTerm.toLowerCase())
+    bilti.destination.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (bilti.nepaliMiti && bilti.nepaliMiti.toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
   const handleDeleteClick = (bilti: Bilti) => {
@@ -290,7 +288,6 @@ export default function InvoicingPage() {
         title: "Bilti Deleted", 
         description: `Bilti ${biltiToDelete.id} deleted. Corresponding ledger entries (simulated) reversed for Party, Truck, and Driver.` 
       });
-      // TODO: Backend Call - Reverse all ledger entries associated with biltiToDelete.id for Party, Truck, and Driver.
     }
     setIsDeleteDialogOpen(false);
     setBiltiToDelete(null);
@@ -347,8 +344,8 @@ export default function InvoicingPage() {
                     <Label htmlFor="biltiNo" className="text-right">Bilti No.</Label>
                     <Input id="biltiNo" value={editingBilti ? editingBilti.id : "Auto-Generated"} readOnly className="bg-muted" />
                   </div>
-                  <div className="md:col-span-2">
-                    <Label htmlFor="miti">Miti (Date)</Label>
+                  <div className="md:col-span-1">
+                    <Label htmlFor="miti">Miti (AD)</Label>
                     <Popover>
                       <PopoverTrigger asChild>
                         <Button
@@ -356,13 +353,17 @@ export default function InvoicingPage() {
                           className={cn("w-full justify-start text-left font-normal", !formData.miti && "text-muted-foreground")}
                         >
                           <CalendarIcon className="mr-2 h-4 w-4" />
-                          {formData.miti ? format(formData.miti, "PPP") : <span>Pick a date</span>}
+                          {formData.miti ? format(formData.miti, "PPP") : <span>Pick AD date</span>}
                         </Button>
                       </PopoverTrigger>
                       <PopoverContent className="w-auto p-0">
                         <Calendar mode="single" selected={formData.miti} onSelect={handleDateChange} initialFocus />
                       </PopoverContent>
                     </Popover>
+                  </div>
+                  <div className="md:col-span-1">
+                    <Label htmlFor="nepaliMiti">Nepali Miti (BS)</Label>
+                    <Input id="nepaliMiti" name="nepaliMiti" value={formData.nepaliMiti || ""} onChange={handleInputChange} placeholder="e.g., 2081-04-01" />
                   </div>
                 </div>
 
@@ -483,7 +484,7 @@ export default function InvoicingPage() {
           <div className="relative mt-4">
             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
             <Input
-              placeholder="Search Biltis (No, Consignor, Consignee, Destination)..."
+              placeholder="Search Biltis (No, Consignor, Consignee, Destination, BS Date)..."
               className="pl-8"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
@@ -495,7 +496,8 @@ export default function InvoicingPage() {
             <TableHeader>
               <TableRow>
                 <TableHead>Bilti No.</TableHead>
-                <TableHead>Miti</TableHead>
+                <TableHead>Miti (AD)</TableHead>
+                <TableHead>Miti (BS)</TableHead>
                 <TableHead>Consignor</TableHead>
                 <TableHead>Consignee</TableHead>
                 <TableHead>Destination</TableHead>
@@ -509,13 +511,14 @@ export default function InvoicingPage() {
             <TableBody>
               {filteredBiltis.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={10} className="text-center h-24">No Biltis found. Create one to get started!</TableCell>
+                  <TableCell colSpan={11} className="text-center h-24">No Biltis found. Create one to get started!</TableCell>
                 </TableRow>
               )}
               {filteredBiltis.map((bilti) => (
                 <TableRow key={bilti.id}>
                   <TableCell className="font-medium">{bilti.id}</TableCell>
                   <TableCell>{format(bilti.miti, "PP")}</TableCell>
+                  <TableCell>{bilti.nepaliMiti || "N/A"}</TableCell>
                   <TableCell>{getPartyName(bilti.consignorId)}</TableCell>
                   <TableCell>{getPartyName(bilti.consigneeId)}</TableCell>
                   <TableCell>{bilti.destination}</TableCell>

@@ -76,6 +76,7 @@ interface Branch {
 interface Bilti {
   id: string;
   miti: Date;
+  nepaliMiti?: string; // Added for Bikram Sambat date
   consignorId: string;
   consigneeId: string;
   origin: string;
@@ -84,13 +85,14 @@ interface Bilti {
   packages: number;
   totalAmount: number;
   payMode: "Paid" | "To Pay" | "Due";
-  truckId: string; // Bilti-level truck, might differ from Manifest truck if not enforced
-  driverId: string; // Bilti-level driver
+  truckId: string; 
+  driverId: string; 
   status?: "Pending" | "Manifested" | "Received" | "Delivered" | "Cancelled";
 }
 interface Manifest {
   id: string;
   miti: Date;
+  nepaliMiti?: string; // Added for Bikram Sambat date
   truckId: string;
   driverId: string;
   fromBranchId: string;
@@ -119,14 +121,15 @@ const initialMockBranches: Branch[] = [
   { id: "BRN003", name: "Biratnagar Depot", location: "Biratnagar", manager: "Admin", status: "Active" },
 ];
 const initialAvailableBiltis: Bilti[] = [
-  { id: "BLT-001", miti: new Date("2024-07-01"), consignorId: "PTY001", consigneeId: "PTY002", origin: "Kathmandu Main", destination: "Pokhara Hub", description: "Electronics", packages: 10, totalAmount: 5000, payMode: "To Pay", truckId: "TRK001", driverId: "DRV001", status: "Pending" },
-  { id: "BLT-002", miti: new Date("2024-07-02"), consignorId: "PTY002", consigneeId: "PTY001", origin: "Pokhara Hub", destination: "Biratnagar Depot", description: "Garments", packages: 25, totalAmount: 12000, payMode: "Paid", truckId: "TRK002", driverId: "DRV002", status: "Pending" },
-  { id: "BLT-003", miti: new Date("2024-07-03"), consignorId: "PTY001", consigneeId: "PTY001", origin: "Kathmandu Main", destination: "Kathmandu Main", description: "Hardware", packages: 5, totalAmount: 2500, payMode: "To Pay", truckId: "TRK001", driverId: "DRV001", status: "Pending" },
+  { id: "BLT-001", miti: new Date("2024-07-01"), nepaliMiti: "2081-03-17", consignorId: "PTY001", consigneeId: "PTY002", origin: "Kathmandu Main", destination: "Pokhara Hub", description: "Electronics", packages: 10, totalAmount: 5000, payMode: "To Pay", truckId: "TRK001", driverId: "DRV001", status: "Pending" },
+  { id: "BLT-002", miti: new Date("2024-07-02"), nepaliMiti: "2081-03-18", consignorId: "PTY002", consigneeId: "PTY001", origin: "Pokhara Hub", destination: "Biratnagar Depot", description: "Garments", packages: 25, totalAmount: 12000, payMode: "Paid", truckId: "TRK002", driverId: "DRV002", status: "Pending" },
+  { id: "BLT-003", miti: new Date("2024-07-03"), nepaliMiti: "2081-03-19", consignorId: "PTY001", consigneeId: "PTY001", origin: "Kathmandu Main", destination: "Kathmandu Main", description: "Hardware", packages: 5, totalAmount: 2500, payMode: "To Pay", truckId: "TRK001", driverId: "DRV001", status: "Pending" },
 ];
 
 
 const defaultManifestFormData: Omit<Manifest, 'id' | 'status'> = {
   miti: new Date(),
+  nepaliMiti: "",
   truckId: "",
   driverId: "",
   fromBranchId: "",
@@ -148,7 +151,6 @@ export default function ManifestsPage() {
   const [editingManifest, setEditingManifest] = useState<Manifest | null>(null);
   const [formData, setFormData] = useState<Omit<Manifest, 'id' | 'status'>>(defaultManifestFormData);
   
-  // State for managing selected Biltis within the form dialog
   const [selectedBiltiIdsInForm, setSelectedBiltiIdsInForm] = useState<Set<string>>(new Set());
 
   const { toast } = useToast();
@@ -160,7 +162,7 @@ export default function ManifestsPage() {
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
-  const handleSelectChange = (name: keyof Omit<Manifest, 'id' | 'status' | 'attachedBiltiIds'>) => (value: string) => {
+  const handleSelectChange = (name: keyof Omit<Manifest, 'id' | 'status' | 'attachedBiltiIds' | 'nepaliMiti'>) => (value: string) => {
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
@@ -189,7 +191,7 @@ export default function ManifestsPage() {
 
   const openAddForm = () => {
     setEditingManifest(null);
-    setFormData({...defaultManifestFormData, miti: new Date() });
+    setFormData({...defaultManifestFormData, miti: new Date(), nepaliMiti: "" });
     setSelectedBiltiIdsInForm(new Set());
     setIsFormDialogOpen(true);
   };
@@ -197,7 +199,7 @@ export default function ManifestsPage() {
   const openEditForm = (manifest: Manifest) => {
     setEditingManifest(manifest);
     const { status, ...editableData } = manifest;
-    setFormData(editableData);
+    setFormData({...editableData, nepaliMiti: manifest.nepaliMiti || ""});
     setSelectedBiltiIdsInForm(new Set(manifest.attachedBiltiIds));
     setIsFormDialogOpen(true);
   };
@@ -226,13 +228,11 @@ export default function ManifestsPage() {
         ...finalFormData,
         id: editingManifest.id,
         status: editingManifest.status || "Open",
+        nepaliMiti: formData.nepaliMiti,
       };
       setManifests(manifests.map(m => m.id === editingManifest.id ? updatedManifest : m));
-      // Simulate updating status of newly attached/removed Biltis
       setAvailableBiltis(prevBiltis => prevBiltis.map(b => {
         if (updatedManifest.attachedBiltiIds.includes(b.id)) return {...b, status: "Manifested"};
-        // If a bilti was previously on this manifest but now removed, set its status back to Pending
-        // This logic needs to be more robust by checking against OLD attachedBiltiIds of editingManifest
         if (editingManifest.attachedBiltiIds.includes(b.id) && !updatedManifest.attachedBiltiIds.includes(b.id)) return {...b, status: "Pending"};
         return b;
       }));
@@ -242,12 +242,12 @@ export default function ManifestsPage() {
         ...finalFormData,
         id: generateManifestNo(),
         status: "Open",
+        nepaliMiti: formData.nepaliMiti,
       };
       setManifests(prevManifests => [...prevManifests, newManifest]);
-      // Simulate updating status of attached Biltis
       setAvailableBiltis(prevBiltis => prevBiltis.map(b => 
         newManifest.attachedBiltiIds.includes(b.id) ? {...b, status: "Manifested"} : b
-      ).filter(b => !newManifest.attachedBiltiIds.includes(b.id))); // Or filter them out from 'available'
+      ).filter(b => !newManifest.attachedBiltiIds.includes(b.id))); 
       toast({ title: "Manifest Created", description: `Manifest ${newManifest.id} created. Attached Biltis' statuses (simulated) updated to 'Manifested'.` });
     }
     setIsFormDialogOpen(false);
@@ -263,12 +263,9 @@ export default function ManifestsPage() {
   const confirmDelete = () => {
     if (manifestToDelete) {
       setManifests(manifests.filter((m) => m.id !== manifestToDelete.id));
-      // Simulate setting status of Biltis back to "Pending"
       setAvailableBiltis(prevBiltis => {
         const restoredBiltis = initialAvailableBiltis.filter(b => manifestToDelete.attachedBiltiIds.includes(b.id)).map(b => ({...b, status: "Pending" as Bilti["status"]}));
         const currentNonAffectedBiltis = prevBiltis.filter(b => !manifestToDelete.attachedBiltiIds.includes(b.id));
-        // This logic for restoring to availableBiltis needs refinement to avoid duplicates if some are already there
-        // For simplicity now, just add them back based on initial list. A real app tracks this via DB.
         const updatedAvailableBiltis = [...currentNonAffectedBiltis];
         restoredBiltis.forEach(rb => {
           if(!updatedAvailableBiltis.find(ab => ab.id === rb.id)) updatedAvailableBiltis.push(rb);
@@ -285,7 +282,8 @@ export default function ManifestsPage() {
     manifest.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
     getTruckNo(manifest.truckId).toLowerCase().includes(searchTerm.toLowerCase()) ||
     getBranchName(manifest.fromBranchId).toLowerCase().includes(searchTerm.toLowerCase()) ||
-    getBranchName(manifest.toBranchId).toLowerCase().includes(searchTerm.toLowerCase())
+    getBranchName(manifest.toBranchId).toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (manifest.nepaliMiti && manifest.nepaliMiti.toLowerCase().includes(searchTerm.toLowerCase()))
   );
   
   const biltisForSelection = availableBiltis.filter(b => b.status === "Pending" || (editingManifest && editingManifest.attachedBiltiIds.includes(b.id)));
@@ -316,23 +314,29 @@ export default function ManifestsPage() {
             </DialogHeader>
             <form onSubmit={handleSubmit}>
               <div className="grid gap-4 py-4 max-h-[75vh] overflow-y-auto p-1">
-                <div className="grid md:grid-cols-3 items-start gap-4">
-                  <div>
+                <div className="grid md:grid-cols-4 items-start gap-4">
+                  <div className="md:col-span-1">
                     <Label htmlFor="manifestNo">Manifest No.</Label>
                     <Input id="manifestNo" value={editingManifest ? editingManifest.id : "Auto-Generated"} readOnly className="bg-muted" />
                   </div>
-                  <div className="md:col-span-2">
-                    <Label htmlFor="miti">Miti (Date)</Label>
+                  <div className="md:col-span-1">
+                    <Label htmlFor="miti">Miti (AD)</Label>
                     <Popover>
                       <PopoverTrigger asChild>
                         <Button variant={"outline"} className={cn("w-full justify-start text-left font-normal", !formData.miti && "text-muted-foreground")}>
                           <CalendarIcon className="mr-2 h-4 w-4" />
-                          {formData.miti ? format(formData.miti, "PPP") : <span>Pick a date</span>}
+                          {formData.miti ? format(formData.miti, "PPP") : <span>Pick AD date</span>}
                         </Button>
                       </PopoverTrigger>
                       <PopoverContent className="w-auto p-0"><Calendar mode="single" selected={formData.miti} onSelect={handleDateChange} initialFocus /></PopoverContent>
                     </Popover>
                   </div>
+                  <div className="md:col-span-1">
+                    <Label htmlFor="nepaliMiti">Nepali Miti (BS)</Label>
+                    <Input id="nepaliMiti" name="nepaliMiti" value={formData.nepaliMiti || ""} onChange={handleInputChange} placeholder="e.g., 2081-04-01" />
+                  </div>
+                   {/* Empty div for spacing to align next row correctly if needed */}
+                  <div className="md:col-span-1"></div>
                 </div>
 
                 <div className="grid md:grid-cols-2 gap-4">
@@ -427,7 +431,7 @@ export default function ManifestsPage() {
           <div className="relative mt-4">
             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
             <Input
-              placeholder="Search Manifests (No, Truck, Branch)..."
+              placeholder="Search Manifests (No, Truck, Branch, BS Date)..."
               className="pl-8"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
@@ -439,7 +443,8 @@ export default function ManifestsPage() {
             <TableHeader>
               <TableRow>
                 <TableHead>Manifest No.</TableHead>
-                <TableHead>Miti</TableHead>
+                <TableHead>Miti (AD)</TableHead>
+                <TableHead>Miti (BS)</TableHead>
                 <TableHead>Truck</TableHead>
                 <TableHead>Driver</TableHead>
                 <TableHead>From</TableHead>
@@ -450,11 +455,12 @@ export default function ManifestsPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredManifests.length === 0 && <TableRow><TableCell colSpan={9} className="text-center h-24">No manifests found.</TableCell></TableRow>}
+              {filteredManifests.length === 0 && <TableRow><TableCell colSpan={10} className="text-center h-24">No manifests found.</TableCell></TableRow>}
               {filteredManifests.map((manifest) => (
                 <TableRow key={manifest.id}>
                   <TableCell className="font-medium">{manifest.id}</TableCell>
                   <TableCell>{format(manifest.miti, "PP")}</TableCell>
+                  <TableCell>{manifest.nepaliMiti || "N/A"}</TableCell>
                   <TableCell>{getTruckNo(manifest.truckId)}</TableCell>
                   <TableCell>{getDriverName(manifest.driverId)}</TableCell>
                   <TableCell>{getBranchName(manifest.fromBranchId)}</TableCell>
@@ -500,6 +506,4 @@ export default function ManifestsPage() {
     </div>
   );
 }
-    
-
     
