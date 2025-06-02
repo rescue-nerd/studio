@@ -49,7 +49,7 @@ import {
   updateDoc,
   Timestamp,
   serverTimestamp,
-  deleteDoc, // Not used yet for transactions but good to have
+  deleteDoc,
   runTransaction,
   type DocumentSnapshot,
 } from "firebase/firestore";
@@ -126,9 +126,9 @@ export default function DaybookPage() {
     // For now, let's assume a format like "YYYY-MM-DD" for BS.
     // This needs to be manually set by the user for now, or use a library.
     // Defaulting to empty, user must input.
-    return ""; 
+    return "";
   };
-  
+
   // --- Data Fetching ---
   const fetchMasterData = async () => {
     try {
@@ -190,6 +190,7 @@ export default function DaybookPage() {
 
   useEffect(() => {
     fetchMasterData();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -225,14 +226,14 @@ export default function DaybookPage() {
     if (daybook) {
       // TODO: Implement robust opening balance calculation. For now, it's fixed.
       // This would involve fetching the previous day's *approved* closing balance.
-      setCurrentOpeningBalance(daybook.openingBalance || 0); 
+      setCurrentOpeningBalance(daybook.openingBalance || 0);
     } else {
       setCurrentOpeningBalance(0);
     }
     setIsTransactionFormOpen(false); // Close form if open
     setEditingTransactionId(null);
   };
-  
+
   const handleCreateOrFocusTodayDaybook = async () => {
     const todayBS = filterNepaliMiti || getTodayNepaliMiti(); // Prioritize filter input
     if (!todayBS) {
@@ -294,7 +295,7 @@ export default function DaybookPage() {
     }
     setTransactionFormData(prev => ({ ...prev, [name]: parsedValue }));
   };
-  
+
   const handleTransactionSelectChange = (name: keyof typeof defaultTransactionFormData, value: string) => {
     setTransactionFormData(prev => ({ ...prev, [name]: value }));
     if (name === 'transactionType') {
@@ -334,7 +335,7 @@ export default function DaybookPage() {
      // Basic duplicate check for DeliveryCashIn within the current daybook
     if (transactionFormData.transactionType === "DeliveryCashIn" && transactionFormData.referenceId) {
         const isDuplicate = selectedDaybook.transactions.some(
-            tx => tx.transactionType === "DeliveryCashIn" && 
+            tx => tx.transactionType === "DeliveryCashIn" &&
                   tx.referenceId === transactionFormData.referenceId &&
                   tx.id !== editingTransactionId // Don't compare against itself when editing
         );
@@ -380,7 +381,7 @@ export default function DaybookPage() {
         updatedAt: Timestamp.now(),
         updatedBy: PLACEHOLDER_USER_ID,
       });
-      
+
       setSelectedDaybook(prev => prev ? { ...prev, transactions: updatedTransactions, totalCashIn: newTotalCashIn, totalCashOut: newTotalCashOut, closingBalance: newClosingBalance } : null);
       toast({ title: "Transaction Saved", description: `Transaction ${editingTransactionId ? 'updated' : 'added'} to draft.` });
       setIsTransactionFormOpen(false);
@@ -411,7 +412,7 @@ export default function DaybookPage() {
 
   const handleDeleteTransaction = async (transactionId: string) => {
      if (!selectedDaybook || selectedDaybook.status !== "Draft") return;
-     
+
      const updatedTransactions = selectedDaybook.transactions.filter(t => t.id !== transactionId);
      const newTotalCashIn = updatedTransactions
       .filter(t => t.transactionType.includes("CashIn") || (t.transactionType === "Adjustment" && t.amount > 0))
@@ -423,13 +424,13 @@ export default function DaybookPage() {
 
     try {
         const daybookDocRef = doc(db, "daybooks", selectedDaybook.id);
-        await updateDoc(daybookDocRef, { 
+        await updateDoc(daybookDocRef, {
             transactions: updatedTransactions.map(uiTxn => ({...uiTxn, createdAt: Timestamp.fromDate(uiTxn.createdAt || new Date())})),
             totalCashIn: newTotalCashIn,
             totalCashOut: newTotalCashOut,
             closingBalance: newClosingBalance,
-            updatedAt: Timestamp.now(), 
-            updatedBy: PLACEHOLDER_USER_ID 
+            updatedAt: Timestamp.now(),
+            updatedBy: PLACEHOLDER_USER_ID
         });
         setSelectedDaybook(prev => prev ? { ...prev, transactions: updatedTransactions, totalCashIn: newTotalCashIn, totalCashOut: newTotalCashOut, closingBalance: newClosingBalance } : null);
         toast({ title: "Transaction Deleted" });
@@ -513,9 +514,8 @@ export default function DaybookPage() {
   const getBranchName = (branchId: string) => branches.find(b => b.id === branchId)?.name || "N/A";
   const getBiltiInfo = (biltiId: string) => availableBiltis.find(b => b.id === biltiId);
   const getPartyName = (partyId: string) => parties.find(p => p.id === partyId)?.name || ledgerAccounts.find(l => l.id === partyId)?.accountName || "N/A";
-  
-  const isSuperAdmin = SIMULATED_USER_ROLE === "superAdmin";
 
+  const isSuperAdmin = SIMULATED_USER_ROLE === "superAdmin";
 
   return (
     <div className="space-y-6">
@@ -763,5 +763,3 @@ export default function DaybookPage() {
     </div>
   );
 }
-
-    
