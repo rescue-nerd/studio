@@ -222,10 +222,10 @@ export interface DocumentNumberingConfig {
   lastGeneratedNumber: number; // Current counter
   minLength?: number; // e.g., 5 means INV-00001
   perBranch: boolean;
-  // If perBranch, configurations might be nested under branchId or have branch-specific records
-  // For a global config, perBranch would be false.
-  // For branch-specific, you might have an array of these within a branch document,
-  // or a separate collection like `branchDocumentNumberingConfigs`
+  createdBy?: string;
+  createdAt?: Timestamp;
+  updatedBy?: string;
+  updatedAt?: Timestamp;
 }
 
 export interface NarrationTemplate {
@@ -260,5 +260,3 @@ export interface Auditable {
   updatedBy?: string; // User.uid
   updatedAt?: Timestamp;
 }
-
-    
