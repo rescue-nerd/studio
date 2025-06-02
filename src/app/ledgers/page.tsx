@@ -436,8 +436,7 @@ export default function LedgersPage() {
         </CardContent>
          <CardFooter>
             <p className="text-xs text-muted-foreground">
-                This ledger is a frontend simulation. Automatic entries from Bilti/Delivery and balance calculations are representative.
-                Full transactional integrity and real-time data require backend integration.
+                This ledger is a frontend simulation. Automatic entries from Bilti/Delivery and balance calculations are representative. Full transactional integrity and real-time data require backend integration.
             </p>
         </CardFooter>
       </Card>
