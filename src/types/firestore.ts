@@ -15,10 +15,11 @@ export interface Branch {
   id: string; // Document ID
   name: string;
   location: string;
-  managerName?: string;
+  managerName?: string | null;
   managerUserId?: string; // Link to User.uid
   contactEmail?: string;
   contactPhone?: string;
+  status?: "Active" | "Inactive"; // Added this field
   createdAt: Timestamp;
   updatedAt?: Timestamp;
 }
@@ -82,6 +83,7 @@ export interface Godown {
 export interface Bilti {
   id: string; // Document ID (Bilti No.)
   miti: Timestamp; // Date of Bilti
+  nepaliMiti?: string; // Added for Bikram Sambat date
   consignorId: string; // Link to Party.id
   consigneeId: string; // Link to Party.id
   origin: string; // Could be Branch name or City name
@@ -105,6 +107,7 @@ export interface Bilti {
 export interface Manifest {
   id: string; // Document ID (Manifest No.)
   miti: Timestamp; // Date of Manifest
+  nepaliMiti?: string;
   truckId: string; // Link to Truck.id
   driverId: string; // Link to Driver.id
   fromBranchId: string; // Link to Branch.id
@@ -121,6 +124,7 @@ export interface Manifest {
 export interface GoodsReceipt {
   id: string; // Document ID (GRN No.)
   miti: Timestamp; // Date of Receipt
+  nepaliMiti?: string;
   manifestId: string; // Link to Manifest.id
   receivingBranchId: string; // Link to Branch.id
   receivingGodownId?: string; // Link to Godown.id (optional)
@@ -128,6 +132,7 @@ export interface GoodsReceipt {
   shortages?: string; // Details of any shortages
   damages?: string; // Details of any damages
   receivedBy: string; // User.uid
+  createdBy: string; // User.uid
   createdAt: Timestamp;
   updatedAt?: Timestamp;
 }
@@ -143,6 +148,7 @@ export interface DeliveredBiltiItem {
 export interface GoodsDelivery {
   id: string; // Document ID (Delivery Note No.)
   miti: Timestamp; // Date of Delivery
+  nepaliMiti?: string;
   deliveredBiltis: DeliveredBiltiItem[];
   overallRemarks?: string;
   deliveredToName?: string; // Name of person receiving
@@ -184,6 +190,7 @@ export interface LedgerEntry {
   id: string; // Document ID
   accountId: string; // Link to LedgerAccount.id
   miti: Timestamp; // Date of transaction
+  nepaliMiti?: string;
   description: string;
   debit: number;
   credit: number;
