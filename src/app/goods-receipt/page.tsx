@@ -227,6 +227,7 @@ export default function GoodsReceiptPage() {
         isOpen={isManifestSelectOpen}
         onOpenChange={setIsManifestSelectOpen}
         manifests={manifestsForSelection}
+        branches={branches} 
         onManifestSelect={handleManifestSelect}
         dialogTitle="Select Manifest"
       />
