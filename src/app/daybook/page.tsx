@@ -49,7 +49,7 @@ import {
   doc,
   updateDoc,
   Timestamp,
-  deleteDoc, // Not used for transactions directly but for Daybook potentially
+  deleteDoc, 
   writeBatch
 } from "firebase/firestore";
 import type {
@@ -80,12 +80,14 @@ interface DaybookTransactionUI extends Omit<FirestoreDaybookTransaction, 'create
 }
 interface Branch extends FirestoreBranch {}
 interface BiltiUI extends Omit<FirestoreBilti, 'miti' | 'createdAt' | 'updatedAt'> {
+  id: string; // Ensure BiltiUI has an id
   miti: Date;
   createdAt?: Date;
   updatedAt?: Date;
 }
 interface PartyUI extends FirestoreParty {}
 interface LedgerAccountUI extends Omit<FirestoreLedgerAccount, 'createdAt' | 'updatedAt' | 'lastTransactionAt'> {
+   id: string; // Ensure LedgerAccountUI has an id
    createdAt: Date;
    updatedAt?: Date;
    lastTransactionAt?: Date;
@@ -95,9 +97,9 @@ const PLACEHOLDER_USER_ID = "system_user_placeholder"; // Replace with actual au
 const SIMULATED_BRANCH_ID = "BRN001_KTM_MAIN"; // Simulate logged-in user's branch
 
 const transactionTypes: DaybookTransactionType[] = [
-  "Cash In (Delivery/Receipt)",
+  "Cash In (from Delivery/Receipt)",
   "Delivery Expense (Cash Out)",
-  "Cash Out (Expense/Supplier/Other)",
+  "Cash Out (to Expense/Supplier/Other)",
   "Cash In (Other)",
   "Cash Out (Other)",
   "Cash In (from Party Payment)",
@@ -106,7 +108,7 @@ const transactionTypes: DaybookTransactionType[] = [
 ];
 
 const defaultTransactionFormData: Omit<FirestoreDaybookTransaction, 'id' | 'createdBy' | 'createdAt'> = {
-  transactionType: "Cash Out (Expense/Supplier/Other)",
+  transactionType: "Cash Out (to Expense/Supplier/Other)",
   amount: 0,
   description: "",
   autoLinked: false,
@@ -114,49 +116,42 @@ const defaultTransactionFormData: Omit<FirestoreDaybookTransaction, 'id' | 'crea
 
 // Helper to get today's Nepali Miti string (Placeholder - replace with actual library)
 const getTodayNepaliMiti = (): string => {
-  // Placeholder: In a real app, use a reliable Nepali date conversion library
   const today = new Date();
-  // This is NOT an actual Nepali date, just a placeholder format
-  return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}_AD`;
+  return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}_AD_Placeholder`;
 };
 
 export default function DaybookPage() {
   const { toast } = useToast();
 
-  // --- State Variables ---
   const [daybooksList, setDaybooksList] = useState<Daybook[]>([]);
   const [activeDaybook, setActiveDaybook] = useState<Daybook | null>(null);
   
   const [branches, setBranches] = useState<Branch[]>([]);
   const [biltisForSelection, setBiltisForSelection] = useState<BiltiUI[]>([]);
   const [parties, setParties] = useState<PartyUI[]>([]);
-  const [ledgerAccounts, setLedgerAccounts] = useState<LedgerAccountUI[]>([]); // For expense heads, etc.
+  const [ledgerAccounts, setLedgerAccounts] = useState<LedgerAccountUI[]>([]);
 
-  // Filters for Daybook List
   const [filterNepaliMiti, setFilterNepaliMiti] = useState<string>(getTodayNepaliMiti());
-  const [filterBranchId, setFilterBranchId] = useState<string>(SIMULATED_BRANCH_ID); // Admin might change this
+  const [filterBranchId, setFilterBranchId] = useState<string>(SIMULATED_BRANCH_ID); 
   const [filterStatus, setFilterStatus] = useState<FirestoreDaybook["status"] | "All">("All");
 
-  // Transaction Form Dialog
   const [isTransactionFormOpen, setIsTransactionFormOpen] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState<FirestoreDaybookTransaction | null>(null);
   const [transactionFormData, setTransactionFormData] = useState<Omit<FirestoreDaybookTransaction, 'id' | 'createdBy' | 'createdAt'>>(defaultTransactionFormData);
   const [selectedBiltiForTx, setSelectedBiltiForTx] = useState<BiltiUI | null>(null);
 
-  // Loading States
   const [isLoadingList, setIsLoadingList] = useState(false);
   const [isLoadingActiveDaybook, setIsLoadingActiveDaybook] = useState(false);
   const [isLoadingMasterData, setIsLoadingMasterData] = useState(true);
   const [isSubmittingTransaction, setIsSubmittingTransaction] = useState(false);
   const [isSubmittingDaybook, setIsSubmittingDaybook] = useState(false);
 
-  // --- Data Fetching ---
   const fetchMasterData = async () => {
     setIsLoadingMasterData(true);
     try {
       const [branchesSnap, biltisSnap, partiesSnap, ledgersSnap] = await Promise.all([
         getDocs(query(collection(db, "branches"), orderBy("name"))),
-        getDocs(query(collection(db, "biltis"), where("status", "in", ["Delivered", "Paid"]))), // Eligible for cash-in or expense linking
+        getDocs(query(collection(db, "biltis"))), // Fetch all biltis, filter client-side for selection
         getDocs(query(collection(db, "parties"), orderBy("name"))),
         getDocs(query(collection(db, "ledgerAccounts"), orderBy("accountName")))
       ]);
@@ -165,7 +160,9 @@ export default function DaybookPage() {
         const data = d.data() as FirestoreBilti;
         return { ...data, id: d.id, miti: data.miti.toDate() } as BiltiUI;
       });
-      setBiltisForSelection(fetchedBiltis);
+      // Filter biltis for selection based on rules (e.g., delivered but not paid)
+      // This initial load can be broad, specific filtering done when opening form
+      setBiltisForSelection(fetchedBiltis); 
       setParties(partiesSnap.docs.map(d => ({ ...d.data(), id: d.id } as PartyUI)));
       setLedgerAccounts(ledgersSnap.docs.map(d => {
         const data = d.data() as FirestoreLedgerAccount;
@@ -182,7 +179,9 @@ export default function DaybookPage() {
   const fetchDaybooksList = async () => {
     setIsLoadingList(true);
     let q = query(collection(db, "daybooks"));
-    if (filterNepaliMiti && filterNepaliMiti !== "All") q = query(q, where("nepaliMiti", "==", filterNepaliMiti));
+    if (filterNepaliMiti && filterNepaliMiti !== "All" && filterNepaliMiti.trim() !== "") {
+         q = query(q, where("nepaliMiti", "==", filterNepaliMiti));
+    }
     if (filterBranchId && filterBranchId !== "All") q = query(q, where("branchId", "==", filterBranchId));
     if (filterStatus && filterStatus !== "All") q = query(q, where("status", "==", filterStatus));
     q = query(q, orderBy("englishMiti", "desc"));
@@ -205,23 +204,19 @@ export default function DaybookPage() {
       setDaybooksList(fetchedDaybooks);
     } catch (error) {
       console.error("Error fetching daybooks list: ", error);
-      toast({ title: "Error", description: "Failed to fetch daybooks.", variant: "destructive" });
+      toast({ title: "Error", description: "Failed to fetch daybooks. Check Firestore indexes.", variant: "destructive" });
     } finally {
       setIsLoadingList(false);
     }
   };
   
   const loadOrCreateActiveDaybook = async (nepaliMiti: string, branchId: string) => {
-    if (!nepaliMiti || !branchId) {
+    if (!nepaliMiti || !branchId || nepaliMiti.trim() === "") {
       setActiveDaybook(null);
       return;
     }
     setIsLoadingActiveDaybook(true);
     try {
-      const daybookDocId = `${branchId}_${nepaliMiti}`; // Or query if using auto-IDs
-      const daybookRef = doc(db, "daybooks", daybookDocId); // Assuming composite ID for direct fetch
-      // For simplicity, we'll query if we don't use composite ID.
-      // Let's assume we query:
       const q = query(collection(db, "daybooks"), 
                       where("branchId", "==", branchId), 
                       where("nepaliMiti", "==", nepaliMiti));
@@ -234,13 +229,15 @@ export default function DaybookPage() {
           ...data,
           id: docSnap.id,
           englishMiti: data.englishMiti.toDate(),
-          transactions: (data.transactions || []).map(t => ({...t, createdAt: t.createdAt.toDate(), linkedBiltiData: biltisForSelection.find(b => b.id === t.referenceId)})),
+          transactions: (data.transactions || []).map(t => ({
+            ...t, 
+            createdAt: t.createdAt.toDate(), 
+            linkedBiltiData: biltisForSelection.find(b => b.id === t.referenceId)
+          })),
           createdAt: data.createdAt?.toDate(),
           updatedAt: data.updatedAt?.toDate(),
         });
       } else {
-        // No daybook exists for today, create a draft IF a transaction is being added
-        // For now, we'll set activeDaybook to null, and create it when the first transaction is added.
         setActiveDaybook(null); 
       }
     } catch (error) {
@@ -262,15 +259,15 @@ export default function DaybookPage() {
   }, [filterNepaliMiti, filterBranchId, filterStatus]);
   
   useEffect(() => {
-    // Automatically load today's daybook for the current branch when component mounts or filter changes
-    if(!isLoadingMasterData){ // Ensure master data like biltis is loaded for linking
+    if(!isLoadingMasterData && filterNepaliMiti && filterBranchId){ 
         loadOrCreateActiveDaybook(filterNepaliMiti, filterBranchId);
+    } else {
+        setActiveDaybook(null); // Clear active daybook if filters are incomplete
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filterNepaliMiti, filterBranchId, isLoadingMasterData]);
 
 
-  // --- Derived State & Calculations ---
   const daybookSummary = useMemo(() => {
     if (!activeDaybook) return { openingBalance: 0, totalCashIn: 0, totalCashOut: 0, closingBalance: 0, cashInByType: {}, cashOutByType: {} };
     
@@ -280,11 +277,11 @@ export default function DaybookPage() {
     const cashOutByType: Record<string, number> = {};
 
     activeDaybook.transactions.forEach(tx => {
-      if (["Cash In (Delivery/Receipt)", "Cash In (Other)", "Cash In (from Party Payment)"].includes(tx.transactionType) || (tx.transactionType === "Adjustment/Correction" && tx.amount > 0)) {
+      if (["Cash In (from Delivery/Receipt)", "Cash In (Other)", "Cash In (from Party Payment)"].includes(tx.transactionType) || (tx.transactionType === "Adjustment/Correction" && tx.amount > 0)) {
         totalCashIn += tx.amount;
         cashInByType[tx.transactionType] = (cashInByType[tx.transactionType] || 0) + tx.amount;
-      } else if (["Delivery Expense (Cash Out)", "Cash Out (Expense/Supplier/Other)", "Cash Out (Other)", "Cash Out (to Driver/Staff, Petty Expense)"].includes(tx.transactionType) || (tx.transactionType === "Adjustment/Correction" && tx.amount < 0) ){
-        totalCashOut += Math.abs(tx.amount); // Amount for cash out is stored positive, but logically negative for balance
+      } else if (["Delivery Expense (Cash Out)", "Cash Out (to Expense/Supplier/Other)", "Cash Out (Other)", "Cash Out (to Driver/Staff, Petty Expense)"].includes(tx.transactionType) || (tx.transactionType === "Adjustment/Correction" && tx.amount < 0) ){
+        totalCashOut += Math.abs(tx.amount);
         cashOutByType[tx.transactionType] = (cashOutByType[tx.transactionType] || 0) + Math.abs(tx.amount);
       }
     });
@@ -294,95 +291,100 @@ export default function DaybookPage() {
   }, [activeDaybook]);
 
 
-  // --- Event Handlers ---
   const handleTransactionFormChange = (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
     setTransactionFormData(prev => ({ ...prev, [name]: value }));
   };
 
   const handleTransactionTypeChange = (value: DaybookTransactionType) => {
-    setTransactionFormData(prev => ({ 
-        ...defaultTransactionFormData, // Reset most fields
-        transactionType: value, 
-        amount: prev.transactionType === "Cash In (Delivery/Receipt)" && value !== "Cash In (Delivery/Receipt)" ? 0 : prev.amount, // Reset amount if switching from auto-filled
-        description: prev.transactionType === "Cash In (Delivery/Receipt)" && value !== "Cash In (Delivery/Receipt)" ? "" : prev.description, // Reset description
-    }));
-    setSelectedBiltiForTx(null);
+    let newFormData = {...defaultTransactionFormData, transactionType: value};
+    // If switching from a Bilti-linked type, reset related fields
+    if (transactionFormData.transactionType === "Cash In (from Delivery/Receipt)" || transactionFormData.transactionType === "Delivery Expense (Cash Out)") {
+        if (value !== "Cash In (from Delivery/Receipt)" && value !== "Delivery Expense (Cash Out)") {
+            newFormData.amount = 0;
+            newFormData.description = "";
+            newFormData.referenceId = undefined;
+            newFormData.partyId = undefined;
+            newFormData.autoLinked = false;
+            setSelectedBiltiForTx(null);
+        }
+    }
+    setTransactionFormData(newFormData);
   };
 
   const handleBiltiSelectForTx = (biltiId: string) => {
     const bilti = biltisForSelection.find(b => b.id === biltiId);
     if (bilti) {
       setSelectedBiltiForTx(bilti);
-      if (transactionFormData.transactionType === "Cash In (Delivery/Receipt)") {
+      if (transactionFormData.transactionType === "Cash In (from Delivery/Receipt)") {
         setTransactionFormData(prev => ({
           ...prev,
           amount: bilti.totalAmount,
           description: `Cash received for Bilti ${bilti.id}`,
           referenceId: bilti.id,
-          partyId: bilti.consigneeId, // Or consignor depending on who pays
+          partyId: bilti.consigneeId,
           autoLinked: true,
         }));
       } else if (transactionFormData.transactionType === "Delivery Expense (Cash Out)") {
          setTransactionFormData(prev => ({
           ...prev,
+          amount: 0, // User enters amount for expense
           referenceId: bilti.id,
-          partyId: bilti.consigneeId, // Or relevant party for expense
+          partyId: bilti.consigneeId, 
           autoLinked: true,
-          description: `Expense for Bilti ${bilti.id}: `, // Prompt user to complete
+          description: `Expense for Bilti ${bilti.id}: `,
         }));
       }
     }
   };
   
   const handleSaveTransaction = async () => {
-    if (!activeDaybook && !(filterBranchId && filterNepaliMiti)) {
+    if (!(filterBranchId && filterNepaliMiti && filterNepaliMiti.trim() !== "")) {
         toast({ title: "Error", description: "No active daybook context. Select branch and Miti.", variant: "destructive"});
         return;
     }
-    // Basic Validations
-    if (transactionFormData.transactionType === "Cash In (Delivery/Receipt)" && !selectedBiltiForTx) {
+    if (transactionFormData.transactionType === "Cash In (from Delivery/Receipt)" && !selectedBiltiForTx) {
         toast({title: "Validation Error", description: "Please select a Bilti/Delivery for this cash-in.", variant: "destructive"}); return;
     }
     if (transactionFormData.transactionType === "Delivery Expense (Cash Out)" && !selectedBiltiForTx) {
         toast({title: "Validation Error", description: "Please select a Bilti/Delivery to link this expense.", variant: "destructive"}); return;
     }
-    if (!transactionFormData.description.trim() && transactionFormData.transactionType !== "Cash In (Delivery/Receipt)") {
+    if (!transactionFormData.description.trim() && 
+        transactionFormData.transactionType !== "Cash In (from Delivery/Receipt)" &&
+        transactionFormData.transactionType !== "Delivery Expense (Cash Out)") { // Description auto-generated or prompted for these
         toast({title: "Validation Error", description: "Description is required.", variant: "destructive"}); return;
     }
-    if (transactionFormData.amount <= 0 && transactionFormData.transactionType !== "Adjustment/Correction") { // Adjustments can be negative conceptually
+     if (transactionFormData.transactionType === "Delivery Expense (Cash Out)" && !transactionFormData.description.replace(`Expense for Bilti ${selectedBiltiForTx?.id}: `,'').trim()) {
+        toast({title: "Validation Error", description: "Please complete the description for delivery expense.", variant: "destructive"}); return;
+     }
+    if (transactionFormData.amount <= 0 && transactionFormData.transactionType !== "Adjustment/Correction") { 
         toast({title: "Validation Error", description: "Amount must be greater than zero.", variant: "destructive"}); return;
     }
-    // Duplicate Delivery Cash-In check (basic)
-    if (transactionFormData.transactionType === "Cash In (Delivery/Receipt)" && activeDaybook?.transactions.some(tx => tx.referenceId === selectedBiltiForTx?.id && tx.transactionType === "Cash In (Delivery/Receipt)" && tx.id !== editingTransaction?.id)) {
+    if (transactionFormData.transactionType === "Adjustment/Correction" && !transactionFormData.reasonForAdjustment?.trim()){
+        toast({title: "Validation Error", description: "Reason for adjustment is required.", variant: "destructive"}); return;
+    }
+
+    if (activeDaybook && transactionFormData.transactionType === "Cash In (from Delivery/Receipt)" && 
+        activeDaybook.transactions.some(tx => tx.referenceId === selectedBiltiForTx?.id && tx.transactionType === "Cash In (from Delivery/Receipt)" && tx.id !== editingTransaction?.id)) {
         toast({title: "Duplicate Entry", description: `Cash-in for Bilti ${selectedBiltiForTx?.id} already exists in this daybook.`, variant: "warning"}); return;
     }
 
     setIsSubmittingTransaction(true);
     let currentDaybook = activeDaybook;
 
-    // Create Daybook if it doesn't exist (first transaction for the day)
     if (!currentDaybook) {
         const newDaybookPayload: Omit<FirestoreDaybook, 'id'> = {
             branchId: filterBranchId,
             nepaliMiti: filterNepaliMiti,
-            englishMiti: Timestamp.now(), // Or derive from nepaliMiti if possible
-            openingBalance: 0, // Placeholder - fetch previous day's closing in real app
-            totalCashIn: 0, totalCashOut: 0, closingBalance: 0, // Will be updated
+            englishMiti: Timestamp.now(), // This should ideally be derived from nepaliMiti
+            openingBalance: 0, // Placeholder: fetch previous day's closing in real app
+            totalCashIn: 0, totalCashOut: 0, closingBalance: 0,
             status: "Draft",
             transactions: [],
             createdBy: PLACEHOLDER_USER_ID,
             createdAt: Timestamp.now(),
         };
         try {
-            // Using composite ID for predictability, otherwise query after addDoc
-            const daybookDocId = `${filterBranchId}_${filterNepaliMiti}`; 
-            const daybookRef = doc(db, "daybooks", daybookDocId);
-            // await setDoc(daybookRef, newDaybookPayload); // Use setDoc with specific ID
-            // For auto-ID: const docRef = await addDoc(collection(db, "daybooks"), newDaybookPayload);
-            // For now, let's assume a predictable ID or that addDoc is used and ID is retrieved.
-            // This part needs robust ID generation or query strategy.
-            // To simplify, let's use addDoc and then refetch/update local state
             const docRef = await addDoc(collection(db, "daybooks"), newDaybookPayload);
             currentDaybook = { 
                 ...newDaybookPayload, 
@@ -391,7 +393,7 @@ export default function DaybookPage() {
                 transactions: [] 
             };
             setActiveDaybook(currentDaybook);
-            setDaybooksList(prev => [currentDaybook!, ...prev]); // Add to list
+            setDaybooksList(prev => [currentDaybook!, ...prev].sort((a,b) => b.englishMiti.getTime() - a.englishMiti.getTime()));
             toast({title: "Daybook Created", description: `Draft daybook started for ${filterNepaliMiti}.`});
         } catch(error) {
             console.error("Error creating new daybook:", error);
@@ -401,7 +403,7 @@ export default function DaybookPage() {
         }
     }
     
-    if (!currentDaybook) { // Should not happen if creation succeeded
+    if (!currentDaybook) {
         toast({title: "Error", description: "Daybook context lost.", variant: "destructive"});
         setIsSubmittingTransaction(false);
         return;
@@ -413,19 +415,18 @@ export default function DaybookPage() {
       createdBy: PLACEHOLDER_USER_ID,
       createdAt: editingTransaction ? Timestamp.fromDate(editingTransaction.createdAt as Date) : Timestamp.now(),
       amount: Number(transactionFormData.amount) || 0,
-      // Ensure referenceId and autoLinked are set if a Bilti was selected
       referenceId: selectedBiltiForTx?.id || transactionFormData.referenceId,
-      autoLinked: !!selectedBiltiForTx,
+      autoLinked: !!selectedBiltiForTx && (transactionFormData.transactionType === "Cash In (from Delivery/Receipt)" || transactionFormData.transactionType === "Delivery Expense (Cash Out)"),
     };
 
     const updatedTransactions = editingTransaction
-      ? currentDaybook.transactions.map(tx => tx.id === editingTransaction.id ? {...newTransaction, createdAt: (newTransaction.createdAt as Timestamp).toDate() } as DaybookTransactionUI : tx)
-      : [...currentDaybook.transactions, {...newTransaction, createdAt: (newTransaction.createdAt as Timestamp).toDate() } as DaybookTransactionUI];
+      ? currentDaybook.transactions.map(tx => tx.id === editingTransaction.id ? {...newTransaction, createdAt: (newTransaction.createdAt as Timestamp).toDate(), linkedBiltiData: biltisForSelection.find(b => b.id === newTransaction.referenceId) } as DaybookTransactionUI : tx)
+      : [...currentDaybook.transactions, {...newTransaction, createdAt: (newTransaction.createdAt as Timestamp).toDate(), linkedBiltiData: biltisForSelection.find(b => b.id === newTransaction.referenceId) } as DaybookTransactionUI];
 
     try {
       const daybookRef = doc(db, "daybooks", currentDaybook.id);
       await updateDoc(daybookRef, { 
-          transactions: updatedTransactions.map(tx => ({...tx, createdAt: Timestamp.fromDate(tx.createdAt)})), // Convert Dates back to Timestamps for Firestore
+          transactions: updatedTransactions.map(tx => ({...tx, createdAt: Timestamp.fromDate(tx.createdAt), linkedBiltiData: undefined})), 
           updatedAt: Timestamp.now(),
           updatedBy: PLACEHOLDER_USER_ID 
       });
@@ -444,7 +445,12 @@ export default function DaybookPage() {
     }
   };
 
-  const handleEditTransaction = (tx: FirestoreDaybookTransaction) => {
+  const handleEditTransaction = (txData: DaybookTransactionUI) => { // Use DaybookTransactionUI
+    const tx FirestoreDaybookTransaction = { // Convert to FirestoreDaybookTransaction for editing state
+        ...txData,
+        createdAt: Timestamp.fromDate(txData.createdAt),
+        linkedBiltiData: undefined // Remove UI-specific data
+    };
     setEditingTransaction(tx);
     const bilti = biltisForSelection.find(b => b.id === tx.referenceId);
     setSelectedBiltiForTx(bilti || null);
@@ -474,7 +480,7 @@ export default function DaybookPage() {
         try {
             const daybookRef = doc(db, "daybooks", activeDaybook.id);
             await updateDoc(daybookRef, { 
-                transactions: updatedTransactions.map(t => ({...t, createdAt: Timestamp.fromDate(t.createdAt)})),
+                transactions: updatedTransactions.map(t => ({...t, createdAt: Timestamp.fromDate(t.createdAt), linkedBiltiData: undefined})),
                 updatedAt: Timestamp.now(),
                 updatedBy: PLACEHOLDER_USER_ID
             });
@@ -513,41 +519,40 @@ export default function DaybookPage() {
       updatedBy: PLACEHOLDER_USER_ID,
     };
 
-    if (action === "Submit") updatePayload.submittedAt = Timestamp.now();
+    if (action === "Submit") {
+        updatePayload.submittedAt = Timestamp.now();
+        updatePayload.submittedBy = PLACEHOLDER_USER_ID;
+    }
     if (action === "Approve" || action === "Reject") {
       updatePayload.approvedAt = Timestamp.now();
-      updatePayload.approvedBy = PLACEHOLDER_USER_ID; // Actual admin User ID
+      updatePayload.approvedBy = PLACEHOLDER_USER_ID;
       if (approvalRemarksVal) updatePayload.approvalRemarks = approvalRemarksVal;
     }
 
-    // --- Batch write for Bilti updates on Approval ---
     const batch = writeBatch(db);
-    batch.update(daybookRef, updatePayload);
+    batch.update(daybookRef, updatePayload as any); // Type assertion to satisfy Firestore partial update
 
-    let biltiUpdateSuccess = true;
     if (newStatus === "Approved") {
-        // Post to ledgers (simulated - actual posting is complex)
         toast({title: "Ledger Posting (Simulated)", description: "Approved transactions would now be posted to respective ledgers.", variant: "info", duration: 5000});
-
         activeDaybook.transactions.forEach(tx => {
-            if (tx.transactionType === "Cash In (Delivery/Receipt)" && tx.referenceId) {
+            if (tx.transactionType === "Cash In (from Delivery/Receipt)" && tx.referenceId) {
                 const biltiRef = doc(db, "biltis", tx.referenceId);
                 batch.update(biltiRef, { 
                     status: "Paid", 
                     cashCollectionStatus: "Collected",
-                    daybookCashInRef: tx.id, // Link daybook transaction to bilti
+                    daybookCashInRef: tx.id, 
                     updatedAt: Timestamp.now(),
                     updatedBy: PLACEHOLDER_USER_ID
                 });
             } else if (tx.transactionType === "Delivery Expense (Cash Out)" && tx.referenceId) {
                 const biltiRef = doc(db, "biltis", tx.referenceId);
-                const biltiToUpdate = biltisForSelection.find(b => b.id === tx.referenceId);
+                const biltiToUpdate = biltisForSelection.find(b => b.id === tx.referenceId); // Assumes biltisForSelection has latest
                 if (biltiToUpdate) {
                     const newExpenseEntry = {
                         daybookTransactionId: tx.id,
                         amount: tx.amount,
                         description: tx.description,
-                        miti: tx.createdAt // Using transaction creation time as expense time
+                        miti: Timestamp.fromDate(tx.createdAt) // Using transaction creation time as expense time
                     };
                     const updatedExpenses = [...(biltiToUpdate.deliveryExpenses || []), newExpenseEntry];
                     batch.update(biltiRef, { 
@@ -562,12 +567,16 @@ export default function DaybookPage() {
 
     try {
       await batch.commit();
-      setActiveDaybook(prev => prev ? { ...prev, ...updatePayload, status: newStatus, updatedAt: new Date() } : null);
-      // Refresh biltis if any were updated
+      const updatedDaybookData = {...activeDaybook, ...updatePayload, status: newStatus, updatedAt: updatePayload.updatedAt?.toDate()};
+      if (updatePayload.submittedAt) updatedDaybookData.submittedAt = updatePayload.submittedAt.toDate();
+      if (updatePayload.approvedAt) updatedDaybookData.approvedAt = updatePayload.approvedAt.toDate();
+
+      setActiveDaybook(updatedDaybookData as Daybook);
+      
       if (newStatus === "Approved") {
-          fetchMasterData(); // To get updated bilti statuses/expenses
+          fetchMasterData(); // Refresh biltis
       }
-      fetchDaybooksList(); // Refresh the list view
+      fetchDaybooksList(); 
       toast({ title: `Daybook ${action}ed`, description: `Daybook status changed to ${newStatus}.` });
     } catch (error) {
       console.error(`Error ${action.toLowerCase()}ing daybook: `, error);
@@ -597,12 +606,25 @@ export default function DaybookPage() {
      return ledger ? `${ledger.accountName} (${ledger.id})` : ledgerId;
   };
   
-  // Simulate user role
-  const isSuperAdmin = true; // Set to false to simulate branch manager
+  const isSuperAdmin = true; 
 
   const canEditActiveDaybook = activeDaybook && (activeDaybook.status === "Draft" || (activeDaybook.status === "Rejected" && !isSuperAdmin));
   const canSubmitActiveDaybook = activeDaybook && activeDaybook.status === "Draft" && activeDaybook.transactions.length > 0 && !isSuperAdmin;
   const canApproveRejectActiveDaybook = activeDaybook && activeDaybook.status === "Pending Approval" && isSuperAdmin;
+
+  const eligibleBiltisForCashIn = useMemo(() => {
+    return biltisForSelection.filter(b => 
+        b.status === "Delivered" && 
+        b.payMode !== "Paid" && 
+        b.cashCollectionStatus !== "Collected" &&
+        // Ensure it's not already cashed in THIS daybook (if editing a transaction, allow current one)
+        (!activeDaybook?.transactions.some(tx => 
+            tx.referenceId === b.id && 
+            tx.transactionType === "Cash In (from Delivery/Receipt)" &&
+            (!editingTransaction || tx.id !== editingTransaction.id) 
+        ))
+    );
+  }, [biltisForSelection, activeDaybook, editingTransaction]);
 
 
   return (
@@ -615,10 +637,11 @@ export default function DaybookPage() {
             <p className="text-muted-foreground">Record daily cash transactions and manage approvals.</p>
           </div>
         </div>
-        {/* Add New Daybook button if needed, or rely on auto-creation */}
+        <Button variant="outline" onClick={() => {setFilterNepaliMiti(getTodayNepaliMiti()); setFilterBranchId(SIMULATED_BRANCH_ID)}}>
+            Load Today's ({getTodayNepaliMiti()})
+        </Button>
       </div>
 
-      {/* Filters and Daybook List */}
       <Card className="shadow-lg">
         <CardHeader>
           <CardTitle className="font-headline text-xl">Daybook Register</CardTitle>
@@ -627,7 +650,7 @@ export default function DaybookPage() {
               <Label htmlFor="filterNepaliMiti">Nepali Miti</Label>
               <Input id="filterNepaliMiti" value={filterNepaliMiti} onChange={(e) => setFilterNepaliMiti(e.target.value)} placeholder="YYYY-MM-DD (BS)" />
             </div>
-            {isSuperAdmin && ( // Branch selection only for super admin
+            {isSuperAdmin && (
               <div>
                 <Label htmlFor="filterBranch">Branch</Label>
                 <Select value={filterBranchId} onValueChange={setFilterBranchId} disabled={isLoadingMasterData}>
@@ -666,12 +689,11 @@ export default function DaybookPage() {
                       <TableCell>{dbk.nepaliMiti}</TableCell>
                       <TableCell>{branches.find(b => b.id === dbk.branchId)?.name || dbk.branchId}</TableCell>
                       <TableCell><Badge variant={dbk.status === "Approved" ? "default" : dbk.status === "Rejected" ? "destructive" : "secondary"} className={dbk.status === "Approved" ? "bg-accent text-accent-foreground" : ""}>{dbk.status}</Badge></TableCell>
-                      <TableCell>{(dbk.openingBalance + dbk.totalCashIn - dbk.totalCashOut).toFixed(2)}</TableCell>
+                      <TableCell>{(dbk.openingBalance + (dbk.transactions.filter(tx => tx.transactionType.includes("Cash In") || (tx.transactionType === "Adjustment/Correction" && tx.amount > 0) ).reduce((sum, tx) => sum + tx.amount, 0)) - (dbk.transactions.filter(tx => tx.transactionType.includes("Cash Out") || (tx.transactionType === "Adjustment/Correction" && tx.amount < 0)).reduce((sum, tx) => sum + Math.abs(tx.amount), 0))).toFixed(2)}</TableCell>
                       <TableCell>
                         <Button variant="link" size="sm" onClick={() => {
                             setFilterNepaliMiti(dbk.nepaliMiti);
                             setFilterBranchId(dbk.branchId);
-                            // loadOrCreateActiveDaybook will be triggered by useEffect
                         }}>View</Button>
                       </TableCell>
                     </TableRow>
@@ -683,10 +705,9 @@ export default function DaybookPage() {
         </CardContent>
       </Card>
 
-      {/* Active Daybook Details & Transactions */}
-      {isLoadingActiveDaybook && <div className="flex justify-center items-center h-32"><Loader2 className="h-10 w-10 animate-spin text-primary" /> Loading daybook details...</div>}
+      {isLoadingActiveDaybook && <div className="flex justify-center items-center h-32 mt-4"><Loader2 className="h-10 w-10 animate-spin text-primary" /> Loading daybook details...</div>}
       
-      {!isLoadingActiveDaybook && (filterNepaliMiti && filterBranchId) && (
+      {!isLoadingActiveDaybook && (filterNepaliMiti && filterBranchId && filterNepaliMiti.trim() !== "") && (
         <Card className="shadow-lg mt-4">
           <CardHeader>
             <div className="flex flex-col sm:flex-row justify-between items-start">
@@ -695,7 +716,7 @@ export default function DaybookPage() {
                         Daybook for: {branches.find(b => b.id === filterBranchId)?.name || filterBranchId} - Miti: {filterNepaliMiti}
                     </CardTitle>
                     <CardDescription>
-                        Status: <Badge variant={activeDaybook?.status === "Approved" ? "default" : activeDaybook?.status === "Rejected" ? "destructive" : "secondary"} className={activeDaybook?.status === "Approved" ? "bg-accent text-accent-foreground" : ""}>{activeDaybook?.status || "Not Started"}</Badge>
+                        Status: <Badge variant={activeDaybook?.status === "Approved" ? "default" : activeDaybook?.status === "Rejected" ? "destructive" : "secondary"} className={activeDaybook?.status === "Approved" ? "bg-accent text-accent-foreground" : ""}>{activeDaybook?.status || "Not Started (Add a transaction to create)"}</Badge>
                         {activeDaybook?.approvalRemarks && <p className="text-xs text-muted-foreground italic">Remarks: {activeDaybook.approvalRemarks}</p>}
                     </CardDescription>
                 </div>
@@ -741,20 +762,28 @@ export default function DaybookPage() {
                                 </Select>
                             </div>
 
-                            {(transactionFormData.transactionType === "Cash In (Delivery/Receipt)" || transactionFormData.transactionType === "Delivery Expense (Cash Out)") && (
+                            {(transactionFormData.transactionType === "Cash In (from Delivery/Receipt)" || transactionFormData.transactionType === "Delivery Expense (Cash Out)") && (
                                 <div>
                                     <Label htmlFor="biltiSelectForTx">Select Bilti/Delivery <span className="text-destructive">*</span></Label>
-                                    <Select value={selectedBiltiForTx?.id || ""} onValueChange={handleBiltiSelectForTx} required disabled={isLoadingMasterData}>
+                                    <Select 
+                                        value={selectedBiltiForTx?.id || ""} 
+                                        onValueChange={handleBiltiSelectForTx} 
+                                        required 
+                                        disabled={isLoadingMasterData || (transactionFormData.transactionType === "Cash In (from Delivery/Receipt)" && eligibleBiltisForCashIn.length === 0) }
+                                    >
                                         <SelectTrigger id="biltiSelectForTx">
-                                            <SelectValue placeholder={isLoadingMasterData ? "Loading Biltis..." : "Select Bilti/Delivery"}/>
+                                            <SelectValue placeholder={
+                                                isLoadingMasterData ? "Loading Biltis..." : 
+                                                (transactionFormData.transactionType === "Cash In (from Delivery/Receipt)" && eligibleBiltisForCashIn.length === 0) ? "No eligible Biltis for cash-in" :
+                                                "Select Bilti/Delivery"
+                                            }/>
                                         </SelectTrigger>
                                         <SelectContent>
-                                            {biltisForSelection
-                                                .filter(b => transactionFormData.transactionType === "Cash In (Delivery/Receipt)" ? (b.status === "Delivered" && b.payMode !== "Paid" && b.cashCollectionStatus !== "Collected") : true) // Filter for unpaid if cash-in
+                                            {(transactionFormData.transactionType === "Cash In (from Delivery/Receipt)" ? eligibleBiltisForCashIn : biltisForSelection)
                                                 .map(b => <SelectItem key={b.id} value={b.id}>{getBiltiDisplayData(b.id)}</SelectItem>)}
                                         </SelectContent>
                                     </Select>
-                                    {transactionFormData.transactionType === "Cash In (Delivery/Receipt)" && selectedBiltiForTx?.cashCollectionStatus === "Collected" && 
+                                    {transactionFormData.transactionType === "Cash In (from Delivery/Receipt)" && selectedBiltiForTx?.cashCollectionStatus === "Collected" && 
                                         <p className="text-xs text-orange-500 mt-1 flex items-center"><Info className="h-3 w-3 mr-1"/>Cash for this Bilti seems already collected.</p>}
                                 </div>
                             )}
@@ -762,11 +791,11 @@ export default function DaybookPage() {
                             <div>
                                 <Label htmlFor="amount">Amount <span className="text-destructive">*</span></Label>
                                 <Input id="amount" name="amount" type="number" value={transactionFormData.amount} onChange={handleTransactionFormChange} 
-                                       readOnly={transactionFormData.transactionType === "Cash In (Delivery/Receipt)" && !!selectedBiltiForTx}
+                                       readOnly={transactionFormData.transactionType === "Cash In (from Delivery/Receipt)" && !!selectedBiltiForTx}
                                        required />
                             </div>
 
-                            {transactionFormData.transactionType !== "Cash In (Delivery/Receipt)" && (
+                            {transactionFormData.transactionType !== "Cash In (from Delivery/Receipt)" && (
                                 <div>
                                     <Label htmlFor="description">Description / Narration <span className="text-destructive">*</span></Label>
                                     <Textarea id="description" name="description" value={transactionFormData.description} onChange={handleTransactionFormChange} rows={2} required/>
@@ -781,7 +810,7 @@ export default function DaybookPage() {
                                     </Select>
                                 </div>
                             )}
-                            {(transactionFormData.transactionType === "Cash Out (Expense/Supplier/Other)" || transactionFormData.transactionType === "Delivery Expense (Cash Out)" || transactionFormData.transactionType === "Cash Out (to Driver/Staff, Petty Expense)") && (
+                            {(transactionFormData.transactionType === "Cash Out (to Expense/Supplier/Other)" || transactionFormData.transactionType === "Delivery Expense (Cash Out)" || transactionFormData.transactionType === "Cash Out (to Driver/Staff, Petty Expense)") && (
                                 <>
                                 <div>
                                     <Label htmlFor="expenseHead">Expense Head / Category</Label>
@@ -836,18 +865,25 @@ export default function DaybookPage() {
             <Table>
                 <TableHeader><TableRow>
                     <TableHead>Type</TableHead><TableHead>Description</TableHead><TableHead>Reference</TableHead>
-                    <TableHead>Amount</TableHead><TableHead>Doc</TableHead>{canEditActiveDaybook && <TableHead>Actions</TableHead>}
+                    <TableHead className="text-right">Amount</TableHead><TableHead>Doc</TableHead>{canEditActiveDaybook && <TableHead>Actions</TableHead>}
                 </TableRow></TableHeader>
                 <TableBody>
-                    {activeDaybook && activeDaybook.transactions.length === 0 && <TableRow><TableCell colSpan={canEditActiveDaybook ? 6 : 5} className="text-center h-24">No transactions added for this day.</TableCell></TableRow>}
+                    {activeDaybook && activeDaybook.transactions.length === 0 && <TableRow><TableCell colSpan={canEditActiveDaybook ? 6 : 5} className="text-center h-24">No transactions added for this day. Click "Add Transaction" to start.</TableCell></TableRow>}
                     {activeDaybook?.transactions.map(tx => (
                         <TableRow key={tx.id}>
-                            <TableCell>{tx.transactionType}</TableCell>
+                            <TableCell>
+                                <Badge variant={tx.transactionType.includes("Cash In") ? "default" : tx.transactionType.includes("Cash Out") ? "destructive" : "secondary"}
+                                       className={cn(tx.transactionType.includes("Cash In") ? "bg-green-100 text-green-700 border-green-300" : 
+                                                     tx.transactionType.includes("Cash Out") ? "bg-red-100 text-red-700 border-red-300" : ""
+                                )}>
+                                    {tx.transactionType}
+                                </Badge>
+                            </TableCell>
                             <TableCell className="max-w-xs truncate" title={tx.description}>{tx.description}</TableCell>
                             <TableCell className="max-w-[150px] truncate" title={tx.referenceId ? getBiltiDisplayData(tx.referenceId) : (tx.partyId ? getPartyDisplayData(tx.partyId) : (tx.ledgerAccountId ? getLedgerDisplayData(tx.ledgerAccountId) : 'N/A'))}>
                                 {tx.referenceId ? getBiltiDisplayData(tx.referenceId) : (tx.partyId ? getPartyDisplayData(tx.partyId) : (tx.ledgerAccountId ? getLedgerDisplayData(tx.ledgerAccountId) : 'N/A'))}
                             </TableCell>
-                            <TableCell className={cn(tx.transactionType.includes("Cash In") || (tx.transactionType === "Adjustment/Correction" && tx.amount > 0) ? "text-green-600" : (tx.transactionType.includes("Cash Out") || (tx.transactionType === "Adjustment/Correction" && tx.amount < 0) ? "text-red-600" : ""))}>
+                            <TableCell className={cn("text-right", tx.transactionType.includes("Cash In") || (tx.transactionType === "Adjustment/Correction" && tx.amount > 0) ? "text-green-600" : (tx.transactionType.includes("Cash Out") || (tx.transactionType === "Adjustment/Correction" && tx.amount < 0) ? "text-red-600" : ""))}>
                                 {tx.transactionType === "Adjustment/Correction" ? tx.amount.toFixed(2) : Math.abs(tx.amount).toFixed(2)}
                             </TableCell>
                             <TableCell>
@@ -864,7 +900,7 @@ export default function DaybookPage() {
                 </TableBody>
             </Table>
             </ScrollArea>
-            {!activeDaybook && <p className="text-center text-muted-foreground py-10">Select a date and branch to view or start a daybook. If no daybook exists for today, adding a transaction will create one.</p>}
+            {!activeDaybook && <p className="text-center text-muted-foreground py-10">Select a date and branch to view or start a daybook. If no daybook exists for the selected criteria, adding a transaction will create one.</p>}
           </CardContent>
            <CardFooter>
             <p className="text-xs text-muted-foreground">
