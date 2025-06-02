@@ -47,16 +47,18 @@ export interface Party {
   contactNo: string;
   panNo?: string;
   address?: string;
-  assignedLedger: string;
+  assignedLedger: string; // Crucial for ledger linking
   status: "Active" | "Inactive";
 }
 interface Truck {
   id: string;
   truckNo: string;
+  assignedLedger: string; // Crucial for ledger linking
 }
 interface Driver {
   id: string;
   name: string;
+  assignedLedger: string; // Crucial for ledger linking
 }
 interface Bilti {
   id: string; 
@@ -78,17 +80,17 @@ interface Bilti {
 
 // Mock data for master lists
 const initialMockParties: Party[] = [
-  { id: "PTY001", name: "Global Traders (KTM)", type: "Both", contactNo: "9800000001", panNo: "PAN123KTM", address: "Kathmandu", assignedLedger: "Ledger-GT-KTM", status: "Active" },
-  { id: "PTY002", name: "National Distributors (PKR)", type: "Both", contactNo: "9800000002", panNo: "PAN456PKR", address: "Pokhara", assignedLedger: "Ledger-ND-PKR", status: "Active" },
-  { id: "PTY003", name: "Himalayan Goods Co. (BRT)", type: "Both", contactNo: "9800000003", panNo: "PAN789BRT", address: "Biratnagar", assignedLedger: "Ledger-HGC-BRT", status: "Inactive" },
+  { id: "PTY001", name: "Global Traders (KTM)", type: "Both", contactNo: "9800000001", panNo: "PAN123KTM", address: "Kathmandu", assignedLedger: "LEDGER-PTY001", status: "Active" },
+  { id: "PTY002", name: "National Distributors (PKR)", type: "Both", contactNo: "9800000002", panNo: "PAN456PKR", address: "Pokhara", assignedLedger: "LEDGER-PTY002", status: "Active" },
+  { id: "PTY003", name: "Himalayan Goods Co. (BRT)", type: "Both", contactNo: "9800000003", panNo: "PAN789BRT", address: "Biratnagar", assignedLedger: "LEDGER-PTY003", status: "Inactive" },
 ];
 const mockTrucks: Truck[] = [
-  { id: "TRK001", truckNo: "BA 1 KA 1234" },
-  { id: "TRK002", truckNo: "NA 5 KHA 5678" },
+  { id: "TRK001", truckNo: "BA 1 KA 1234", assignedLedger: "LEDGER-TRK001" },
+  { id: "TRK002", truckNo: "NA 5 KHA 5678", assignedLedger: "LEDGER-TRK002" },
 ];
 const mockDrivers: Driver[] = [
-  { id: "DRV001", name: "Suresh Kumar" },
-  { id: "DRV002", name: "Bimala Rai" },
+  { id: "DRV001", name: "Suresh Kumar", assignedLedger: "LEDGER-DRV001" },
+  { id: "DRV002", name: "Bimala Rai", assignedLedger: "LEDGER-DRV002" },
 ];
 
 const mockMasterBranches: Array<{ id: string; name: string }> = [
@@ -120,15 +122,15 @@ const defaultBiltiFormData: Omit<Bilti, 'id' | 'totalAmount' | 'status'> = {
   miti: new Date(),
   consignorId: "",
   consigneeId: "",
-  origin: "",
-  destination: "",
+  origin: locationOptions[0]?.value || "",
+  destination: locationOptions[1]?.value || "",
   description: "",
   packages: 1,
   weight: 0,
   rate: 0,
   payMode: "To Pay",
-  truckId: "",
-  driverId: "",
+  truckId: mockTrucks[0]?.id || "",
+  driverId: mockDrivers[0]?.id || "",
 };
 
 export default function InvoicingPage() {
@@ -191,17 +193,17 @@ export default function InvoicingPage() {
 
   const openEditForm = (bilti: Bilti) => {
     setEditingBilti(bilti);
-    const { totalAmount, status, consignorId, consigneeId, ...editableData } = bilti;
+    const { totalAmount, status, consignorId, consigneeId, ...editableData } = bilti; // Exclude totalAmount and status
     setFormData({...editableData, consignorId, consigneeId}); 
     setSelectedConsignor(parties.find(p => p.id === consignorId) || null);
     setSelectedConsignee(parties.find(p => p.id === consigneeId) || null);
-    setTotalAmount(bilti.totalAmount);
+    setTotalAmount(bilti.totalAmount); // Set total amount from original bilti, it will re-calc if packages/rate change
     setIsFormDialogOpen(true);
   };
 
   const handlePartyAdd = (newParty: Party) => {
     setParties(prevParties => [...prevParties, newParty]);
-     toast({ title: "Party Added", description: `${newParty.name} has been added to master records.` });
+     toast({ title: "Party Added", description: `${newParty.name} has been added to master records. Ledger: ${newParty.assignedLedger}` });
   };
 
   const handleConsignorSelect = (party: Party) => {
@@ -232,19 +234,32 @@ export default function InvoicingPage() {
         ...formData,
         id: editingBilti.id,
         totalAmount: currentTotalAmount,
-        status: editingBilti.status, 
+        status: editingBilti.status, // Retain original status or update if status management is added
       };
       setBiltis(biltis.map(b => b.id === editingBilti.id ? updatedBilti : b));
-      toast({ title: "Bilti Updated", description: `Bilti ${updatedBilti.id} has been updated.` });
+      toast({ 
+        title: "Bilti Updated", 
+        description: `Bilti ${updatedBilti.id} updated. Ledger entries (simulated) adjusted for Party, Truck, and Driver.` 
+      });
+      // TODO: Backend Call - Identify changes in Bilti (amount, parties, truck, driver, payMode).
+      // TODO: Backend Call - Reverse/adjust previous ledger entries for old values if necessary.
+      // TODO: Backend Call - Post new/updated ledger entries for Party, Truck, and Driver based on updatedBilti.
     } else {
       const newBilti: Bilti = {
         ...formData,
         id: generateBiltiNo(),
         totalAmount: currentTotalAmount,
-        status: "Pending", 
+        status: "Pending", // Default status for new bilti
       };
       setBiltis(prevBiltis => [...prevBiltis, newBilti]);
-      toast({ title: "Bilti Created", description: `Bilti ${newBilti.id} has been created successfully.` });
+      toast({ 
+        title: "Bilti Created", 
+        description: `Bilti ${newBilti.id} created. Ledger entries (simulated) posted for Party, Truck, and Driver.` 
+      });
+      // TODO: Backend Call - Post ledger entry for Consignor (partyId: newBilti.consignorId, amount: newBilti.totalAmount, type: 'debit/credit', biltiRef: newBilti.id, date: newBilti.miti)
+      // TODO: Backend Call - Post ledger entry for Consignee (partyId: newBilti.consigneeId, amount: newBilti.totalAmount, type: 'debit/credit', biltiRef: newBilti.id, date: newBilti.miti) - Logic depends on Pay Mode
+      // TODO: Backend Call - Post ledger entry for Truck (truckId: newBilti.truckId, amount: newBilti.totalAmount, type: 'income/expense', biltiRef: newBilti.id, date: newBilti.miti)
+      // TODO: Backend Call - Post ledger entry for Driver (driverId: newBilti.driverId, amount: /* if applicable */, type: 'advance/commission', biltiRef: newBilti.id, date: newBilti.miti)
     }
     setIsFormDialogOpen(false);
     setEditingBilti(null);
@@ -271,7 +286,11 @@ export default function InvoicingPage() {
   const confirmDelete = () => {
     if (biltiToDelete) {
       setBiltis(biltis.filter((b) => b.id !== biltiToDelete.id));
-      toast({ title: "Bilti Deleted", description: `Bilti ${biltiToDelete.id} has been deleted.` });
+      toast({ 
+        title: "Bilti Deleted", 
+        description: `Bilti ${biltiToDelete.id} deleted. Corresponding ledger entries (simulated) reversed for Party, Truck, and Driver.` 
+      });
+      // TODO: Backend Call - Reverse all ledger entries associated with biltiToDelete.id for Party, Truck, and Driver.
     }
     setIsDeleteDialogOpen(false);
     setBiltiToDelete(null);
@@ -509,7 +528,7 @@ export default function InvoicingPage() {
                         bilti.status === "Manifested" ? "bg-blue-200 text-blue-800" :
                         bilti.status === "Delivered" ? "bg-green-200 text-green-800" : "bg-gray-200 text-gray-800"
                      )}>
-                        {bilti.status}
+                        {bilti.status || "N/A"}
                      </span>
                   </TableCell>
                   <TableCell>
@@ -548,7 +567,7 @@ export default function InvoicingPage() {
         </CardContent>
         <CardFooter>
             <p className="text-xs text-muted-foreground">
-                Ledger updates for parties, trucks, and drivers are handled automatically upon Bilti creation/modification (Feature to be fully implemented).
+                Ledger updates for parties, trucks, and drivers are automatically (simulated as) posted upon Bilti creation, modification, or deletion.
             </p>
         </CardFooter>
       </Card>

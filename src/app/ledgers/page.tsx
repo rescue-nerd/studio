@@ -11,12 +11,23 @@ export default function LedgersPage() {
       <Card className="shadow-lg">
         <CardHeader>
           <CardTitle className="font-headline text-xl">Ledger Management</CardTitle>
-          <CardDescription>This section will allow you to view statements, add manual entries, and manage financial records.</CardDescription>
+          <CardDescription>
+            View statements, add manual entries, and manage financial records. 
+            Ledger entries related to Bilti/Invoice operations (creation, updates, deletions) 
+            are automatically posted (simulated in this frontend version).
+          </CardDescription>
         </CardHeader>
         <CardContent>
-          <p>Feature under development. Coming soon!</p>
+          <p>Feature under development. Full ledger viewing and manual entry capabilities coming soon!</p>
+           <ul className="list-disc list-inside mt-4 text-sm text-muted-foreground">
+            <li>View detailed transaction history for any Party, Truck, or Driver.</li>
+            <li>See running balances.</li>
+            <li>(Planned) Add manual journal entries or adjustments.</li>
+            <li>(Planned) Export ledger statements.</li>
+          </ul>
         </CardContent>
       </Card>
     </div>
   );
 }
+
