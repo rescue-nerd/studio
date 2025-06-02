@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useEffect, type ChangeEvent, type FormEvent } from "react";
+import { useState, useEffect, type ChangeEvent, type FormEvent, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -54,58 +54,27 @@ import type {
   Party as FirestoreParty, 
   Truck as FirestoreTruck, 
   Driver as FirestoreDriver,
-  Bilti as FirestoreBilti
+  Bilti as FirestoreBilti,
+  City as FirestoreCity,
+  Godown as FirestoreGodown,
+  Branch as FirestoreBranch
 } from "@/types/firestore";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
 
 // Interfaces (aligning with Firestore types)
-export interface Party extends FirestoreParty {} // Includes ID from Firestore
-export interface Truck extends FirestoreTruck {} // Includes ID from Firestore
-export interface Driver extends FirestoreDriver {} // Includes ID from Firestore
+export interface Party extends FirestoreParty {} 
+export interface Truck extends FirestoreTruck {} 
+export interface Driver extends FirestoreDriver {} 
 export interface Bilti extends Omit<FirestoreBilti, 'miti' | 'createdAt' | 'updatedAt'> {
   id: string;
-  miti: Date; // Use Date for form state, convert to Timestamp for Firestore
+  miti: Date; 
   createdAt?: Date | Timestamp;
   updatedAt?: Date | Timestamp;
 }
-
-
-// Mock data for master lists - will be replaced by Firestore fetching
-// const initialMockParties: Party[] = [
-//   { id: "PTY001", name: "Global Traders (KTM)", type: "Both", contactNo: "9800000001", panNo: "PAN123KTM", address: "Kathmandu", assignedLedgerId: "LEDGER-PTY001", status: "Active", createdAt: Timestamp.now(), createdBy: "sys" },
-//   { id: "PTY002", name: "National Distributors (PKR)", type: "Both", contactNo: "9800000002", panNo: "PAN456PKR", address: "Pokhara", assignedLedgerId: "LEDGER-PTY002", status: "Active", createdAt: Timestamp.now(), createdBy: "sys" },
-// ];
-// const mockTrucks: Truck[] = [
-//   { id: "TRK001", truckNo: "BA 1 KA 1234", assignedLedgerId: "LEDGER-TRK001", type: "6-Wheeler", ownerName:"A", status:"Active", createdAt: Timestamp.now(), createdBy: "sys" },
-//   { id: "TRK002", truckNo: "NA 5 KHA 5678", assignedLedgerId: "LEDGER-TRK002", type: "10-Wheeler", ownerName:"B", status:"Active", createdAt: Timestamp.now(), createdBy: "sys" },
-// ];
-// const mockDrivers: Driver[] = [
-//   { id: "DRV001", name: "Suresh Kumar", assignedLedgerId: "LEDGER-DRV001", licenseNo: "L1", contactNo: "C1", status: "Active", createdAt: Timestamp.now(), createdBy: "sys" },
-//   { id: "DRV002", name: "Bimala Rai", assignedLedgerId: "LEDGER-DRV002", licenseNo: "L2", contactNo: "C2", status: "Active", createdAt: Timestamp.now(), createdBy: "sys" },
-// ];
-
-const mockMasterBranches: Array<{ id: string; name: string }> = [
-  { id: "BRN001", name: "Kathmandu Main Branch" },
-  { id: "BRN002", name: "Pokhara Hub" },
-  { id: "BRN003", name: "Biratnagar Depot" },
-  { id: "BRN004", name: "Butwal Office" },
-];
-
-const mockMasterCities: Array<{ id: string; name: string; stateId: string }> = [
-  { id: "CT001", name: "Kathmandu City", stateId: "S001" },
-  { id: "CT002", name: "Pokhara City", stateId: "S002" },
-  { id: "CT003", name: "Lucknow", stateId: "S003" },
-  { id: "CT004", name: "Birgunj", stateId: "S001" },
-  { id: "CT005", name: "Nepalgunj", stateId: "S001" },
-];
-
-const locationOptions = Array.from(
-  new Set([
-    ...mockMasterBranches.map((b) => b.name),
-    ...mockMasterCities.map((c) => c.name),
-  ])
-).sort().map(loc => ({ value: loc, label: loc }));
+export interface City extends FirestoreCity {}
+export interface Godown extends FirestoreGodown {}
+export interface Branch extends FirestoreBranch {}
 
 
 const payModes: FirestoreBilti["payMode"][] = ["Paid", "To Pay", "Due"];
@@ -115,8 +84,8 @@ const defaultBiltiFormData: Omit<Bilti, 'id' | 'totalAmount' | 'status' | 'creat
   nepaliMiti: "",
   consignorId: "",
   consigneeId: "",
-  origin: locationOptions[0]?.value || "",
-  destination: locationOptions[1]?.value || "",
+  origin: "",
+  destination: "",
   description: "",
   packages: 1,
   weight: 0,
@@ -133,6 +102,10 @@ export default function InvoicingPage() {
   const [parties, setParties] = useState<Party[]>([]); 
   const [trucks, setTrucks] = useState<Truck[]>([]);
   const [drivers, setDrivers] = useState<Driver[]>([]);
+  const [cities, setCities] = useState<City[]>([]);
+  const [godowns, setGodowns] = useState<Godown[]>([]);
+  const [branchesForLocations, setBranchesForLocations] = useState<Branch[]>([]);
+
 
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -151,19 +124,25 @@ export default function InvoicingPage() {
   const [selectedConsignor, setSelectedConsignor] = useState<Party | null>(null);
   const [selectedConsignee, setSelectedConsignee] = useState<Party | null>(null);
 
-  // Fetch master data
+  
   const fetchMasterData = async () => {
+    setIsLoading(true); // Ensure loading is true at the start
     try {
-      const [partiesSnapshot, trucksSnapshot, driversSnapshot] = await Promise.all([
+      const [partiesSnapshot, trucksSnapshot, driversSnapshot, citiesSnapshot, godownsSnapshot, branchesSnapshot] = await Promise.all([
         getDocs(query(collection(db, "parties"), orderBy("name"))),
         getDocs(query(collection(db, "trucks"), orderBy("truckNo"))),
-        getDocs(query(collection(db, "drivers"), orderBy("name")))
+        getDocs(query(collection(db, "drivers"), orderBy("name"))),
+        getDocs(query(collection(db, "cities"), orderBy("name"))),
+        getDocs(query(collection(db, "godowns"), orderBy("name"))),
+        getDocs(query(collection(db, "branches"), orderBy("name")))
       ]);
       setParties(partiesSnapshot.docs.map(doc => ({ ...doc.data() as FirestoreParty, id: doc.id })));
       setTrucks(trucksSnapshot.docs.map(doc => ({ ...doc.data() as FirestoreTruck, id: doc.id })));
       setDrivers(driversSnapshot.docs.map(doc => ({ ...doc.data() as FirestoreDriver, id: doc.id })));
+      setCities(citiesSnapshot.docs.map(doc => ({ ...doc.data() as FirestoreCity, id: doc.id })));
+      setGodowns(godownsSnapshot.docs.map(doc => ({ ...doc.data() as FirestoreGodown, id: doc.id })));
+      setBranchesForLocations(branchesSnapshot.docs.map(doc => ({ ...doc.data() as FirestoreBranch, id: doc.id })));
       
-      // Set default truck/driver if available and not editing
       if (!editingBilti) {
         setFormData(prev => ({
           ...prev,
@@ -174,12 +153,14 @@ export default function InvoicingPage() {
 
     } catch (error) {
       console.error("Error fetching master data: ", error);
-      toast({ title: "Error", description: "Failed to load master data (parties, trucks, drivers).", variant: "destructive" });
+      toast({ title: "Error", description: "Failed to load master data.", variant: "destructive" });
+    } finally {
+      // This will be set after fetchBiltis completes in the main useEffect
     }
   };
   
   const fetchBiltis = async () => {
-    setIsLoading(true);
+    // setIsLoading(true); // isLoading is handled by the calling useEffect
     try {
       const biltisCollectionRef = collection(db, "biltis");
       const q = query(biltisCollectionRef, orderBy("createdAt", "desc"));
@@ -189,7 +170,7 @@ export default function InvoicingPage() {
         return {
           ...data,
           id: docSnap.id,
-          miti: data.miti.toDate(), // Convert Timestamp to Date
+          miti: data.miti.toDate(), 
           createdAt: data.createdAt?.toDate(),
           updatedAt: data.updatedAt?.toDate(),
         };
@@ -199,15 +180,38 @@ export default function InvoicingPage() {
       console.error("Error fetching biltis: ", error);
       toast({ title: "Error", description: "Failed to fetch Biltis.", variant: "destructive" });
     } finally {
-      setIsLoading(false);
+      // setIsLoading(false); // isLoading is handled by the calling useEffect
     }
   };
   
   useEffect(() => {
-    fetchMasterData();
-    fetchBiltis();
+    const loadAllData = async () => {
+        setIsLoading(true);
+        await fetchMasterData();
+        await fetchBiltis();
+        setIsLoading(false);
+    }
+    loadAllData();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const dynamicLocationOptions = useMemo(() => {
+    const cityNames = cities.map(c => ({ value: c.name, label: `${c.name} (City)` }));
+    const godownNames = godowns.map(g => ({ value: g.name, label: `${g.name} (Godown)` }));
+    const branchNames = branchesForLocations.map(b => ({ value: b.name, label: `${b.name} (Branch)` }));
+
+    const allOptions = [...cityNames, ...godownNames, ...branchNames];
+    const uniqueValues = new Set<string>();
+    const uniqueOptions = allOptions.filter(opt => {
+        if (uniqueValues.has(opt.value)) {
+            return false;
+        }
+        uniqueValues.add(opt.value);
+        return true;
+    });
+    
+    return uniqueOptions.sort((a, b) => a.label.localeCompare(b.label));
+  }, [cities, godowns, branchesForLocations]);
 
 
   useEffect(() => {
@@ -235,15 +239,6 @@ export default function InvoicingPage() {
     }
   };
 
-  const generateBiltiNo = (): string => {
-    // This is a client-side mock. Real auto-numbering should be server-side or use Firestore transactions
-    // with a dedicated counter document, especially if perBranch is true.
-    // For now, we use a simpler approach, assuming DocumentNumberingConfig is fetched and used.
-    // Placeholder - replace with actual logic using DocumentNumberingConfig from Firestore.
-    const randomSuffix = Math.floor(Math.random() * 10000);
-    return `BLT-${String(Date.now()).slice(-4)}-${String(randomSuffix).padStart(4, '0')}`;
-  };
-
   const openAddForm = () => {
     setEditingBilti(null);
     const defaultTruckId = trucks.length > 0 ? trucks[0].id : "";
@@ -265,9 +260,7 @@ export default function InvoicingPage() {
     setIsFormDialogOpen(true);
   };
 
-  const handlePartyAdd = async (newPartyData: Omit<Party, 'id' | 'createdAt' | 'createdBy'>) => {
-    // This function is called by SmartPartySelectDialog when a new party is added
-    // It should add the party to Firestore and then update the local parties state
+  const handlePartyAdd = async (newPartyData: Omit<Party, 'id' | 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy'>) => {
     setIsSubmitting(true);
     try {
       const partyPayload: Omit<FirestoreParty, 'id'> = {
@@ -280,7 +273,7 @@ export default function InvoicingPage() {
       const newParty: Party = { ...partyPayload, id: docRef.id };
       setParties(prev => [...prev, newParty].sort((a,b) => a.name.localeCompare(b.name)));
       toast({ title: "Party Added", description: `${newParty.name} has been added.` });
-      return newParty; // Return the newly added party so the dialog can use it
+      return newParty; 
     } catch (error) {
       console.error("Error adding party from dialog: ", error);
       toast({ title: "Error", description: "Failed to add new party.", variant: "destructive" });
@@ -327,7 +320,7 @@ export default function InvoicingPage() {
         const biltiDocRef = doc(db, "biltis", editingBilti.id);
         await updateDoc(biltiDocRef, {
           ...biltiDataPayload,
-          status: editingBilti.status, // Preserve existing status on edit
+          status: editingBilti.status, 
           updatedAt: Timestamp.now(),
           updatedBy: PLACEHOLDER_USER_ID,
         });
@@ -338,11 +331,8 @@ export default function InvoicingPage() {
       }
     } else {
       try {
-        // In a real app, Bilti No generation would be server-side or use Firestore transactions
-        // const newBiltiId = generateBiltiNo(); // For now, Firestore auto-ID is fine
         await addDoc(collection(db, "biltis"), {
           ...biltiDataPayload,
-          // id: newBiltiId, // Not needed if Firestore generates ID
           status: "Pending" as FirestoreBilti["status"], 
           createdAt: Timestamp.now(),
           createdBy: PLACEHOLDER_USER_ID,
@@ -358,7 +348,7 @@ export default function InvoicingPage() {
     setEditingBilti(null);
     setSelectedConsignor(null);
     setSelectedConsignee(null);
-    fetchBiltis(); // Refresh the list
+    fetchBiltis(); 
   };
   
   const getPartyName = (partyId: string) => parties.find(p => p.id === partyId)?.name || "N/A";
@@ -403,7 +393,7 @@ export default function InvoicingPage() {
         onOpenChange={setIsConsignorSelectOpen}
         parties={parties}
         onPartySelect={handleConsignorSelect}
-        onPartyAdd={handlePartyAdd} // Pass the function to handle adding new party
+        onPartyAdd={handlePartyAdd} 
         dialogTitle="Select Consignor"
       />
       <SmartPartySelectDialog 
@@ -411,7 +401,7 @@ export default function InvoicingPage() {
         onOpenChange={setIsConsigneeSelectOpen}
         parties={parties}
         onPartySelect={handleConsigneeSelect}
-        onPartyAdd={handlePartyAdd} // Pass the function to handle adding new party
+        onPartyAdd={handlePartyAdd} 
         dialogTitle="Select Consignee"
       />
 
@@ -429,7 +419,7 @@ export default function InvoicingPage() {
             }
         }}>
           <DialogTrigger asChild>
-            <Button onClick={openAddForm} disabled={isSubmitting || parties.length === 0 || trucks.length === 0 || drivers.length === 0}>
+            <Button onClick={openAddForm} disabled={isSubmitting || isLoading || parties.length === 0 || trucks.length === 0 || drivers.length === 0}>
               <PlusCircle className="mr-2 h-4 w-4" /> New Bilti / Invoice
             </Button>
           </DialogTrigger>
@@ -474,15 +464,15 @@ export default function InvoicingPage() {
                 <div className="grid md:grid-cols-2 gap-4">
                   <div>
                     <Label htmlFor="consignorId">Consignor</Label>
-                    <Button type="button" variant="outline" className="w-full justify-start" onClick={() => setIsConsignorSelectOpen(true)} disabled={parties.length === 0}>
-                        {selectedConsignor ? selectedConsignor.name : (parties.length === 0 ? "Loading parties..." : "Select Consignor")}
+                    <Button type="button" variant="outline" className="w-full justify-start" onClick={() => setIsConsignorSelectOpen(true)} disabled={parties.length === 0 || isLoading}>
+                        {selectedConsignor ? selectedConsignor.name : (parties.length === 0 && !isLoading ? "No Parties Available" : (isLoading ? "Loading parties..." : "Select Consignor"))}
                     </Button>
                      <Input type="hidden" value={formData.consignorId} />
                   </div>
                   <div>
                     <Label htmlFor="consigneeId">Consignee</Label>
-                     <Button type="button" variant="outline" className="w-full justify-start" onClick={() => setIsConsigneeSelectOpen(true)} disabled={parties.length === 0}>
-                        {selectedConsignee ? selectedConsignee.name : (parties.length === 0 ? "Loading parties..." : "Select Consignee")}
+                     <Button type="button" variant="outline" className="w-full justify-start" onClick={() => setIsConsigneeSelectOpen(true)} disabled={parties.length === 0 || isLoading}>
+                        {selectedConsignee ? selectedConsignee.name : (parties.length === 0 && !isLoading ? "No Parties Available" : (isLoading ? "Loading parties..." : "Select Consignee"))}
                     </Button>
                     <Input type="hidden" value={formData.consigneeId} />
                   </div>
@@ -491,23 +481,23 @@ export default function InvoicingPage() {
                 <div className="grid md:grid-cols-2 gap-4">
                   <div>
                     <Label htmlFor="origin">Origin</Label>
-                    <Select value={formData.origin} onValueChange={handleSelectChange('origin')} required>
+                    <Select value={formData.origin} onValueChange={handleSelectChange('origin')} required disabled={dynamicLocationOptions.length === 0 || isLoading}>
                       <SelectTrigger id="origin">
-                        <SelectValue placeholder="Select Origin Location" />
+                        <SelectValue placeholder={isLoading ? "Loading locations..." : (dynamicLocationOptions.length === 0 ? "No locations" : "Select Origin Location")} />
                       </SelectTrigger>
                       <SelectContent>
-                        {locationOptions.map(loc => <SelectItem key={loc.value} value={loc.value}>{loc.label}</SelectItem>)}
+                        {dynamicLocationOptions.map(loc => <SelectItem key={loc.value} value={loc.value}>{loc.label}</SelectItem>)}
                       </SelectContent>
                     </Select>
                   </div>
                   <div>
                     <Label htmlFor="destination">Destination</Label>
-                     <Select value={formData.destination} onValueChange={handleSelectChange('destination')} required>
+                     <Select value={formData.destination} onValueChange={handleSelectChange('destination')} required disabled={dynamicLocationOptions.length === 0 || isLoading}>
                       <SelectTrigger id="destination">
-                        <SelectValue placeholder="Select Destination Location" />
+                         <SelectValue placeholder={isLoading ? "Loading locations..." : (dynamicLocationOptions.length === 0 ? "No locations" : "Select Destination Location")} />
                       </SelectTrigger>
                       <SelectContent>
-                        {locationOptions.map(loc => <SelectItem key={loc.value} value={loc.value}>{loc.label}</SelectItem>)}
+                        {dynamicLocationOptions.map(loc => <SelectItem key={loc.value} value={loc.value}>{loc.label}</SelectItem>)}
                       </SelectContent>
                     </Select>
                   </div>
@@ -552,8 +542,8 @@ export default function InvoicingPage() {
                 <div className="grid md:grid-cols-2 gap-4">
                   <div>
                     <Label htmlFor="truckId">Truck</Label>
-                    <Select value={formData.truckId} onValueChange={handleSelectChange('truckId')} required disabled={trucks.length === 0}>
-                      <SelectTrigger><SelectValue placeholder={trucks.length === 0 ? "Loading trucks..." : "Select Truck"} /></SelectTrigger>
+                    <Select value={formData.truckId} onValueChange={handleSelectChange('truckId')} required disabled={trucks.length === 0 || isLoading}>
+                      <SelectTrigger><SelectValue placeholder={isLoading ? "Loading trucks..." : (trucks.length === 0 ? "No trucks" : "Select Truck")} /></SelectTrigger>
                       <SelectContent>
                         {trucks.map(t => <SelectItem key={t.id} value={t.id}>{t.truckNo}</SelectItem>)}
                       </SelectContent>
@@ -561,8 +551,8 @@ export default function InvoicingPage() {
                   </div>
                   <div>
                     <Label htmlFor="driverId">Driver</Label>
-                    <Select value={formData.driverId} onValueChange={handleSelectChange('driverId')} required disabled={drivers.length === 0}>
-                      <SelectTrigger><SelectValue placeholder={drivers.length === 0 ? "Loading drivers..." : "Select Driver"} /></SelectTrigger>
+                    <Select value={formData.driverId} onValueChange={handleSelectChange('driverId')} required disabled={drivers.length === 0 || isLoading}>
+                      <SelectTrigger><SelectValue placeholder={isLoading ? "Loading drivers..." : (drivers.length === 0 ? "No drivers" : "Select Driver")} /></SelectTrigger>
                       <SelectContent>
                         {drivers.map(d => <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>)}
                       </SelectContent>
@@ -575,7 +565,7 @@ export default function InvoicingPage() {
                 <DialogClose asChild>
                    <Button type="button" variant="outline" disabled={isSubmitting}>Cancel</Button>
                 </DialogClose>
-                <Button type="submit" disabled={isSubmitting || parties.length === 0 || trucks.length === 0 || drivers.length === 0}>
+                <Button type="submit" disabled={isSubmitting || isLoading || parties.length === 0 || trucks.length === 0 || drivers.length === 0 || dynamicLocationOptions.length === 0}>
                     {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                     {editingBilti ? "Update Bilti" : "Save Bilti"}
                 </Button>
@@ -688,11 +678,13 @@ export default function InvoicingPage() {
         </CardContent>
         <CardFooter>
             <p className="text-xs text-muted-foreground">
-                Bilti data is now fetched from and saved to Firestore. Ledger updates (simulated) would occur server-side upon these operations in a full system.
+                Origin/Destination now dynamically populated. Ledger updates (simulated) would occur server-side upon these operations in a full system.
             </p>
         </CardFooter>
       </Card>
     </div>
   );
 }
+    
+
     
