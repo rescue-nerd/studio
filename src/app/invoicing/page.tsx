@@ -26,7 +26,7 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from "@/components/ui/alert-dialog"; // Removed AlertDialogTrigger as it's used with asChild
+} from "@/components/ui/alert-dialog";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
@@ -40,7 +40,7 @@ import SmartPartySelectDialog from "@/components/shared/smart-party-select-dialo
 
 
 // Interfaces
-export interface Party { // Exporting for use in SmartPartySelectDialog
+export interface Party {
   id: string;
   name: string;
   type: "Consignor" | "Consignee" | "Both";
@@ -59,7 +59,7 @@ interface Driver {
   name: string;
 }
 interface Bilti {
-  id: string; // Auto-generated Bilti No.
+  id: string; 
   miti: Date;
   consignorId: string;
   consigneeId: string;
@@ -76,6 +76,7 @@ interface Bilti {
   status?: string; 
 }
 
+// Mock data for master lists
 const initialMockParties: Party[] = [
   { id: "PTY001", name: "Global Traders (KTM)", type: "Both", contactNo: "9800000001", panNo: "PAN123KTM", address: "Kathmandu", assignedLedger: "Ledger-GT-KTM", status: "Active" },
   { id: "PTY002", name: "National Distributors (PKR)", type: "Both", contactNo: "9800000002", panNo: "PAN456PKR", address: "Pokhara", assignedLedger: "Ledger-ND-PKR", status: "Active" },
@@ -89,6 +90,29 @@ const mockDrivers: Driver[] = [
   { id: "DRV001", name: "Suresh Kumar" },
   { id: "DRV002", name: "Bimala Rai" },
 ];
+
+const mockMasterBranches: Array<{ id: string; name: string }> = [
+  { id: "BRN001", name: "Kathmandu Main Branch" },
+  { id: "BRN002", name: "Pokhara Hub" },
+  { id: "BRN003", name: "Biratnagar Depot" },
+  { id: "BRN004", name: "Butwal Office" },
+];
+
+const mockMasterCities: Array<{ id: string; name: string; stateId: string }> = [
+  { id: "CT001", name: "Kathmandu City", stateId: "S001" },
+  { id: "CT002", name: "Pokhara City", stateId: "S002" },
+  { id: "CT003", name: "Lucknow", stateId: "S003" },
+  { id: "CT004", name: "Birgunj", stateId: "S001" },
+  { id: "CT005", name: "Nepalgunj", stateId: "S001" },
+];
+
+const locationOptions = Array.from(
+  new Set([
+    ...mockMasterBranches.map((b) => b.name),
+    ...mockMasterCities.map((c) => c.name),
+  ])
+).sort().map(loc => ({ value: loc, label: loc }));
+
 
 const payModes: Bilti["payMode"][] = ["Paid", "To Pay", "Due"];
 
@@ -109,7 +133,7 @@ const defaultBiltiFormData: Omit<Bilti, 'id' | 'totalAmount' | 'status'> = {
 
 export default function InvoicingPage() {
   const [biltis, setBiltis] = useState<Bilti[]>([]);
-  const [parties, setParties] = useState<Party[]>(initialMockParties); // Manage parties in state
+  const [parties, setParties] = useState<Party[]>(initialMockParties); 
   const [searchTerm, setSearchTerm] = useState("");
   const [isFormDialogOpen, setIsFormDialogOpen] = useState(false);
   const [editingBilti, setEditingBilti] = useState<Bilti | null>(null);
@@ -195,7 +219,7 @@ export default function InvoicingPage() {
     if (!formData.consignorId || !formData.consigneeId || !formData.truckId || !formData.driverId || !formData.origin || !formData.destination || !formData.description) {
         toast({
             title: "Missing Fields",
-            description: "Please fill all required fields for the Bilti.",
+            description: "Please fill all required fields for the Bilti (Consignor, Consignee, Origin, Destination, Description, Truck, Driver).",
             variant: "destructive",
         });
         return;
@@ -208,7 +232,7 @@ export default function InvoicingPage() {
         ...formData,
         id: editingBilti.id,
         totalAmount: currentTotalAmount,
-        status: editingBilti.status,
+        status: editingBilti.status, 
       };
       setBiltis(biltis.map(b => b.id === editingBilti.id ? updatedBilti : b));
       toast({ title: "Bilti Updated", description: `Bilti ${updatedBilti.id} has been updated.` });
@@ -280,7 +304,7 @@ export default function InvoicingPage() {
         <Dialog open={isFormDialogOpen} onOpenChange={(isOpen) => {
             setIsFormDialogOpen(isOpen);
             if (!isOpen) {
-                setEditingBilti(null); // Clear editing state when dialog closes
+                setEditingBilti(null); 
                 setSelectedConsignor(null);
                 setSelectedConsignee(null);
             }
@@ -343,11 +367,25 @@ export default function InvoicingPage() {
                 <div className="grid md:grid-cols-2 gap-4">
                   <div>
                     <Label htmlFor="origin">Origin</Label>
-                    <Input id="origin" name="origin" value={formData.origin} onChange={handleInputChange} placeholder="e.g., Kathmandu" required/>
+                    <Select value={formData.origin} onValueChange={handleSelectChange('origin')} required>
+                      <SelectTrigger id="origin">
+                        <SelectValue placeholder="Select Origin Location" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {locationOptions.map(loc => <SelectItem key={loc.value} value={loc.value}>{loc.label}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
                   </div>
                   <div>
                     <Label htmlFor="destination">Destination</Label>
-                    <Input id="destination" name="destination" value={formData.destination} onChange={handleInputChange} placeholder="e.g., Pokhara" required/>
+                     <Select value={formData.destination} onValueChange={handleSelectChange('destination')} required>
+                      <SelectTrigger id="destination">
+                        <SelectValue placeholder="Select Destination Location" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {locationOptions.map(loc => <SelectItem key={loc.value} value={loc.value}>{loc.label}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
                   </div>
                 </div>
                 
@@ -517,6 +555,5 @@ export default function InvoicingPage() {
     </div>
   );
 }
-    
 
     
