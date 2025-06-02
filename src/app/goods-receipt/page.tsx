@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
-import { PlusCircle, Search, Edit, Trash2, ArchiveRestore, CalendarIcon, ChevronsUpDown, Check } from "lucide-react";
+import { PlusCircle, Search, Edit, Trash2, ArchiveRestore, CalendarIcon } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -30,24 +30,27 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "cmdk";
+
 import { Calendar } from "@/components/ui/calendar";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
-import { ScrollArea } from "@/components/ui/scroll-area";
+import SmartManifestSelectDialog from "@/components/shared/smart-manifest-select-dialog";
+import SmartBranchSelectDialog from "@/components/shared/smart-branch-select-dialog";
+
 
 // Interfaces
-interface Branch { 
+export interface Branch { 
   id: string;
   name: string;
+  location?: string; // Made optional to align with simpler add form
 }
-interface Godown { 
+export interface Godown { 
   id: string;
   name: string;
   branchId: string;
 }
-interface Manifest { 
+export interface Manifest { 
   id: string;
   miti: Date;
   truckId: string;
@@ -57,7 +60,7 @@ interface Manifest {
   attachedBiltiIds: string[];
   status?: "Open" | "In Transit" | "Completed" | "Cancelled" | "Received"; 
 }
-interface GoodsReceipt {
+export interface GoodsReceipt {
   id: string;
   miti: Date;
   manifestId: string;
@@ -67,10 +70,10 @@ interface GoodsReceipt {
 }
 
 // Mock Data
-const initialMockBranches: Branch[] = [
-  { id: "BRN001", name: "Kathmandu Main" },
-  { id: "BRN002", name: "Pokhara Hub" },
-  { id: "BRN003", name: "Biratnagar Depot" },
+const initialMockBranchesData: Branch[] = [
+  { id: "BRN001", name: "Kathmandu Main", location: "Ring Road, KTM" },
+  { id: "BRN002", name: "Pokhara Hub", location: "Lakeside, PKR" },
+  { id: "BRN003", name: "Biratnagar Depot", location: "Industrial Area, BRT" },
 ];
 const initialMockGodowns: Godown[] = [
   { id: "GDN001", name: "KTM Central Godown", branchId: "BRN001"},
@@ -92,7 +95,7 @@ const defaultGoodsReceiptFormData: Omit<GoodsReceipt, 'id'> = {
 export default function GoodsReceiptPage() {
   const [goodsReceipts, setGoodsReceipts] = useState<GoodsReceipt[]>([]);
   const [manifestsPendingReceipt, setManifestsPendingReceipt] = useState<Manifest[]>(initialManifestsPendingReceipt);
-  const [branches] = useState<Branch[]>(initialMockBranches);
+  const [branches, setBranches] = useState<Branch[]>(initialMockBranchesData);
   
   const [searchTerm, setSearchTerm] = useState("");
   const [isFormDialogOpen, setIsFormDialogOpen] = useState(false);
@@ -103,16 +106,15 @@ export default function GoodsReceiptPage() {
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [receiptToDelete, setReceiptToDelete] = useState<GoodsReceipt | null>(null);
 
-  const [isManifestPopoverOpen, setIsManifestPopoverOpen] = useState(false);
-  const [isBranchPopoverOpen, setIsBranchPopoverOpen] = useState(false);
+  const [isManifestSelectOpen, setIsManifestSelectOpen] = useState(false);
+  const [isBranchSelectOpen, setIsBranchSelectOpen] = useState(false);
+
+  const [selectedManifest, setSelectedManifest] = useState<Manifest | null>(null);
+  const [selectedReceivingBranch, setSelectedReceivingBranch] = useState<Branch | null>(null);
 
 
   const handleInputChange = (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
-    setFormData((prev) => ({ ...prev, [name]: value }));
-  };
-
-  const handleSelectChange = (name: keyof Omit<GoodsReceipt, 'id'>) => (value: string) => {
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
@@ -122,6 +124,28 @@ export default function GoodsReceiptPage() {
     }
   };
 
+  const handleManifestSelect = (manifest: Manifest) => {
+    setFormData(prev => ({...prev, manifestId: manifest.id}));
+    setSelectedManifest(manifest);
+    // Auto-fill receiving branch if manifest's toBranchId matches an existing branch
+    const targetBranch = branches.find(b => b.id === manifest.toBranchId);
+    if (targetBranch) {
+        setFormData(prev => ({...prev, receivingBranchId: targetBranch.id}));
+        setSelectedReceivingBranch(targetBranch);
+    }
+  };
+
+  const handleReceivingBranchSelect = (branch: Branch) => {
+    setFormData(prev => ({...prev, receivingBranchId: branch.id}));
+    setSelectedReceivingBranch(branch);
+  };
+  
+  const handleBranchAdd = (newBranch: Branch) => {
+    setBranches(prev => [...prev, newBranch]);
+    toast({ title: "Branch Added", description: `${newBranch.name} has been added.`});
+  }
+
+
   const generateReceiptNo = (): string => {
     const nextId = goodsReceipts.length + 1 + Math.floor(Math.random() * 100);
     return `GRN-${String(nextId).padStart(3, '0')}`;
@@ -130,23 +154,20 @@ export default function GoodsReceiptPage() {
   const openAddForm = () => {
     setEditingReceipt(null);
     setFormData({...defaultGoodsReceiptFormData, miti: new Date() });
+    setSelectedManifest(null);
+    setSelectedReceivingBranch(null);
     setIsFormDialogOpen(true);
   };
 
   const openEditForm = (receipt: GoodsReceipt) => {
     setEditingReceipt(receipt);
     setFormData(receipt);
+    setSelectedManifest(manifestsPendingReceipt.find(m => m.id === receipt.manifestId) || initialManifestsPendingReceipt.find(m => m.id === receipt.manifestId) || null);
+    setSelectedReceivingBranch(branches.find(b => b.id === receipt.receivingBranchId) || null);
     setIsFormDialogOpen(true);
   };
   
-  const getManifestDisplay = (manifestId?: string) => {
-    const manifest = manifestsPendingReceipt.find(m => m.id === manifestId) || 
-                     initialManifestsPendingReceipt.find(m => m.id === manifestId) ||
-                     (editingReceipt && editingReceipt.manifestId === manifestId ? initialManifestsPendingReceipt.find(m => m.id === editingReceipt.manifestId) : undefined) ;
-    if (!manifest) return "Select Manifest...";
-    return `${manifest.id} (To: ${getBranchName(manifest.toBranchId)})`;
-  }
-  const getBranchName = (branchId?: string) => branches.find(b => b.id === branchId)?.name || "Select Receiving Branch...";
+  const getBranchName = (branchId?: string) => branches.find(b => b.id === branchId)?.name || "N/A";
 
 
   const handleSubmit = (e: FormEvent) => {
@@ -171,6 +192,8 @@ export default function GoodsReceiptPage() {
     }
     setIsFormDialogOpen(false);
     setEditingReceipt(null);
+    setSelectedManifest(null);
+    setSelectedReceivingBranch(null);
   };
 
   const handleDeleteClick = (receipt: GoodsReceipt) => {
@@ -200,6 +223,22 @@ export default function GoodsReceiptPage() {
 
   return (
     <div className="space-y-6">
+       <SmartManifestSelectDialog
+        isOpen={isManifestSelectOpen}
+        onOpenChange={setIsManifestSelectOpen}
+        manifests={manifestsForSelection}
+        onManifestSelect={handleManifestSelect}
+        dialogTitle="Select Manifest"
+      />
+      <SmartBranchSelectDialog
+        isOpen={isBranchSelectOpen}
+        onOpenChange={setIsBranchSelectOpen}
+        branches={branches}
+        onBranchSelect={handleReceivingBranchSelect}
+        onBranchAdd={handleBranchAdd}
+        dialogTitle="Select Receiving Branch"
+      />
+
       <div className="flex flex-col md:flex-row justify-between items-center gap-4">
         <div>
           <h1 className="text-3xl font-headline font-bold text-foreground flex items-center"><ArchiveRestore className="mr-3 h-8 w-8 text-primary"/>Goods Receipt</h1>
@@ -207,7 +246,11 @@ export default function GoodsReceiptPage() {
         </div>
         <Dialog open={isFormDialogOpen} onOpenChange={(isOpen) => {
             setIsFormDialogOpen(isOpen);
-            if (!isOpen) setEditingReceipt(null);
+            if (!isOpen) {
+              setEditingReceipt(null); 
+              setSelectedManifest(null);
+              setSelectedReceivingBranch(null);
+            }
         }}>
           <DialogTrigger asChild>
             <Button onClick={openAddForm}>
@@ -241,93 +284,31 @@ export default function GoodsReceiptPage() {
                 </div>
                 
                 <div className="grid grid-cols-4 items-center gap-4">
-                  <Label htmlFor="manifestId" className="text-right md:col-span-1 col-span-4">Manifest</Label>
-                  <Popover open={isManifestPopoverOpen} onOpenChange={setIsManifestPopoverOpen}>
-                    <PopoverTrigger asChild>
-                      <Button
-                        variant="outline"
-                        role="combobox"
-                        aria-expanded={isManifestPopoverOpen}
-                        className="md:col-span-3 col-span-4 justify-between w-full"
-                      >
-                        {getManifestDisplay(formData.manifestId)}
-                        <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
-                      <Command>
-                        <CommandInput placeholder="Search manifest..." />
-                        <CommandEmpty>No manifest found.</CommandEmpty>
-                        <CommandList>
-                          <ScrollArea className="h-48">
-                            {manifestsForSelection.map((manifest) => (
-                              <CommandItem
-                                key={manifest.id}
-                                value={manifest.id}
-                                onSelect={(currentValue) => {
-                                  handleSelectChange('manifestId')(currentValue === formData.manifestId ? "" : currentValue);
-                                  setIsManifestPopoverOpen(false);
-                                }}
-                              >
-                                <Check
-                                  className={cn(
-                                    "mr-2 h-4 w-4",
-                                    formData.manifestId === manifest.id ? "opacity-100" : "opacity-0"
-                                  )}
-                                />
-                                {manifest.id} (To: {getBranchName(manifest.toBranchId)})
-                              </CommandItem>
-                            ))}
-                          </ScrollArea>
-                        </CommandList>
-                      </Command>
-                    </PopoverContent>
-                  </Popover>
+                  <Label htmlFor="manifestIdButton" className="text-right md:col-span-1 col-span-4">Manifest</Label>
+                  <Button 
+                    type="button" 
+                    variant="outline" 
+                    id="manifestIdButton"
+                    className="md:col-span-3 col-span-4 justify-start" 
+                    onClick={() => setIsManifestSelectOpen(true)}
+                  >
+                    {selectedManifest ? `${selectedManifest.id} (To: ${getBranchName(selectedManifest.toBranchId)})` : "Select Manifest..."}
+                  </Button>
+                  <Input type="hidden" value={formData.manifestId} />
                 </div>
 
                 <div className="grid grid-cols-4 items-center gap-4">
-                  <Label htmlFor="receivingBranchId" className="text-right md:col-span-1 col-span-4">Receiving Branch</Label>
-                   <Popover open={isBranchPopoverOpen} onOpenChange={setIsBranchPopoverOpen}>
-                    <PopoverTrigger asChild>
-                      <Button
-                        variant="outline"
-                        role="combobox"
-                        aria-expanded={isBranchPopoverOpen}
-                        className="md:col-span-3 col-span-4 justify-between w-full"
-                      >
-                        {getBranchName(formData.receivingBranchId)}
-                        <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
-                      <Command>
-                        <CommandInput placeholder="Search branch..." />
-                        <CommandEmpty>No branch found.</CommandEmpty>
-                        <CommandList>
-                          <ScrollArea className="h-48">
-                            {branches.map((branch) => (
-                              <CommandItem
-                                key={branch.id}
-                                value={branch.id}
-                                onSelect={(currentValue) => {
-                                  handleSelectChange('receivingBranchId')(currentValue === formData.receivingBranchId ? "" : currentValue);
-                                  setIsBranchPopoverOpen(false);
-                                }}
-                              >
-                                <Check
-                                  className={cn(
-                                    "mr-2 h-4 w-4",
-                                    formData.receivingBranchId === branch.id ? "opacity-100" : "opacity-0"
-                                  )}
-                                />
-                                {branch.name}
-                              </CommandItem>
-                            ))}
-                          </ScrollArea>
-                        </CommandList>
-                      </Command>
-                    </PopoverContent>
-                  </Popover>
+                  <Label htmlFor="receivingBranchIdButton" className="text-right md:col-span-1 col-span-4">Receiving Branch</Label>
+                  <Button 
+                    type="button" 
+                    variant="outline" 
+                    id="receivingBranchIdButton"
+                    className="md:col-span-3 col-span-4 justify-start" 
+                    onClick={() => setIsBranchSelectOpen(true)}
+                  >
+                    {selectedReceivingBranch ? selectedReceivingBranch.name : "Select Receiving Branch..."}
+                  </Button>
+                   <Input type="hidden" value={formData.receivingBranchId} />
                 </div>
                 
                 <div className="grid grid-cols-4 items-start gap-4">
@@ -407,5 +388,4 @@ export default function GoodsReceiptPage() {
     </div>
   );
 }
-
     
