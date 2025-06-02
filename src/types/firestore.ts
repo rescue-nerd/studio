@@ -25,6 +25,8 @@ export interface Branch {
   status?: "Active" | "Inactive";
   createdAt: Timestamp;
   updatedAt?: Timestamp;
+  createdBy?: string; // User.uid
+  updatedBy?: string; // User.uid
 }
 
 export interface Party {
@@ -86,7 +88,7 @@ export interface Godown {
 export interface Bilti {
   id: string; // Document ID (Bilti No.)
   miti: Timestamp; // Date of Bilti
-  nepaliMiti?: string; 
+  nepaliMiti?: string;
   consignorId: string; // Link to Party.id
   consigneeId: string; // Link to Party.id
   origin: string; // Could be Branch name or City name

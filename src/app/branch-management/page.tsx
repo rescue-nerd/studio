@@ -1,13 +1,13 @@
 
 "use client";
 
-import { useState, type ChangeEvent, type FormEvent } from "react";
+import { useState, useEffect, type ChangeEvent, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { PlusCircle, Search, Edit, Trash2 } from "lucide-react";
+import { PlusCircle, Search, Edit, Trash2, Loader2 } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -27,41 +27,89 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { db } from "@/lib/firebase"; // Import Firestore instance
+import { 
+  collection, 
+  getDocs, 
+  addDoc, 
+  doc, 
+  updateDoc, 
+  deleteDoc, 
+  Timestamp,
+  query,
+  orderBy
+} from "firebase/firestore";
+import type { Branch as FirestoreBranch } from "@/types/firestore"; // Import the Firestore Branch type
+import { useToast } from "@/hooks/use-toast";
 
-interface Branch {
-  id: string;
-  name: string;
-  location: string;
-  manager: string;
-  status: "Active" | "Inactive";
+
+// The local Branch interface should align with FirestoreBranch but 'id' is part of it.
+// Timestamps will be converted to Date objects for easier use in the form if needed,
+// but for display, we can format Firestore Timestamps directly or convert them.
+interface Branch extends Omit<FirestoreBranch, 'createdAt' | 'updatedAt'> {
+  createdAt?: Date | Timestamp; // Allow both for local state vs. Firestore
+  updatedAt?: Date | Timestamp;
 }
 
-const initialBranches: Branch[] = [
-  { id: "BRN001", name: "Kathmandu Main", location: "Kathmandu, Nepal", manager: "Hari Bahadur", status: "Active" },
-  { id: "BRN002", name: "Pokhara Hub", location: "Pokhara, Nepal", manager: "Sita Sharma", status: "Active" },
-  { id: "BRN003", name: "Biratnagar Depot", location: "Biratnagar, Nepal", manager: "Gopal Karki", status: "Inactive" },
-  { id: "BRN004", name: "Butwal Office", location: "Butwal, Nepal", manager: "Rita Adhikari", status: "Active" },
-];
-
-const defaultBranchFormData: Omit<Branch, 'id'> = {
+const defaultBranchFormData: Omit<Branch, 'id' | 'createdAt' | 'updatedAt' | 'createdBy' | 'updatedBy'> = {
   name: "",
   location: "",
-  manager: "",
+  manager: "", // Corresponds to managerName in FirestoreBranch
   status: "Active",
+  // contactEmail and contactPhone are not in the simplified form for now
 };
 
+const PLACEHOLDER_USER_ID = "system_user_placeholder"; // Replace with actual auth user UID later
+
 export default function BranchManagementPage() {
-  const [branches, setBranches] = useState<Branch[]>(initialBranches);
+  const [branches, setBranches] = useState<Branch[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [isFormDialogOpen, setIsFormDialogOpen] = useState(false);
   const [editingBranch, setEditingBranch] = useState<Branch | null>(null);
-  const [formData, setFormData] = useState<Omit<Branch, 'id'> & { id?: string }>(defaultBranchFormData);
+  // Ensure formData can hold all fields from Branch interface, including optional ones
+  const [formData, setFormData] = useState<Omit<Branch, 'id' | 'createdAt' | 'updatedAt' | 'createdBy' | 'updatedBy'>>(defaultBranchFormData);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [branchToDelete, setBranchToDelete] = useState<Branch | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const { toast } = useToast();
+
+  const fetchBranches = async () => {
+    setIsLoading(true);
+    try {
+      const branchesCollectionRef = collection(db, "branches");
+      const q = query(branchesCollectionRef, orderBy("createdAt", "desc"));
+      const querySnapshot = await getDocs(q);
+      const fetchedBranches: Branch[] = querySnapshot.docs.map(doc => {
+        const data = doc.data() as FirestoreBranch;
+        return {
+          ...data,
+          id: doc.id,
+          // Convert Timestamps to Dates for easier handling if needed, or keep as Timestamps
+          // createdAt: data.createdAt.toDate(), 
+          // updatedAt: data.updatedAt ? data.updatedAt.toDate() : undefined,
+        };
+      });
+      setBranches(fetchedBranches);
+    } catch (error) {
+      console.error("Error fetching branches: ", error);
+      toast({
+        title: "Error",
+        description: "Failed to fetch branches. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchBranches();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
 
   const handleInputChange = (e: ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
@@ -80,26 +128,73 @@ export default function BranchManagementPage() {
 
   const openEditForm = (branch: Branch) => {
     setEditingBranch(branch);
-    setFormData(branch);
+    // Prepare formData for editing, ensure all relevant fields are included
+    const { id, createdAt, updatedAt, createdBy, updatedBy, ...editableData } = branch;
+    setFormData({
+        name: editableData.name,
+        location: editableData.location,
+        manager: editableData.managerName || "", // Map managerName to manager
+        status: editableData.status || "Active",
+        contactEmail: editableData.contactEmail,
+        contactPhone: editableData.contactPhone,
+        managerUserId: editableData.managerUserId,
+    });
     setIsFormDialogOpen(true);
   };
 
-  const handleSubmit = (e: FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
+    if (!formData.name || !formData.location) {
+      toast({ title: "Validation Error", description: "Branch Name and Location are required.", variant: "destructive" });
+      return;
+    }
+    
+    setIsLoading(true); // For the operation itself
+
+    const branchDataPayload: Omit<FirestoreBranch, 'id' | 'createdAt' | 'updatedAt'> & { updatedAt?: Timestamp, createdAt?: Timestamp } = {
+      name: formData.name,
+      location: formData.location,
+      managerName: formData.manager || null,
+      status: formData.status,
+      contactEmail: formData.contactEmail || "",
+      contactPhone: formData.contactPhone || "",
+      managerUserId: formData.managerUserId || "",
+      // createdBy and updatedBy will be set based on add/edit
+    };
+
+
     if (editingBranch) {
       // Edit existing branch
-      setBranches(
-        branches.map((b) =>
-          b.id === editingBranch.id ? { ...editingBranch, ...formData } : b
-        )
-      );
+      try {
+        const branchDocRef = doc(db, "branches", editingBranch.id);
+        await updateDoc(branchDocRef, {
+            ...branchDataPayload,
+            updatedAt: Timestamp.now(),
+            updatedBy: PLACEHOLDER_USER_ID, // Replace with actual user ID
+        });
+        toast({ title: "Success", description: "Branch updated successfully." });
+      } catch (error) {
+        console.error("Error updating branch: ", error);
+        toast({ title: "Error", description: "Failed to update branch.", variant: "destructive" });
+      }
     } else {
       // Add new branch
-      const newId = `BRN${String(branches.length + 1 + Math.floor(Math.random() * 1000)).padStart(3, '0')}`; // Simple unique ID
-      setBranches([...branches, { id: newId, ...formData } as Branch]);
+      try {
+        await addDoc(collection(db, "branches"), {
+            ...branchDataPayload,
+            createdAt: Timestamp.now(),
+            createdBy: PLACEHOLDER_USER_ID, // Replace with actual user ID
+        });
+        toast({ title: "Success", description: "Branch added successfully." });
+      } catch (error) {
+        console.error("Error adding branch: ", error);
+        toast({ title: "Error", description: "Failed to add branch.", variant: "destructive" });
+      }
     }
     setIsFormDialogOpen(false);
     setEditingBranch(null);
+    fetchBranches(); // Refetch to update the list
+    // setIsLoading(false); // Already handled by fetchBranches
   };
 
   const handleDeleteClick = (branch: Branch) => {
@@ -107,9 +202,19 @@ export default function BranchManagementPage() {
     setIsDeleteDialogOpen(true);
   };
 
-  const confirmDelete = () => {
+  const confirmDelete = async () => {
     if (branchToDelete) {
-      setBranches(branches.filter((b) => b.id !== branchToDelete.id));
+      setIsLoading(true);
+      try {
+        const branchDocRef = doc(db, "branches", branchToDelete.id);
+        await deleteDoc(branchDocRef);
+        toast({ title: "Success", description: `Branch "${branchToDelete.name}" deleted.` });
+        fetchBranches(); // Refetch
+      } catch (error) {
+        console.error("Error deleting branch: ", error);
+        toast({ title: "Error", description: "Failed to delete branch.", variant: "destructive" });
+        setIsLoading(false);
+      }
     }
     setIsDeleteDialogOpen(false);
     setBranchToDelete(null);
@@ -118,7 +223,7 @@ export default function BranchManagementPage() {
   const filteredBranches = branches.filter(branch =>
     branch.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     branch.location.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    branch.manager.toLowerCase().includes(searchTerm.toLowerCase())
+    (branch.managerName && branch.managerName.toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
   return (
@@ -158,7 +263,19 @@ export default function BranchManagementPage() {
                 <Label htmlFor="manager" className="text-right">
                   Manager
                 </Label>
-                <Input id="manager" name="manager" value={formData.manager} onChange={handleInputChange} className="col-span-3" required />
+                <Input id="manager" name="manager" value={formData.manager || ""} onChange={handleInputChange} className="col-span-3" placeholder="Manager's Name (Optional)"/>
+              </div>
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="contactEmail" className="text-right">
+                  Email
+                </Label>
+                <Input id="contactEmail" name="contactEmail" type="email" value={formData.contactEmail || ""} onChange={handleInputChange} className="col-span-3" placeholder="Contact Email (Optional)"/>
+              </div>
+               <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="contactPhone" className="text-right">
+                  Phone
+                </Label>
+                <Input id="contactPhone" name="contactPhone" value={formData.contactPhone || ""} onChange={handleInputChange} className="col-span-3" placeholder="Contact Phone (Optional)"/>
               </div>
               <div className="grid grid-cols-4 items-center gap-4">
                 <Label htmlFor="status" className="text-right">
@@ -178,7 +295,11 @@ export default function BranchManagementPage() {
                 <DialogClose asChild>
                    <Button type="button" variant="outline">Cancel</Button>
                 </DialogClose>
-                <Button type="submit">Save Branch</Button>
+                <Button type="submit" disabled={isLoading}>
+                  {isLoading && editingBranch && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  {isLoading && !editingBranch && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  Save Branch
+                </Button>
               </DialogFooter>
             </form>
           </DialogContent>
@@ -200,64 +321,82 @@ export default function BranchManagementPage() {
           </div>
         </CardHeader>
         <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>ID</TableHead>
-                <TableHead>Name</TableHead>
-                <TableHead>Location</TableHead>
-                <TableHead>Manager</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredBranches.map((branch) => (
-                <TableRow key={branch.id}>
-                  <TableCell className="font-medium">{branch.id}</TableCell>
-                  <TableCell>{branch.name}</TableCell>
-                  <TableCell>{branch.location}</TableCell>
-                  <TableCell>{branch.manager}</TableCell>
-                  <TableCell>
-                    <Badge variant={branch.status === "Active" ? "default" : "destructive"} className={branch.status === "Active" ? "bg-accent text-accent-foreground" : ""}>
-                      {branch.status}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex gap-2">
-                      <Button variant="outline" size="icon" aria-label="Edit Branch" onClick={() => openEditForm(branch)}>
-                        <Edit className="h-4 w-4" />
-                      </Button>
-                      <AlertDialog open={isDeleteDialogOpen && branchToDelete?.id === branch.id} onOpenChange={(open) => { if(!open) setBranchToDelete(null); setIsDeleteDialogOpen(open);}}>
-                        <AlertDialogTrigger asChild>
-                          <Button variant="destructive" size="icon" aria-label="Delete Branch" onClick={() => handleDeleteClick(branch)}>
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </AlertDialogTrigger>
-                        <AlertDialogContent>
-                          <AlertDialogHeader>
-                            <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
-                            <AlertDialogDescription>
-                              This action cannot be undone. This will permanently delete the branch
-                              "{branchToDelete?.name}".
-                            </AlertDialogDescription>
-                          </AlertDialogHeader>
-                          <AlertDialogFooter>
-                            <AlertDialogCancel onClick={() => {setBranchToDelete(null); setIsDeleteDialogOpen(false);}}>Cancel</AlertDialogCancel>
-                            <AlertDialogAction onClick={confirmDelete}>Delete</AlertDialogAction>
-                          </AlertDialogFooter>
-                        </AlertDialogContent>
-                      </AlertDialog>
-                    </div>
-                  </TableCell>
+          {isLoading && branches.length === 0 ? (
+            <div className="flex justify-center items-center h-24">
+              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+              <p className="ml-2 text-muted-foreground">Loading branches...</p>
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Name</TableHead>
+                  <TableHead>Location</TableHead>
+                  <TableHead>Manager</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Created At</TableHead>
+                  <TableHead>Actions</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {filteredBranches.length === 0 && !isLoading && (
+                    <TableRow>
+                        <TableCell colSpan={6} className="text-center h-24">
+                            No branches found. Add one to get started!
+                        </TableCell>
+                    </TableRow>
+                )}
+                {filteredBranches.map((branch) => (
+                  <TableRow key={branch.id}>
+                    <TableCell className="font-medium">{branch.name}</TableCell>
+                    <TableCell>{branch.location}</TableCell>
+                    <TableCell>{branch.managerName || 'N/A'}</TableCell>
+                    <TableCell>
+                      <Badge variant={branch.status === "Active" ? "default" : "destructive"} className={branch.status === "Active" ? "bg-accent text-accent-foreground" : ""}>
+                        {branch.status}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      {branch.createdAt instanceof Timestamp ? branch.createdAt.toDate().toLocaleDateString() : 
+                       branch.createdAt ? new Date(branch.createdAt as any).toLocaleDateString() : 'N/A'}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex gap-2">
+                        <Button variant="outline" size="icon" aria-label="Edit Branch" onClick={() => openEditForm(branch)} disabled={isLoading}>
+                          <Edit className="h-4 w-4" />
+                        </Button>
+                        <AlertDialog open={isDeleteDialogOpen && branchToDelete?.id === branch.id} onOpenChange={(open) => { if(!open) setBranchToDelete(null); setIsDeleteDialogOpen(open);}}>
+                          <AlertDialogTrigger asChild>
+                            <Button variant="destructive" size="icon" aria-label="Delete Branch" onClick={() => handleDeleteClick(branch)} disabled={isLoading}>
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                This action cannot be undone. This will permanently delete the branch
+                                "{branchToDelete?.name}".
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel onClick={() => {setBranchToDelete(null); setIsDeleteDialogOpen(false);}}>Cancel</AlertDialogCancel>
+                              <AlertDialogAction onClick={confirmDelete} disabled={isLoading}>
+                                {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                                Delete
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
         </CardContent>
       </Card>
     </div>
   );
 }
-
-  
