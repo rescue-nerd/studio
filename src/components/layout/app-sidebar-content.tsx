@@ -73,7 +73,7 @@ const navStructure = [
     groupLabel: "Analytics & AI",
     items: [
       { href: '/reports', label: 'Reports', icon: BarChartBig },
-      { href: '/route-optimization', label: 'Route Optimization', icon: Waypoints },
+      // { href: '/route-optimization', label: 'Route Optimization', icon: Waypoints }, // Removed Route Optimization
     ]
   },
   {

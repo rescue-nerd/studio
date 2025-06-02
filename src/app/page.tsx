@@ -51,7 +51,7 @@ export default function DashboardPage() {
             {[
               { title: "Branch Management", icon: Building2, href:"/branch-management" },
               { title: "Locations & Units", icon: MapPin, href:"/locations" },
-              { title: "Route Optimization", icon: Waypoints, href:"/route-optimization" },
+              // { title: "Route Optimization", icon: Waypoints, href:"/route-optimization" }, // Removed Route Optimization
               { title: "Narration Setup", icon: BookText, href:"/narration-setup" },
             ].map(item => (
               <Link href={item.href} key={item.title} className="block p-4 bg-secondary hover:bg-accent rounded-lg transition-colors">
@@ -70,7 +70,7 @@ export default function DashboardPage() {
           <CardContent className="space-y-3">
             <div className="flex items-center justify-between">
               <span className="text-foreground">AI Route Optimizer</span>
-              <span className="text-xs font-semibold px-2 py-1 rounded-full bg-accent text-accent-foreground">Online</span>
+              <span className="text-xs font-semibold px-2 py-1 rounded-full bg-destructive text-destructive-foreground">Offline</span>
             </div>
             <div className="flex items-center justify-between">
               <span className="text-foreground">Database Connectivity</span>
