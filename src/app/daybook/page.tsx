@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import { useState, useEffect, useMemo, type ChangeEvent, type FormEvent } from "react";
@@ -149,12 +150,13 @@ export default function DaybookPage() {
   const [transactionToDelete, setTransactionToDelete] = useState<DaybookTransaction | null>(null);
   const [isDeleteTransactionAlertOpen, setIsDeleteTransactionAlertOpen] = useState(false);
 
-  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false); // Simulate super admin role
 
   const initialTransactionFormData: Omit<DaybookTransaction, 'id' | 'createdAt' | 'createdBy' | 'autoLinked'> = {
     transactionType: "Cash In (Other)",
     amount: 0,
     description: "",
+    ledgerAccountId: "", // Initialize as empty, will be mandatory
   };
   const [transactionFormData, setTransactionFormData] = useState(initialTransactionFormData);
 
@@ -177,7 +179,7 @@ export default function DaybookPage() {
     try {
       const [branchesSnap, biltisSnap, partiesSnap, ledgersSnap] = await Promise.all([
         getDocs(query(collection(db, "branches"), orderBy("name"))),
-        getDocs(collection(db, "biltis")),
+        getDocs(collection(db, "biltis")), // Consider adding orderBy or where clauses for performance
         getDocs(query(collection(db, "parties"), orderBy("name"))),
         getDocs(query(collection(db, "ledgerAccounts"), orderBy("accountName"))),
       ]);
@@ -193,7 +195,8 @@ export default function DaybookPage() {
         return { ...data, id: d.id, miti: data.miti.toDate() } as Bilti;
       });
       setAllBiltisMaster(allFetchedBiltis);
-      // Specific filtering for Bilti selection will happen dynamically based on transaction type
+      // Biltis for "Cash In (from Delivery/Receipt)" selection dynamically filtered in form
+      setBiltisForSelection(allFetchedBiltis); // General list for other expense linking
 
       setParties(partiesSnap.docs.map(doc => ({ ...doc.data(), id: doc.id } as Party)));
       setLedgerAccounts(ledgersSnap.docs.map(doc => ({ ...doc.data(), id: doc.id } as LedgerAccount)));
@@ -218,6 +221,7 @@ export default function DaybookPage() {
         collection(db, "daybooks"),
         where("branchId", "==", filterBranchId),
         where("nepaliMiti", "==", filterNepaliMiti)
+        // Consider adding orderBy englishMiti or createdAt if multiple daybooks per day are possible (should not be)
       );
       const querySnapshot = await getDocs(daybookQuery);
 
@@ -230,7 +234,7 @@ export default function DaybookPage() {
           englishMiti: data.englishMiti.toDate(),
           transactions: (data.transactions || []).map(tx => ({
             ...tx,
-            createdAt: tx.createdAt?.toDate(),
+            createdAt: tx.createdAt?.toDate(), // Convert Firestore Timestamp to Date
           })),
           createdAt: data.createdAt?.toDate(),
           updatedAt: data.updatedAt?.toDate(),
@@ -239,8 +243,9 @@ export default function DaybookPage() {
           processingTimestamp: data.processingTimestamp?.toDate(),
         };
         setActiveDaybook(loadedDaybook);
-        setActiveDaybookFromState(loadedDaybook);
+        setActiveDaybookFromState(loadedDaybook); // Keep a stable copy for checks
       } else {
+        // No existing daybook, set to null. It will be auto-created on first transaction.
         setActiveDaybook(null);
         setActiveDaybookFromState(null);
       }
@@ -256,6 +261,7 @@ export default function DaybookPage() {
 
   useEffect(() => {
     fetchMasterData();
+    // setIsSuperAdmin(checkIfUserIsSuperAdmin()); // Replace with actual role check
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -263,7 +269,7 @@ export default function DaybookPage() {
     if (filterBranchId && filterNepaliMiti) {
       loadOrCreateActiveDaybook();
     } else {
-      setActiveDaybook(null);
+      setActiveDaybook(null); // Clear daybook if filters are incomplete
       setActiveDaybookFromState(null);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -296,6 +302,7 @@ export default function DaybookPage() {
         netCashOut += tx.amount;
         cashOutByType[tx.transactionType] = (cashOutByType[tx.transactionType] || 0) + tx.amount;
       } else if (tx.transactionType === "Adjustment/Correction") {
+        // Adjustments can be positive (cash in) or negative (cash out)
         if (tx.amount >= 0) {
             netCashIn += tx.amount;
             cashInByType[tx.transactionType] = (cashInByType[tx.transactionType] || 0) + tx.amount;
@@ -323,14 +330,14 @@ export default function DaybookPage() {
 
   const handleLoadToday = () => {
     setFilterNepaliMiti(getTodayNepaliMiti());
-    if (branches.length > 0 && !filterBranchId) {
-      setFilterBranchId(branches[0].id);
-    } else if (branches.length > 0 && !branches.find(b => b.id === filterBranchId)) {
+    // If filterBranchId is not set, or current filterBranchId is not in branches, set to first branch
+    if (branches.length > 0 && (!filterBranchId || !branches.find(b => b.id === filterBranchId))) {
       setFilterBranchId(branches[0].id);
     }
   };
 
   const handleOpenTransactionForm = (transaction?: DaybookTransaction) => {
+    // Reset selections
     setSelectedBiltiForTx(null);
     setSelectedPartyForTx(null);
     setSelectedLedgerForTx(null);
@@ -344,11 +351,12 @@ export default function DaybookPage() {
         referenceId: transaction.referenceId,
         partyId: transaction.partyId,
         ledgerAccountId: transaction.ledgerAccountId,
-        expenseHead: transaction.expenseHead,
+        // expenseHead: transaction.expenseHead, // expenseHead is part of ledger now or description
         supportingDocUrl: transaction.supportingDocUrl,
         reasonForAdjustment: transaction.reasonForAdjustment,
         nepaliMiti: transaction.nepaliMiti,
       });
+      // Pre-fill selected entities for edit form
       if (transaction.referenceId && (transaction.transactionType === "Cash In (from Delivery/Receipt)" || transaction.transactionType === "Delivery Expense (Cash Out)")) {
         setSelectedBiltiForTx(getBiltiDetailsById(transaction.referenceId) || null);
       }
@@ -357,7 +365,7 @@ export default function DaybookPage() {
 
     } else {
       setEditingTransaction(null);
-      setTransactionFormData(initialTransactionFormData);
+      setTransactionFormData({...initialTransactionFormData, transactionType: "Cash In (Other)", ledgerAccountId: ""}); // Ensure ledgerAccountId is reset for new
     }
     setIsTransactionFormOpen(true);
   };
@@ -372,11 +380,18 @@ export default function DaybookPage() {
     setTransactionFormData(prev => ({ ...prev, [name]: parsedValue }));
   };
 
+  const handleTransactionFormDateChange = (date?: Date) => {
+    if (date) {
+      setTransactionFormData(prev => ({...prev, nepaliMiti: format(date, "yyyy-MM-dd") })); // Assuming nepaliMiti is string here for form
+    }
+  };
+
   const handleTransactionFormTypeChange = (value: DaybookTransactionType) => {
-    setTransactionFormData(prev => ({ ...prev, transactionType: value, amount: 0, description: "" })); // Reset amount and desc
+    setTransactionFormData(prev => ({ ...prev, transactionType: value, amount: 0, description: "", ledgerAccountId: prev.ledgerAccountId || "" })); // Reset amount and desc, keep ledger if set
+    // Reset linked entities
     setSelectedBiltiForTx(null);
     setSelectedPartyForTx(null);
-    setSelectedLedgerForTx(null);
+    // Do not reset selectedLedgerForTx here, as ledger is now always required
   };
 
   const handleBiltiSelectForTx = (biltiId: string) => {
@@ -409,15 +424,21 @@ export default function DaybookPage() {
 
   const handleSaveTransaction = async () => {
     if (!filterBranchId || !filterNepaliMiti) {
-      toast({ title: "Error", description: "Branch and Miti must be selected.", variant: "destructive" });
+      toast({ title: "Error", description: "Branch and Miti must be selected for the Daybook.", variant: "destructive" });
       return;
     }
+
+    if (!transactionFormData.ledgerAccountId) {
+        toast({ title: "Validation Error", description: "Ledger Account / Expense Head is required for all transactions.", variant: "destructive" });
+        return;
+    }
+
     if (!transactionFormData.description && transactionFormData.transactionType !== "Cash In (from Delivery/Receipt)") {
-        toast({ title: "Validation Error", description: "Description is required.", variant: "destructive" });
+        toast({ title: "Validation Error", description: "Description / Narration is required.", variant: "destructive" });
         return;
     }
      if (transactionFormData.amount <= 0 && transactionFormData.transactionType !== "Adjustment/Correction") { // Allow zero/negative for adjustment
-        toast({ title: "Validation Error", description: "Amount must be greater than zero.", variant: "destructive" });
+        toast({ title: "Validation Error", description: "Amount must be greater than zero (except for Adjustments).", variant: "destructive" });
         return;
     }
     if (transactionFormData.transactionType === "Cash In (from Delivery/Receipt)" || transactionFormData.transactionType === "Delivery Expense (Cash Out)") {
@@ -425,11 +446,12 @@ export default function DaybookPage() {
             toast({ title: "Validation Error", description: "Please select a Bilti for this transaction type.", variant: "destructive" });
             return;
         }
+         // Check for duplicate Cash In for the same Bilti in the current Daybook's transactions
          if(transactionFormData.transactionType === "Cash In (from Delivery/Receipt)") {
             const existingCashInForBilti = (activeDaybookFromState?.transactions || activeDaybook?.transactions || [])
                 .find(tx => tx.referenceId === selectedBiltiForTx?.id && tx.transactionType === "Cash In (from Delivery/Receipt)" && tx.id !== editingTransaction?.id);
             if (existingCashInForBilti) {
-                toast({ title: "Duplicate Entry", description: `Cash in for Bilti ${selectedBiltiForTx?.id} already exists in this daybook.`, variant: "destructive"});
+                toast({ title: "Duplicate Entry", description: `Cash in for Bilti ${selectedBiltiForTx?.id} already exists in this daybook. Please edit the existing entry or choose a different Bilti.`, variant: "destructive"});
                 return;
             }
         }
@@ -441,19 +463,20 @@ export default function DaybookPage() {
     let daybookDocRef;
 
     try {
+      // Prepare transaction entry for Firestore
       const transactionEntry: FirestoreDaybookTransaction = {
-        id: editingTransaction ? editingTransaction.id : `txn_${Date.now()}`,
-        ...transactionFormData,
+        id: editingTransaction ? editingTransaction.id : `txn_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`, // More unique local ID
+        ...transactionFormData, // This includes ledgerAccountId
         nepaliMiti: transactionFormData.nepaliMiti || filterNepaliMiti, // Ensure Nepali Miti is set
-        createdBy: PLACEHOLDER_USER_ID,
+        createdBy: PLACEHOLDER_USER_ID, // Replace with actual authenticated user ID
         createdAt: Timestamp.now(),
         autoLinked: (transactionFormData.transactionType === "Cash In (from Delivery/Receipt)" || transactionFormData.transactionType === "Delivery Expense (Cash Out)") && !!transactionFormData.referenceId,
       };
 
-      if (!currentActiveDaybook) { // Create Daybook if it doesn't exist
+      if (!currentActiveDaybook) { // Daybook doesn't exist, create it first
         const parsedEnglishDate = parse(filterNepaliMiti, "yyyy-MM-dd", new Date());
         if (!isValid(parsedEnglishDate)) {
-          toast({ title: "Error", description: "Invalid Nepali Miti format.", variant: "destructive" });
+          toast({ title: "Error", description: "Invalid Nepali Miti format. Please use YYYY-MM-DD.", variant: "destructive" });
           setIsSubmittingTransaction(false);
           return;
         }
@@ -463,24 +486,26 @@ export default function DaybookPage() {
           nepaliMiti: filterNepaliMiti,
           englishMiti: Timestamp.fromDate(parsedEnglishDate),
           openingBalance: 0, // TODO: Implement fetching previous day's closing balance
-          totalCashIn: 0, totalCashOut: 0, closingBalance: 0, // Will be recalculated
+          totalCashIn: 0, totalCashOut: 0, closingBalance: 0, // Will be recalculated on display or server-side
           status: "Draft",
           transactions: [transactionEntry],
-          createdBy: PLACEHOLDER_USER_ID,
+          createdBy: PLACEHOLDER_USER_ID, // Replace with actual user
           createdAt: Timestamp.now(),
-          processingTimestamp: Timestamp.now(),
+          processingTimestamp: Timestamp.now(), // Set processing timestamp on creation
         };
         daybookDocRef = await addDoc(collection(db, "daybooks"), newDaybookPayload);
+        // Set the newly created daybook as active
         currentActiveDaybook = {
             ...newDaybookPayload,
             id: daybookDocRef.id,
             englishMiti: newDaybookPayload.englishMiti.toDate(),
             processingTimestamp: newDaybookPayload.processingTimestamp?.toDate(),
-            transactions: newDaybookPayload.transactions.map(tx => ({...tx, createdAt: tx.createdAt.toDate()})),
+            transactions: newDaybookPayload.transactions.map(tx => ({...tx, createdAt: tx.createdAt.toDate()})), // Convert Timestamps
             createdAt: newDaybookPayload.createdAt.toDate()
         };
-        toast({ title: "Daybook Created & Transaction Added", description: "New daybook initiated." });
+        toast({ title: "Daybook Created & Transaction Added", description: "New daybook initiated with the first transaction." });
       } else {
+        // Daybook exists, add/update transaction
         daybookDocRef = doc(db, "daybooks", currentActiveDaybook.id);
         const updatedTransactions = editingTransaction
           ? currentActiveDaybook.transactions.map(tx => tx.id === editingTransaction.id ? transactionEntry : tx)
@@ -489,19 +514,20 @@ export default function DaybookPage() {
         await updateDoc(daybookDocRef, {
             transactions: updatedTransactions.map(tx => ({...tx, createdAt: Timestamp.fromDate(tx.createdAt || new Date())})), // Ensure Timestamps
             updatedAt: Timestamp.now(),
-            updatedBy: PLACEHOLDER_USER_ID
+            updatedBy: PLACEHOLDER_USER_ID // Replace with actual user
         });
+        // Update local state
         currentActiveDaybook = { ...currentActiveDaybook, transactions: updatedTransactions.map(tx => ({...tx, createdAt: tx.createdAt})) as DaybookTransaction[] };
-        toast({ title: editingTransaction ? "Transaction Updated" : "Transaction Added", description: "Daybook updated." });
+        toast({ title: editingTransaction ? "Transaction Updated" : "Transaction Added", description: "Daybook successfully updated." });
       }
 
       setActiveDaybook(currentActiveDaybook); // Update local state immediately
-      setActiveDaybookFromState(currentActiveDaybook);
+      setActiveDaybookFromState(currentActiveDaybook); // Reflect changes for subsequent operations
 
 
       setIsTransactionFormOpen(false);
       setEditingTransaction(null);
-      setTransactionFormData(initialTransactionFormData); // Reset form
+      setTransactionFormData({...initialTransactionFormData, ledgerAccountId: ""}); // Reset form, clear ledger
       setSelectedBiltiForTx(null);
       setSelectedPartyForTx(null);
       setSelectedLedgerForTx(null);
@@ -516,21 +542,22 @@ export default function DaybookPage() {
 
   const handleDeleteTransaction = async () => {
     if (!activeDaybookFromState || !transactionToDelete) return;
-    setIsSubmittingTransaction(true);
+    setIsSubmittingTransaction(true); // Use same loading state or a specific one
     try {
         const updatedTransactions = activeDaybookFromState.transactions.filter(tx => tx.id !== transactionToDelete.id);
         const daybookDocRef = doc(db, "daybooks", activeDaybookFromState.id);
         await updateDoc(daybookDocRef, {
-            transactions: updatedTransactions.map(tx => ({...tx, createdAt: Timestamp.fromDate(tx.createdAt || new Date())})),
+            transactions: updatedTransactions.map(tx => ({...tx, createdAt: Timestamp.fromDate(tx.createdAt || new Date())})), // Ensure Timestamps
             updatedAt: Timestamp.now(),
             updatedBy: PLACEHOLDER_USER_ID
         });
 
+        // Update local state
         const updatedDaybook = { ...activeDaybookFromState, transactions: updatedTransactions };
         setActiveDaybook(updatedDaybook);
         setActiveDaybookFromState(updatedDaybook);
 
-        toast({ title: "Transaction Deleted", description: `Transaction "${transactionToDelete.description}" removed.` });
+        toast({ title: "Transaction Deleted", description: `Transaction "${transactionToDelete.description}" removed from the daybook.` });
         setIsDeleteTransactionAlertOpen(false);
         setTransactionToDelete(null);
     } catch (error) {
@@ -543,7 +570,7 @@ export default function DaybookPage() {
 
   const handleSubmitDaybook = async () => {
     if (!activeDaybookFromState || activeDaybookFromState.transactions.length === 0) {
-        toast({ title: "Cannot Submit", description: "Add at least one transaction before submitting.", variant: "destructive"});
+        toast({ title: "Cannot Submit", description: "Please add at least one transaction before submitting the daybook.", variant: "destructive"});
         return;
     }
     setIsSubmittingDaybook(true);
@@ -557,7 +584,7 @@ export default function DaybookPage() {
         const updatedDaybook = { ...activeDaybookFromState, status: "Pending Approval" as const, submittedAt: new Date(), submittedBy: PLACEHOLDER_USER_ID };
         setActiveDaybook(updatedDaybook);
         setActiveDaybookFromState(updatedDaybook);
-        toast({ title: "Daybook Submitted", description: "Daybook sent for approval."});
+        toast({ title: "Daybook Submitted", description: "Daybook has been submitted for approval."});
     } catch (error) {
         console.error("Error submitting daybook:", error);
         toast({ title: "Error", description: "Failed to submit daybook.", variant: "destructive"});
@@ -578,21 +605,21 @@ export default function DaybookPage() {
             approvedBy: SIMULATED_SUPER_ADMIN_ID, // Replace with actual admin user
         });
 
-        // Client-side updates for linked Biltis (production should use Cloud Functions)
+        // Client-side updates for linked Biltis (production should use Cloud Functions for atomicity)
         activeDaybookFromState.transactions.forEach(tx => {
             if (tx.transactionType === "Cash In (from Delivery/Receipt)" && tx.referenceId) {
                 const biltiDocRef = doc(db, "biltis", tx.referenceId);
                 batch.update(biltiDocRef, {
-                    status: "Paid",
-                    cashCollectionStatus: "Collected",
-                    daybookCashInRef: tx.id
+                    status: "Paid", // Mark Bilti as "Paid"
+                    cashCollectionStatus: "Collected", // Update cash collection status
+                    daybookCashInRef: tx.id // Store reference to this daybook transaction
                 });
             } else if (tx.transactionType === "Delivery Expense (Cash Out)" && tx.referenceId) {
                 const bilti = allBiltisMaster.find(b => b.id === tx.referenceId);
                 if (bilti) {
                     const biltiDocRef = doc(db, "biltis", tx.referenceId);
                     const newExpense = {
-                        daybookTransactionId: tx.id,
+                        daybookTransactionId: tx.id, // Link back to daybook transaction
                         amount: tx.amount,
                         description: tx.description,
                         miti: Timestamp.fromDate(activeDaybookFromState.englishMiti) // Or tx.createdAt.toDate()
@@ -601,15 +628,18 @@ export default function DaybookPage() {
                     batch.update(biltiDocRef, { deliveryExpenses: updatedExpenses });
                 }
             }
+            // TODO: Add logic here to post entries to ledgerAccounts for *all* transaction types
+            // This part is complex and ideally server-side. For now, it's a placeholder comment.
+            // e.g., create new documents in 'ledgerEntries' collection.
         });
         await batch.commit();
 
         const updatedDaybook = { ...activeDaybookFromState, status: "Approved" as const, approvedAt: new Date(), approvedBy: SIMULATED_SUPER_ADMIN_ID };
         setActiveDaybook(updatedDaybook);
         setActiveDaybookFromState(updatedDaybook);
-        // Refresh master data to reflect bilti status changes
+        // Refresh master data if bilti statuses changed affect selections
         fetchMasterData();
-        toast({ title: "Daybook Approved", description: "Daybook has been approved and linked records updated."});
+        toast({ title: "Daybook Approved", description: "Daybook has been approved and linked records updated (simulated). Ledger posting not yet implemented."});
     } catch (error) {
         console.error("Error approving daybook:", error);
         toast({ title: "Error", description: "Failed to approve daybook.", variant: "destructive"});
@@ -622,7 +652,7 @@ export default function DaybookPage() {
     if (!activeDaybookFromState) return;
     const remarks = prompt("Enter rejection remarks (optional):");
     // If user cancels prompt, remarks will be null. We proceed even if null.
-    setIsApprovingDaybook(true); // Use same loading state
+    setIsApprovingDaybook(true); // Use same loading state for simplicity
     try {
         const daybookDocRef = doc(db, "daybooks", activeDaybookFromState.id);
         await updateDoc(daybookDocRef, {
@@ -644,7 +674,7 @@ export default function DaybookPage() {
   };
 
   const currentDaybookState = activeDaybookFromState || activeDaybook;
-  const canEditDaybook = currentDaybookState?.status === "Draft" || (currentDaybookState?.status === "Rejected" && !isSuperAdmin);
+  const canEditDaybook = currentDaybookState?.status === "Draft" || (currentDaybookState?.status === "Rejected" && !isSuperAdmin); // Branch manager can edit if rejected by admin
 
 
   return (
@@ -671,6 +701,7 @@ export default function DaybookPage() {
       <Card className="shadow-lg">
         <CardHeader>
           <CardTitle className="font-headline text-xl">Select Daybook</CardTitle>
+          {/* <CardDescription>Select a branch and date to view or manage its daybook.</CardDescription> */}
         </CardHeader>
         <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
           <div>
@@ -705,13 +736,15 @@ export default function DaybookPage() {
         </CardContent>
       </Card>
 
+      {/* Loading state for entire daybook */}
       {isLoading && !currentDaybookState && (
         <div className="flex justify-center items-center h-32">
           <Loader2 className="h-8 w-8 animate-spin text-primary" />
-          <p className="ml-3 text-muted-foreground">Loading daybook...</p>
+          <p className="ml-3 text-muted-foreground">Loading daybook data...</p>
         </div>
       )}
 
+      {/* Daybook not yet created message */}
       {!isLoading && filterBranchId && filterNepaliMiti && !currentDaybookState && (
          <Card className="shadow-lg border-dashed border-primary/50">
           <CardHeader>
@@ -736,6 +769,7 @@ export default function DaybookPage() {
         </Card>
       )}
 
+      {/* Active Daybook Display */}
       {currentDaybookState && (
         <Card className="shadow-lg">
           <CardHeader>
@@ -869,11 +903,12 @@ export default function DaybookPage() {
         </Card>
       )}
 
+      {/* Transaction Add/Edit Dialog */}
       <Dialog open={isTransactionFormOpen} onOpenChange={(isOpen) => {
           setIsTransactionFormOpen(isOpen);
           if (!isOpen) {
             setEditingTransaction(null);
-            setTransactionFormData(initialTransactionFormData);
+            setTransactionFormData({...initialTransactionFormData, ledgerAccountId: ""});
             setSelectedBiltiForTx(null);
             setSelectedPartyForTx(null);
             setSelectedLedgerForTx(null);
@@ -884,11 +919,11 @@ export default function DaybookPage() {
             <DialogHeader>
                 <DialogTitle>{editingTransaction ? "Edit Transaction" : "Add New Transaction"}</DialogTitle>
                 <DialogDescription>
-                    Enter details for the cash book transaction. Fields marked * are required.
+                    Enter details for the cash book transaction. Fields marked <span className="text-destructive">*</span> are required.
                 </DialogDescription>
             </DialogHeader>
-            <ScrollArea className="flex-grow pr-1">
-            <form onSubmit={(e) => { e.preventDefault(); handleSaveTransaction(); }} className="space-y-3 py-2">
+            <ScrollArea className="flex-grow pr-1"> {/* Added pr-1 for scrollbar visibility if needed */}
+            <form onSubmit={(e) => { e.preventDefault(); handleSaveTransaction(); }} className="space-y-3 py-2"> {/* Removed grid and items-center for more natural flow */}
                  <div>
                     <Label htmlFor="txType">Transaction Type <span className="text-destructive">*</span></Label>
                     <Select value={transactionFormData.transactionType} onValueChange={handleTransactionFormTypeChange} required>
@@ -904,33 +939,38 @@ export default function DaybookPage() {
                 </div>
 
 
+                {/* Bilti Selection - Conditional */}
                 {(transactionFormData.transactionType === "Cash In (from Delivery/Receipt)" || transactionFormData.transactionType === "Delivery Expense (Cash Out)") && (
                     <div>
                         <Label htmlFor="biltiSelect">Select Bilti <span className="text-destructive">*</span></Label>
                         <Popover open={isBiltiSelectOpen} onOpenChange={setIsBiltiSelectOpen}>
                             <PopoverTrigger asChild>
-                                <Button id="biltiSelect" variant="outline" className="w-full justify-start">
+                                <Button id="biltiSelect" variant="outline" className="w-full justify-start text-left">
                                     {selectedBiltiForTx ? `${selectedBiltiForTx.id} (To: ${selectedBiltiForTx.destination})` : "Select Bilti..."}
                                     <ChevronsUpDown className="ml-auto h-4 w-4 shrink-0 opacity-50" />
                                 </Button>
                             </PopoverTrigger>
-                            <PopoverContent className="w-[450px] p-0" align="start">
+                            <PopoverContent className="w-[450px] p-0" align="start"> {/* Increased width */}
                                 <Command>
                                     <CommandInput placeholder="Search Bilti No. or Destination..." onValueChange={setBiltiSearchTerm} value={biltiSearchTerm}/>
                                     <CommandList className="max-h-[250px] overflow-y-auto">
                                     <CommandEmpty>No Bilti found.</CommandEmpty>
                                     {allBiltisMaster
-                                        .filter(b =>
-                                            (transactionFormData.transactionType === "Cash In (from Delivery/Receipt)" ?
-                                                (b.status === "Delivered" || b.status === "Received") && b.payMode !== "Paid" && b.cashCollectionStatus !== "Collected" : true) &&
-                                            (b.id.toLowerCase().includes(biltiSearchTerm.toLowerCase()) || b.destination.toLowerCase().includes(biltiSearchTerm.toLowerCase()))
-                                        )
+                                        .filter(b => {
+                                            // Filter for "Cash In (from Delivery/Receipt)"
+                                            if (transactionFormData.transactionType === "Cash In (from Delivery/Receipt)") {
+                                                return (b.status === "Delivered" || b.status === "Received") && b.payMode !== "Paid" && b.cashCollectionStatus !== "Collected" &&
+                                                       (b.id.toLowerCase().includes(biltiSearchTerm.toLowerCase()) || b.destination.toLowerCase().includes(biltiSearchTerm.toLowerCase()));
+                                            }
+                                            // General filter for "Delivery Expense (Cash Out)"
+                                            return (b.id.toLowerCase().includes(biltiSearchTerm.toLowerCase()) || b.destination.toLowerCase().includes(biltiSearchTerm.toLowerCase()));
+                                        })
                                         .map(bilti => (
                                         <CommandItem
                                             key={bilti.id}
-                                            value={`${bilti.id} ${bilti.destination} ${getPartyNameById(bilti.consigneeId)}`}
+                                            value={`${bilti.id} ${bilti.destination} ${getPartyNameById(bilti.consigneeId)}`} // Make value more unique for Command
                                             onSelect={() => handleBiltiSelectForTx(bilti.id)}
-                                            className="cursor-pointer flex flex-col items-start !text-left p-2 hover:bg-accent"
+                                            className="cursor-pointer flex flex-col items-start !text-left p-2 hover:bg-accent" // Custom styling
                                         >
                                             <div className="flex w-full justify-between items-center">
                                                 <p className="font-semibold text-primary">{bilti.id}</p>
@@ -960,12 +1000,13 @@ export default function DaybookPage() {
                               readOnly={transactionFormData.transactionType === "Cash In (from Delivery/Receipt)" && !!selectedBiltiForTx} required rows={3}/>
                 </div>
 
+                {/* Party Selection - Conditional (but ledger is always shown now) */}
                 {(transactionFormData.transactionType === "Cash Out (to Expense/Supplier/Other)" || transactionFormData.transactionType === "Cash In (Other)" || transactionFormData.transactionType === "Cash In (from Party Payment)") && (
                     <div>
                         <Label htmlFor="partySelect">Party (Optional)</Label>
                          <Popover open={isPartySelectOpen} onOpenChange={setIsPartySelectOpen}>
                             <PopoverTrigger asChild>
-                                <Button id="partySelect" variant="outline" className="w-full justify-start">
+                                <Button id="partySelect" variant="outline" className="w-full justify-start text-left">
                                     {selectedPartyForTx ? selectedPartyForTx.name : "Select Party..."}
                                     <ChevronsUpDown className="ml-auto h-4 w-4 shrink-0 opacity-50" />
                                 </Button>
@@ -987,40 +1028,35 @@ export default function DaybookPage() {
                         </Popover>
                     </div>
                 )}
+                
+                {/* Ledger Account Selection - Always Visible */}
+                <div>
+                    <Label htmlFor="ledgerAccountSelect">Ledger Account / Expense Head <span className="text-destructive">*</span></Label>
+                     <Popover open={isLedgerSelectOpen} onOpenChange={setIsLedgerSelectOpen}>
+                        <PopoverTrigger asChild>
+                            <Button id="ledgerAccountSelect" variant="outline" className="w-full justify-start text-left">
+                                {selectedLedgerForTx ? selectedLedgerForTx.accountName : "Select Ledger/Expense Head..."}
+                                <ChevronsUpDown className="ml-auto h-4 w-4 shrink-0 opacity-50" />
+                            </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
+                            <Command>
+                                <CommandInput placeholder="Search Ledger/Expense..." onValueChange={setLedgerSearchTerm} value={ledgerSearchTerm}/>
+                                <CommandList>
+                                <CommandEmpty>No Ledger/Expense Head found.</CommandEmpty>
+                                {ledgerAccounts.filter(la => la.accountName.toLowerCase().includes(ledgerSearchTerm.toLowerCase())).map(la => (
+                                    <CommandItem key={la.id} value={la.accountName} onSelect={() => handleLedgerSelectForTx(la.id)} className="cursor-pointer">
+                                        <CheckIcon className={cn("mr-2 h-4 w-4", selectedLedgerForTx?.id === la.id ? "opacity-100" : "opacity-0")}/>
+                                        {la.accountName} ({la.accountType})
+                                    </CommandItem>
+                                ))}
+                                </CommandList>
+                            </Command>
+                        </PopoverContent>
+                    </Popover>
+                </div>
 
-                {(transactionFormData.transactionType === "Cash Out (to Expense/Supplier/Other)" || transactionFormData.transactionType === "Delivery Expense (Cash Out)" || transactionFormData.transactionType === "Cash Out (to Driver/Staff, Petty Expense)") && (
-                     <div>
-                        <Label htmlFor="ledgerAccountSelect">Ledger Account / Expense Head (Optional)</Label>
-                         <Popover open={isLedgerSelectOpen} onOpenChange={setIsLedgerSelectOpen}>
-                            <PopoverTrigger asChild>
-                                <Button id="ledgerAccountSelect" variant="outline" className="w-full justify-start">
-                                    {selectedLedgerForTx ? selectedLedgerForTx.accountName : "Select Ledger/Expense Head..."}
-                                    <ChevronsUpDown className="ml-auto h-4 w-4 shrink-0 opacity-50" />
-                                </Button>
-                            </PopoverTrigger>
-                            <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
-                                <Command>
-                                    <CommandInput placeholder="Search Ledger/Expense..." onValueChange={setLedgerSearchTerm} value={ledgerSearchTerm}/>
-                                    <CommandList>
-                                    <CommandEmpty>No Ledger/Expense Head found.</CommandEmpty>
-                                    {ledgerAccounts.filter(la => la.accountName.toLowerCase().includes(ledgerSearchTerm.toLowerCase())).map(la => (
-                                        <CommandItem key={la.id} value={la.accountName} onSelect={() => handleLedgerSelectForTx(la.id)} className="cursor-pointer">
-                                            <CheckIcon className={cn("mr-2 h-4 w-4", selectedLedgerForTx?.id === la.id ? "opacity-100" : "opacity-0")}/>
-                                            {la.accountName} ({la.accountType})
-                                        </CommandItem>
-                                    ))}
-                                    </CommandList>
-                                </Command>
-                            </PopoverContent>
-                        </Popover>
-                    </div>
-                )}
-                 {transactionFormData.transactionType === "Cash Out (to Expense/Supplier/Other)" && !selectedLedgerForTx && (
-                     <div>
-                        <Label htmlFor="txExpenseHead">Manual Expense Head (if no ledger selected)</Label>
-                        <Input id="txExpenseHead" name="expenseHead" value={transactionFormData.expenseHead || ""} onChange={handleTransactionFormInputChange} />
-                    </div>
-                )}
+                {/* Removed Manual Expense Head Input as Ledger Account selection is now mandatory */}
 
                 {transactionFormData.transactionType === "Adjustment/Correction" && (
                     <div>
@@ -1036,7 +1072,7 @@ export default function DaybookPage() {
                         <Button type="button" variant="outline" size="icon" onClick={() => alert("File upload not implemented")} aria-label="Upload document"><UploadCloud className="h-4 w-4"/></Button>
                     </div>
                 </div>
-                <DialogFooter className="pt-4 border-t !mt-6">
+                <DialogFooter className="pt-4 border-t !mt-6"> {/* Use !mt-6 to ensure spacing */}
                     <DialogClose asChild><Button type="button" variant="outline" disabled={isSubmittingTransaction}>Cancel</Button></DialogClose>
                     <Button type="submit" disabled={isSubmittingTransaction}>
                         {isSubmittingTransaction && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
@@ -1048,6 +1084,7 @@ export default function DaybookPage() {
         </DialogContent>
       </Dialog>
 
+      {/* Delete Transaction Confirmation Dialog */}
       <AlertDialog open={isDeleteTransactionAlertOpen} onOpenChange={setIsDeleteTransactionAlertOpen}>
         <AlertDialogContent>
             <AlertDialogHeader>
@@ -1069,3 +1106,4 @@ export default function DaybookPage() {
     </div>
   );
 }
+
