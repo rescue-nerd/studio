@@ -9,6 +9,9 @@ export interface User {
   assignedBranchIds: string[];
   createdAt: Timestamp;
   lastLoginAt?: Timestamp;
+  enableEmailNotifications?: boolean;
+  darkModeEnabled?: boolean;
+  autoDataSyncEnabled?: boolean;
 }
 
 export interface Branch {
