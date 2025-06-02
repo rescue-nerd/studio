@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { PlusCircle, Printer, Search, Edit, Trash2 } from "lucide-react";
+import { PlusCircle, Printer, Search, Edit, Trash2, CalendarIcon, Loader2 } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -31,68 +31,59 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { CalendarIcon } from "lucide-react";
 import { Calendar } from "@/components/ui/calendar";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import SmartPartySelectDialog from "@/components/shared/smart-party-select-dialog";
+import { db } from "@/lib/firebase";
+import { 
+  collection, 
+  getDocs, 
+  addDoc, 
+  doc, 
+  updateDoc, 
+  deleteDoc, 
+  Timestamp,
+  query,
+  orderBy,
+  type DocumentData,
+  type QueryDocumentSnapshot
+} from "firebase/firestore";
+import type { 
+  Party as FirestoreParty, 
+  Truck as FirestoreTruck, 
+  Driver as FirestoreDriver,
+  Bilti as FirestoreBilti
+} from "@/types/firestore";
+import { ScrollArea } from "@/components/ui/scroll-area";
 
 
-// Interfaces
-export interface Party {
+// Interfaces (aligning with Firestore types)
+export interface Party extends FirestoreParty {} // Includes ID from Firestore
+export interface Truck extends FirestoreTruck {} // Includes ID from Firestore
+export interface Driver extends FirestoreDriver {} // Includes ID from Firestore
+export interface Bilti extends Omit<FirestoreBilti, 'miti' | 'createdAt' | 'updatedAt'> {
   id: string;
-  name: string;
-  type: "Consignor" | "Consignee" | "Both";
-  contactNo: string;
-  panNo?: string;
-  address?: string;
-  assignedLedger: string; // Crucial for ledger linking
-  status: "Active" | "Inactive";
-}
-interface Truck {
-  id: string;
-  truckNo: string;
-  assignedLedger: string; // Crucial for ledger linking
-}
-interface Driver {
-  id: string;
-  name: string;
-  assignedLedger: string; // Crucial for ledger linking
-}
-export interface Bilti {
-  id: string; 
-  miti: Date;
-  nepaliMiti?: string; // Added for Bikram Sambat date
-  consignorId: string;
-  consigneeId: string;
-  origin: string;
-  destination: string;
-  description: string;
-  packages: number;
-  weight?: number; 
-  rate: number;
-  totalAmount: number;
-  payMode: "Paid" | "To Pay" | "Due";
-  truckId: string;
-  driverId: string;
-  status?: string; 
+  miti: Date; // Use Date for form state, convert to Timestamp for Firestore
+  createdAt?: Date | Timestamp;
+  updatedAt?: Date | Timestamp;
 }
 
-// Mock data for master lists
-const initialMockParties: Party[] = [
-  { id: "PTY001", name: "Global Traders (KTM)", type: "Both", contactNo: "9800000001", panNo: "PAN123KTM", address: "Kathmandu", assignedLedger: "LEDGER-PTY001", status: "Active" },
-  { id: "PTY002", name: "National Distributors (PKR)", type: "Both", contactNo: "9800000002", panNo: "PAN456PKR", address: "Pokhara", assignedLedger: "LEDGER-PTY002", status: "Active" },
-  { id: "PTY003", name: "Himalayan Goods Co. (BRT)", type: "Both", contactNo: "9800000003", panNo: "PAN789BRT", address: "Biratnagar", assignedLedger: "LEDGER-PTY003", status: "Inactive" },
-];
-const mockTrucks: Truck[] = [
-  { id: "TRK001", truckNo: "BA 1 KA 1234", assignedLedger: "LEDGER-TRK001" },
-  { id: "TRK002", truckNo: "NA 5 KHA 5678", assignedLedger: "LEDGER-TRK002" },
-];
-const mockDrivers: Driver[] = [
-  { id: "DRV001", name: "Suresh Kumar", assignedLedger: "LEDGER-DRV001" },
-  { id: "DRV002", name: "Bimala Rai", assignedLedger: "LEDGER-DRV002" },
-];
+
+// Mock data for master lists - will be replaced by Firestore fetching
+// const initialMockParties: Party[] = [
+//   { id: "PTY001", name: "Global Traders (KTM)", type: "Both", contactNo: "9800000001", panNo: "PAN123KTM", address: "Kathmandu", assignedLedgerId: "LEDGER-PTY001", status: "Active", createdAt: Timestamp.now(), createdBy: "sys" },
+//   { id: "PTY002", name: "National Distributors (PKR)", type: "Both", contactNo: "9800000002", panNo: "PAN456PKR", address: "Pokhara", assignedLedgerId: "LEDGER-PTY002", status: "Active", createdAt: Timestamp.now(), createdBy: "sys" },
+// ];
+// const mockTrucks: Truck[] = [
+//   { id: "TRK001", truckNo: "BA 1 KA 1234", assignedLedgerId: "LEDGER-TRK001", type: "6-Wheeler", ownerName:"A", status:"Active", createdAt: Timestamp.now(), createdBy: "sys" },
+//   { id: "TRK002", truckNo: "NA 5 KHA 5678", assignedLedgerId: "LEDGER-TRK002", type: "10-Wheeler", ownerName:"B", status:"Active", createdAt: Timestamp.now(), createdBy: "sys" },
+// ];
+// const mockDrivers: Driver[] = [
+//   { id: "DRV001", name: "Suresh Kumar", assignedLedgerId: "LEDGER-DRV001", licenseNo: "L1", contactNo: "C1", status: "Active", createdAt: Timestamp.now(), createdBy: "sys" },
+//   { id: "DRV002", name: "Bimala Rai", assignedLedgerId: "LEDGER-DRV002", licenseNo: "L2", contactNo: "C2", status: "Active", createdAt: Timestamp.now(), createdBy: "sys" },
+// ];
 
 const mockMasterBranches: Array<{ id: string; name: string }> = [
   { id: "BRN001", name: "Kathmandu Main Branch" },
@@ -117,9 +108,9 @@ const locationOptions = Array.from(
 ).sort().map(loc => ({ value: loc, label: loc }));
 
 
-const payModes: Bilti["payMode"][] = ["Paid", "To Pay", "Due"];
+const payModes: FirestoreBilti["payMode"][] = ["Paid", "To Pay", "Due"];
 
-const defaultBiltiFormData: Omit<Bilti, 'id' | 'totalAmount' | 'status'> = {
+const defaultBiltiFormData: Omit<Bilti, 'id' | 'totalAmount' | 'status' | 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy'> = {
   miti: new Date(),
   nepaliMiti: "",
   consignorId: "",
@@ -131,17 +122,24 @@ const defaultBiltiFormData: Omit<Bilti, 'id' | 'totalAmount' | 'status'> = {
   weight: 0,
   rate: 0,
   payMode: "To Pay",
-  truckId: mockTrucks[0]?.id || "",
-  driverId: mockDrivers[0]?.id || "",
+  truckId: "", 
+  driverId: "",
 };
+
+const PLACEHOLDER_USER_ID = "system_user_placeholder";
 
 export default function InvoicingPage() {
   const [biltis, setBiltis] = useState<Bilti[]>([]);
-  const [parties, setParties] = useState<Party[]>(initialMockParties); 
+  const [parties, setParties] = useState<Party[]>([]); 
+  const [trucks, setTrucks] = useState<Truck[]>([]);
+  const [drivers, setDrivers] = useState<Driver[]>([]);
+
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [isFormDialogOpen, setIsFormDialogOpen] = useState(false);
   const [editingBilti, setEditingBilti] = useState<Bilti | null>(null);
-  const [formData, setFormData] = useState<Omit<Bilti, 'id' | 'totalAmount' | 'status'>>(defaultBiltiFormData);
+  const [formData, setFormData] = useState<Omit<Bilti, 'id' | 'totalAmount' | 'status' | 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy'>>(defaultBiltiFormData);
   const [totalAmount, setTotalAmount] = useState(0);
   const { toast } = useToast();
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
@@ -152,6 +150,64 @@ export default function InvoicingPage() {
 
   const [selectedConsignor, setSelectedConsignor] = useState<Party | null>(null);
   const [selectedConsignee, setSelectedConsignee] = useState<Party | null>(null);
+
+  // Fetch master data
+  const fetchMasterData = async () => {
+    try {
+      const [partiesSnapshot, trucksSnapshot, driversSnapshot] = await Promise.all([
+        getDocs(query(collection(db, "parties"), orderBy("name"))),
+        getDocs(query(collection(db, "trucks"), orderBy("truckNo"))),
+        getDocs(query(collection(db, "drivers"), orderBy("name")))
+      ]);
+      setParties(partiesSnapshot.docs.map(doc => ({ ...doc.data() as FirestoreParty, id: doc.id })));
+      setTrucks(trucksSnapshot.docs.map(doc => ({ ...doc.data() as FirestoreTruck, id: doc.id })));
+      setDrivers(driversSnapshot.docs.map(doc => ({ ...doc.data() as FirestoreDriver, id: doc.id })));
+      
+      // Set default truck/driver if available and not editing
+      if (!editingBilti) {
+        setFormData(prev => ({
+          ...prev,
+          truckId: trucksSnapshot.docs.length > 0 ? trucksSnapshot.docs[0].id : "",
+          driverId: driversSnapshot.docs.length > 0 ? driversSnapshot.docs[0].id : "",
+        }));
+      }
+
+    } catch (error) {
+      console.error("Error fetching master data: ", error);
+      toast({ title: "Error", description: "Failed to load master data (parties, trucks, drivers).", variant: "destructive" });
+    }
+  };
+  
+  const fetchBiltis = async () => {
+    setIsLoading(true);
+    try {
+      const biltisCollectionRef = collection(db, "biltis");
+      const q = query(biltisCollectionRef, orderBy("createdAt", "desc"));
+      const querySnapshot = await getDocs(q);
+      const fetchedBiltis: Bilti[] = querySnapshot.docs.map(docSnap => {
+        const data = docSnap.data() as FirestoreBilti;
+        return {
+          ...data,
+          id: docSnap.id,
+          miti: data.miti.toDate(), // Convert Timestamp to Date
+          createdAt: data.createdAt?.toDate(),
+          updatedAt: data.updatedAt?.toDate(),
+        };
+      });
+      setBiltis(fetchedBiltis);
+    } catch (error) {
+      console.error("Error fetching biltis: ", error);
+      toast({ title: "Error", description: "Failed to fetch Biltis.", variant: "destructive" });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+  
+  useEffect(() => {
+    fetchMasterData();
+    fetchBiltis();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
 
   useEffect(() => {
@@ -169,7 +225,7 @@ export default function InvoicingPage() {
     setFormData((prev) => ({ ...prev, [name]: parsedValue }));
   };
 
-  const handleSelectChange = (name: keyof Omit<Bilti, 'id' | 'totalAmount' | 'status'>) => (value: string) => {
+  const handleSelectChange = (name: keyof Omit<Bilti, 'id' | 'totalAmount' | 'status' | 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy' | 'miti' >) => (value: string) => {
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
@@ -180,13 +236,19 @@ export default function InvoicingPage() {
   };
 
   const generateBiltiNo = (): string => {
-    const nextId = biltis.length + 1 + Math.floor(Math.random() * 100);
-    return `BLT-${String(nextId).padStart(3, '0')}`;
+    // This is a client-side mock. Real auto-numbering should be server-side or use Firestore transactions
+    // with a dedicated counter document, especially if perBranch is true.
+    // For now, we use a simpler approach, assuming DocumentNumberingConfig is fetched and used.
+    // Placeholder - replace with actual logic using DocumentNumberingConfig from Firestore.
+    const randomSuffix = Math.floor(Math.random() * 10000);
+    return `BLT-${String(Date.now()).slice(-4)}-${String(randomSuffix).padStart(4, '0')}`;
   };
 
   const openAddForm = () => {
     setEditingBilti(null);
-    setFormData({...defaultBiltiFormData, miti: new Date(), nepaliMiti: "" });
+    const defaultTruckId = trucks.length > 0 ? trucks[0].id : "";
+    const defaultDriverId = drivers.length > 0 ? drivers[0].id : "";
+    setFormData({...defaultBiltiFormData, miti: new Date(), nepaliMiti: "", truckId: defaultTruckId, driverId: defaultDriverId });
     setSelectedConsignor(null);
     setSelectedConsignee(null);
     setTotalAmount(0);
@@ -195,7 +257,7 @@ export default function InvoicingPage() {
 
   const openEditForm = (bilti: Bilti) => {
     setEditingBilti(bilti);
-    const { totalAmount, status, consignorId, consigneeId, ...editableData } = bilti; // Exclude totalAmount and status
+    const { totalAmount, status, consignorId, consigneeId, createdAt, createdBy, updatedAt, updatedBy, ...editableData } = bilti; 
     setFormData({...editableData, consignorId, consigneeId, nepaliMiti: bilti.nepaliMiti || ""}); 
     setSelectedConsignor(parties.find(p => p.id === consignorId) || null);
     setSelectedConsignee(parties.find(p => p.id === consigneeId) || null);
@@ -203,10 +265,31 @@ export default function InvoicingPage() {
     setIsFormDialogOpen(true);
   };
 
-  const handlePartyAdd = (newParty: Party) => {
-    setParties(prevParties => [...prevParties, newParty]);
-     toast({ title: "Party Added", description: `${newParty.name} has been added to master records. Ledger: ${newParty.assignedLedger}` });
+  const handlePartyAdd = async (newPartyData: Omit<Party, 'id' | 'createdAt' | 'createdBy'>) => {
+    // This function is called by SmartPartySelectDialog when a new party is added
+    // It should add the party to Firestore and then update the local parties state
+    setIsSubmitting(true);
+    try {
+      const partyPayload: Omit<FirestoreParty, 'id'> = {
+        ...newPartyData,
+        assignedLedgerId: newPartyData.assignedLedgerId || `LEDGER-${newPartyData.panNo?.toUpperCase() || Date.now()}`,
+        createdAt: Timestamp.now(),
+        createdBy: PLACEHOLDER_USER_ID,
+      };
+      const docRef = await addDoc(collection(db, "parties"), partyPayload);
+      const newParty: Party = { ...partyPayload, id: docRef.id };
+      setParties(prev => [...prev, newParty].sort((a,b) => a.name.localeCompare(b.name)));
+      toast({ title: "Party Added", description: `${newParty.name} has been added.` });
+      return newParty; // Return the newly added party so the dialog can use it
+    } catch (error) {
+      console.error("Error adding party from dialog: ", error);
+      toast({ title: "Error", description: "Failed to add new party.", variant: "destructive" });
+      return null;
+    } finally {
+      setIsSubmitting(false);
+    }
   };
+
 
   const handleConsignorSelect = (party: Party) => {
     setFormData(prev => ({...prev, consignorId: party.id}));
@@ -218,55 +301,69 @@ export default function InvoicingPage() {
   };
 
 
-  const handleSubmit = (e: FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     if (!formData.consignorId || !formData.consigneeId || !formData.truckId || !formData.driverId || !formData.origin || !formData.destination || !formData.description) {
         toast({
             title: "Missing Fields",
-            description: "Please fill all required fields for the Bilti (Consignor, Consignee, Origin, Destination, Description, Truck, Driver).",
+            description: "Consignor, Consignee, Origin, Destination, Description, Truck, and Driver are required.",
             variant: "destructive",
         });
         return;
     }
+    setIsSubmitting(true);
     
     const currentTotalAmount = (formData.packages || 0) * (formData.rate || 0);
 
+    const biltiDataPayload: Omit<FirestoreBilti, 'id' | 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy' | 'status' > & Partial<Pick<FirestoreBilti, 'status' | 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy'>> = {
+      ...formData,
+      miti: Timestamp.fromDate(formData.miti),
+      totalAmount: currentTotalAmount,
+    };
+
+
     if (editingBilti) {
-      const updatedBilti: Bilti = {
-        ...formData,
-        id: editingBilti.id,
-        totalAmount: currentTotalAmount,
-        status: editingBilti.status, 
-        nepaliMiti: formData.nepaliMiti,
-      };
-      setBiltis(biltis.map(b => b.id === editingBilti.id ? updatedBilti : b));
-      toast({ 
-        title: "Bilti Updated", 
-        description: `Bilti ${updatedBilti.id} updated. Ledger entries (simulated) adjusted for Party, Truck, and Driver.` 
-      });
+      try {
+        const biltiDocRef = doc(db, "biltis", editingBilti.id);
+        await updateDoc(biltiDocRef, {
+          ...biltiDataPayload,
+          status: editingBilti.status, // Preserve existing status on edit
+          updatedAt: Timestamp.now(),
+          updatedBy: PLACEHOLDER_USER_ID,
+        });
+        toast({ title: "Bilti Updated", description: `Bilti ${editingBilti.id} updated.`});
+      } catch (error) {
+        console.error("Error updating bilti: ", error);
+        toast({ title: "Error", description: "Failed to update Bilti.", variant: "destructive" });
+      }
     } else {
-      const newBilti: Bilti = {
-        ...formData,
-        id: generateBiltiNo(),
-        totalAmount: currentTotalAmount,
-        status: "Pending", 
-        nepaliMiti: formData.nepaliMiti,
-      };
-      setBiltis(prevBiltis => [...prevBiltis, newBilti]);
-      toast({ 
-        title: "Bilti Created", 
-        description: `Bilti ${newBilti.id} created. Ledger entries (simulated) posted for Party, Truck, and Driver.` 
-      });
+      try {
+        // In a real app, Bilti No generation would be server-side or use Firestore transactions
+        // const newBiltiId = generateBiltiNo(); // For now, Firestore auto-ID is fine
+        await addDoc(collection(db, "biltis"), {
+          ...biltiDataPayload,
+          // id: newBiltiId, // Not needed if Firestore generates ID
+          status: "Pending" as FirestoreBilti["status"], 
+          createdAt: Timestamp.now(),
+          createdBy: PLACEHOLDER_USER_ID,
+        });
+        toast({ title: "Bilti Created", description: `New Bilti created.` });
+      } catch (error) {
+        console.error("Error adding Bilti: ", error);
+        toast({ title: "Error", description: "Failed to create Bilti.", variant: "destructive" });
+      }
     }
+    setIsSubmitting(false);
     setIsFormDialogOpen(false);
     setEditingBilti(null);
     setSelectedConsignor(null);
     setSelectedConsignee(null);
+    fetchBiltis(); // Refresh the list
   };
   
   const getPartyName = (partyId: string) => parties.find(p => p.id === partyId)?.name || "N/A";
-  const getTruckNo = (truckId: string) => mockTrucks.find(t => t.id === truckId)?.truckNo || "N/A";
-  const getDriverName = (driverId: string) => mockDrivers.find(d => d.id === driverId)?.name || "N/A";
+  const getTruckNo = (truckId: string) => trucks.find(t => t.id === truckId)?.truckNo || "N/A";
+  const getDriverName = (driverId: string) => drivers.find(d => d.id === driverId)?.name || "N/A";
 
   const filteredBiltis = biltis.filter(bilti => 
     bilti.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -281,13 +378,19 @@ export default function InvoicingPage() {
     setIsDeleteDialogOpen(true);
   };
 
-  const confirmDelete = () => {
+  const confirmDelete = async () => {
     if (biltiToDelete) {
-      setBiltis(biltis.filter((b) => b.id !== biltiToDelete.id));
-      toast({ 
-        title: "Bilti Deleted", 
-        description: `Bilti ${biltiToDelete.id} deleted. Corresponding ledger entries (simulated) reversed for Party, Truck, and Driver.` 
-      });
+      setIsSubmitting(true);
+      try {
+        await deleteDoc(doc(db, "biltis", biltiToDelete.id));
+        toast({ title: "Bilti Deleted", description: `Bilti ${biltiToDelete.id} deleted.` });
+        fetchBiltis();
+      } catch (error) {
+         console.error("Error deleting Bilti: ", error);
+        toast({ title: "Error", description: "Failed to delete Bilti.", variant: "destructive" });
+      } finally {
+        setIsSubmitting(false);
+      }
     }
     setIsDeleteDialogOpen(false);
     setBiltiToDelete(null);
@@ -300,7 +403,7 @@ export default function InvoicingPage() {
         onOpenChange={setIsConsignorSelectOpen}
         parties={parties}
         onPartySelect={handleConsignorSelect}
-        onPartyAdd={handlePartyAdd}
+        onPartyAdd={handlePartyAdd} // Pass the function to handle adding new party
         dialogTitle="Select Consignor"
       />
       <SmartPartySelectDialog 
@@ -308,7 +411,7 @@ export default function InvoicingPage() {
         onOpenChange={setIsConsigneeSelectOpen}
         parties={parties}
         onPartySelect={handleConsigneeSelect}
-        onPartyAdd={handlePartyAdd}
+        onPartyAdd={handlePartyAdd} // Pass the function to handle adding new party
         dialogTitle="Select Consignee"
       />
 
@@ -326,7 +429,7 @@ export default function InvoicingPage() {
             }
         }}>
           <DialogTrigger asChild>
-            <Button onClick={openAddForm}>
+            <Button onClick={openAddForm} disabled={isSubmitting || parties.length === 0 || trucks.length === 0 || drivers.length === 0}>
               <PlusCircle className="mr-2 h-4 w-4" /> New Bilti / Invoice
             </Button>
           </DialogTrigger>
@@ -338,11 +441,12 @@ export default function InvoicingPage() {
               </DialogDescription>
             </DialogHeader>
             <form onSubmit={handleSubmit}>
-              <div className="grid gap-4 py-4 max-h-[70vh] overflow-y-auto p-2">
+             <ScrollArea className="max-h-[70vh] p-1">
+              <div className="grid gap-4 py-4">
                 <div className="grid md:grid-cols-3 items-center gap-4">
                   <div className="md:col-span-1">
                     <Label htmlFor="biltiNo" className="text-right">Bilti No.</Label>
-                    <Input id="biltiNo" value={editingBilti ? editingBilti.id : "Auto-Generated"} readOnly className="bg-muted" />
+                    <Input id="biltiNo" value={editingBilti ? editingBilti.id : "Auto-Generated by Firestore"} readOnly className="bg-muted" />
                   </div>
                   <div className="md:col-span-1">
                     <Label htmlFor="miti">Miti (AD)</Label>
@@ -370,15 +474,15 @@ export default function InvoicingPage() {
                 <div className="grid md:grid-cols-2 gap-4">
                   <div>
                     <Label htmlFor="consignorId">Consignor</Label>
-                    <Button type="button" variant="outline" className="w-full justify-start" onClick={() => setIsConsignorSelectOpen(true)}>
-                        {selectedConsignor ? selectedConsignor.name : "Select Consignor"}
+                    <Button type="button" variant="outline" className="w-full justify-start" onClick={() => setIsConsignorSelectOpen(true)} disabled={parties.length === 0}>
+                        {selectedConsignor ? selectedConsignor.name : (parties.length === 0 ? "Loading parties..." : "Select Consignor")}
                     </Button>
                      <Input type="hidden" value={formData.consignorId} />
                   </div>
                   <div>
                     <Label htmlFor="consigneeId">Consignee</Label>
-                     <Button type="button" variant="outline" className="w-full justify-start" onClick={() => setIsConsigneeSelectOpen(true)}>
-                        {selectedConsignee ? selectedConsignee.name : "Select Consignee"}
+                     <Button type="button" variant="outline" className="w-full justify-start" onClick={() => setIsConsigneeSelectOpen(true)} disabled={parties.length === 0}>
+                        {selectedConsignee ? selectedConsignee.name : (parties.length === 0 ? "Loading parties..." : "Select Consignee")}
                     </Button>
                     <Input type="hidden" value={formData.consigneeId} />
                   </div>
@@ -436,7 +540,7 @@ export default function InvoicingPage() {
                   </div>
                    <div>
                     <Label htmlFor="payMode">Pay Mode</Label>
-                    <Select value={formData.payMode} onValueChange={handleSelectChange('payMode') as (value: Bilti["payMode"])=>void} required>
+                    <Select value={formData.payMode} onValueChange={handleSelectChange('payMode') as (value: FirestoreBilti["payMode"])=>void} required>
                       <SelectTrigger><SelectValue placeholder="Select Pay Mode" /></SelectTrigger>
                       <SelectContent>
                         {payModes.map(mode => <SelectItem key={mode} value={mode}>{mode}</SelectItem>)}
@@ -448,29 +552,33 @@ export default function InvoicingPage() {
                 <div className="grid md:grid-cols-2 gap-4">
                   <div>
                     <Label htmlFor="truckId">Truck</Label>
-                    <Select value={formData.truckId} onValueChange={handleSelectChange('truckId')} required>
-                      <SelectTrigger><SelectValue placeholder="Select Truck" /></SelectTrigger>
+                    <Select value={formData.truckId} onValueChange={handleSelectChange('truckId')} required disabled={trucks.length === 0}>
+                      <SelectTrigger><SelectValue placeholder={trucks.length === 0 ? "Loading trucks..." : "Select Truck"} /></SelectTrigger>
                       <SelectContent>
-                        {mockTrucks.map(t => <SelectItem key={t.id} value={t.id}>{t.truckNo}</SelectItem>)}
+                        {trucks.map(t => <SelectItem key={t.id} value={t.id}>{t.truckNo}</SelectItem>)}
                       </SelectContent>
                     </Select>
                   </div>
                   <div>
                     <Label htmlFor="driverId">Driver</Label>
-                    <Select value={formData.driverId} onValueChange={handleSelectChange('driverId')} required>
-                      <SelectTrigger><SelectValue placeholder="Select Driver" /></SelectTrigger>
+                    <Select value={formData.driverId} onValueChange={handleSelectChange('driverId')} required disabled={drivers.length === 0}>
+                      <SelectTrigger><SelectValue placeholder={drivers.length === 0 ? "Loading drivers..." : "Select Driver"} /></SelectTrigger>
                       <SelectContent>
-                        {mockDrivers.map(d => <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>)}
+                        {drivers.map(d => <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>)}
                       </SelectContent>
                     </Select>
                   </div>
                 </div>
               </div>
+              </ScrollArea>
               <DialogFooter className="pt-4 border-t mt-2">
                 <DialogClose asChild>
-                   <Button type="button" variant="outline">Cancel</Button>
+                   <Button type="button" variant="outline" disabled={isSubmitting}>Cancel</Button>
                 </DialogClose>
-                <Button type="submit">{editingBilti ? "Update Bilti" : "Save Bilti"}</Button>
+                <Button type="submit" disabled={isSubmitting || parties.length === 0 || trucks.length === 0 || drivers.length === 0}>
+                    {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                    {editingBilti ? "Update Bilti" : "Save Bilti"}
+                </Button>
               </DialogFooter>
             </form>
           </DialogContent>
@@ -484,7 +592,7 @@ export default function InvoicingPage() {
           <div className="relative mt-4">
             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
             <Input
-              placeholder="Search Biltis (No, Consignor, Consignee, Destination, BS Date)..."
+              placeholder="Search Biltis (ID, Consignor, Consignee, Destination, BS Date)..."
               className="pl-8"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
@@ -492,10 +600,13 @@ export default function InvoicingPage() {
           </div>
         </CardHeader>
         <CardContent>
+         {isLoading ? (
+            <div className="flex justify-center items-center h-24"><Loader2 className="h-8 w-8 animate-spin text-primary" /><p className="ml-2 text-muted-foreground">Loading biltis...</p></div>
+          ) : (
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Bilti No.</TableHead>
+                <TableHead>Bilti No. (ID)</TableHead>
                 <TableHead>Miti (AD)</TableHead>
                 <TableHead>Miti (BS)</TableHead>
                 <TableHead>Consignor</TableHead>
@@ -509,7 +620,7 @@ export default function InvoicingPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredBiltis.length === 0 && (
+              {filteredBiltis.length === 0 && !isLoading && (
                 <TableRow>
                   <TableCell colSpan={11} className="text-center h-24">No Biltis found. Create one to get started!</TableCell>
                 </TableRow>
@@ -529,22 +640,25 @@ export default function InvoicingPage() {
                      <span className={cn("px-2 py-1 text-xs rounded-full", 
                         bilti.status === "Pending" ? "bg-yellow-200 text-yellow-800" : 
                         bilti.status === "Manifested" ? "bg-blue-200 text-blue-800" :
-                        bilti.status === "Delivered" ? "bg-green-200 text-green-800" : "bg-gray-200 text-gray-800"
+                        bilti.status === "Received" ? "bg-orange-200 text-orange-800" :
+                        bilti.status === "Delivered" ? "bg-green-200 text-green-800" :
+                        bilti.status === "Cancelled" ? "bg-red-200 text-red-800" : 
+                        "bg-gray-200 text-gray-800"
                      )}>
                         {bilti.status || "N/A"}
                      </span>
                   </TableCell>
                   <TableCell>
                     <div className="flex gap-1">
-                      <Button variant="outline" size="icon" aria-label="Print Bilti" onClick={() => alert(`Print Bilti ${bilti.id} (not implemented)`)}>
+                      <Button variant="outline" size="icon" aria-label="Print Bilti" onClick={() => alert(`Print Bilti ${bilti.id} (not implemented)`)} disabled={isSubmitting}>
                         <Printer className="h-4 w-4" />
                       </Button>
-                      <Button variant="outline" size="icon" aria-label="Edit Bilti" onClick={() => openEditForm(bilti)}>
+                      <Button variant="outline" size="icon" aria-label="Edit Bilti" onClick={() => openEditForm(bilti)} disabled={isSubmitting}>
                         <Edit className="h-4 w-4" />
                       </Button>
                        <AlertDialog open={isDeleteDialogOpen && biltiToDelete?.id === bilti.id} onOpenChange={(open) => { if(!open) setBiltiToDelete(null); setIsDeleteDialogOpen(open);}}>
                          <AlertDialogTrigger asChild>
-                           <Button variant="destructive" size="icon" aria-label="Delete Bilti" onClick={() => handleDeleteClick(bilti)}>
+                           <Button variant="destructive" size="icon" aria-label="Delete Bilti" onClick={() => handleDeleteClick(bilti)} disabled={isSubmitting}>
                             <Trash2 className="h-4 w-4" />
                           </Button>
                          </AlertDialogTrigger>
@@ -556,8 +670,11 @@ export default function InvoicingPage() {
                             </AlertDialogDescription>
                           </AlertDialogHeader>
                           <AlertDialogFooter>
-                            <AlertDialogCancel onClick={() => {setBiltiToDelete(null); setIsDeleteDialogOpen(false);}}>Cancel</AlertDialogCancel>
-                            <AlertDialogAction onClick={confirmDelete}>Delete</AlertDialogAction>
+                            <AlertDialogCancel onClick={() => {setBiltiToDelete(null); setIsDeleteDialogOpen(false);}} disabled={isSubmitting}>Cancel</AlertDialogCancel>
+                            <AlertDialogAction onClick={confirmDelete} disabled={isSubmitting}>
+                                {isSubmitting && isDeleteDialogOpen && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                                Delete
+                            </AlertDialogAction>
                           </AlertDialogFooter>
                         </AlertDialogContent>
                       </AlertDialog>
@@ -567,15 +684,15 @@ export default function InvoicingPage() {
               ))}
             </TableBody>
           </Table>
+          )}
         </CardContent>
         <CardFooter>
             <p className="text-xs text-muted-foreground">
-                Ledger updates for parties, trucks, and drivers are automatically (simulated as) posted upon Bilti creation, modification, or deletion.
+                Bilti data is now fetched from and saved to Firestore. Ledger updates (simulated) would occur server-side upon these operations in a full system.
             </p>
         </CardFooter>
       </Card>
     </div>
   );
 }
-
     
