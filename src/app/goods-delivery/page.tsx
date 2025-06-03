@@ -27,6 +27,7 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
+  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -41,17 +42,17 @@ import { db } from "@/lib/firebase";
 import { 
   collection, 
   getDocs, 
-  addDoc, 
-  doc, 
-  updateDoc, 
-  deleteDoc, 
   Timestamp,
   query,
-  orderBy,
-  writeBatch,
-  where,
-  documentId
+  orderBy
 } from "firebase/firestore";
+import { getFunctions, httpsCallable, type HttpsCallableResult } from "firebase/functions";
+import type { 
+  GoodsDeliveryCreateRequest, 
+  GoodsDeliveryUpdateRequest, 
+  GoodsDeliveryDeleteRequest,
+  CloudFunctionResponse
+} from "@/types/firestore";
 import type { 
   GoodsDelivery as FirestoreGoodsDelivery, 
   Bilti as FirestoreBilti, 
@@ -69,8 +70,13 @@ interface GoodsDelivery extends Omit<FirestoreGoodsDelivery, 'miti' | 'createdAt
   updatedAt?: Date | Timestamp;
 }
 // For UI, to hold full Bilti data. When saving to Firestore, only biltiId and rebate/discount info are stored.
-interface DeliveredBiltiItemUI extends FirestoreDeliveredBiltiItem {
+interface DeliveredBiltiItemUI {
+  biltiId: string;
   biltiData?: Bilti; // Full bilti data for display and context, not stored directly in Firestore sub-object
+  rebateAmount: number;
+  rebateReason: string; // Required if rebateAmount > 0
+  discountAmount: number;
+  discountReason: string; // Required if discountAmount > 0
 }
 interface Bilti extends Omit<FirestoreBilti, 'miti' | 'createdAt' | 'updatedAt'> {
   id: string;
@@ -81,10 +87,13 @@ interface Bilti extends Omit<FirestoreBilti, 'miti' | 'createdAt' | 'updatedAt'>
 interface Party extends FirestoreParty {}
 
 
-const defaultGoodsDeliveryFormData: Omit<GoodsDelivery, 'id' | 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy' | 'nepaliMiti' | 'deliveredToName' | 'deliveredToContact'> = {
+const defaultGoodsDeliveryFormData: Omit<GoodsDelivery, 'id' | 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy'> = {
   miti: new Date(),
   deliveredBiltis: [],
   overallRemarks: "",
+  nepaliMiti: "",
+  deliveredToName: "",
+  deliveredToContact: "",
 };
 
 const PLACEHOLDER_USER_ID = "system_user_placeholder";
@@ -100,13 +109,16 @@ export default function GoodsDeliveryPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [isFormDialogOpen, setIsFormDialogOpen] = useState(false);
   const [editingDelivery, setEditingDelivery] = useState<GoodsDelivery | null>(null);
-  const [formData, setFormData] = useState<Omit<GoodsDelivery, 'id' | 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy' | 'nepaliMiti' | 'deliveredToName' | 'deliveredToContact'>>(defaultGoodsDeliveryFormData);
+  const [formData, setFormData] = useState<Omit<GoodsDelivery, 'id' | 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy'>>(defaultGoodsDeliveryFormData);
   
   const { toast } = useToast();
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [deliveryToDelete, setDeliveryToDelete] = useState<GoodsDelivery | null>(null);
   
   const [isBiltiSelectDialogOpen, setIsBiltiSelectDialogOpen] = useState(false);
+
+  // Initialize Firebase Functions
+  const functions = getFunctions();
 
   const fetchMasterData = async () => {
     try {
@@ -247,8 +259,8 @@ export default function GoodsDeliveryPage() {
     }
     setIsSubmitting(true);
 
-    // Prepare deliveredBiltis for Firestore (without biltiData)
-    const firestoreDeliveredBiltis: FirestoreDeliveredBiltiItem[] = formData.deliveredBiltis.map(item => ({
+    // Prepare deliveredBiltis for Cloud Function (without biltiData)
+    const deliveredBiltis: FirestoreDeliveredBiltiItem[] = formData.deliveredBiltis.map(item => ({
         biltiId: item.biltiId,
         rebateAmount: item.rebateAmount,
         rebateReason: item.rebateReason,
@@ -256,70 +268,55 @@ export default function GoodsDeliveryPage() {
         discountReason: item.discountReason,
     }));
 
-    const deliveryDataPayload: Omit<FirestoreGoodsDelivery, 'id' | 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy'> & Partial<Pick<FirestoreGoodsDelivery, 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy'>> = {
-      miti: Timestamp.fromDate(formData.miti),
-      nepaliMiti: formData.nepaliMiti || "",
-      deliveredBiltis: firestoreDeliveredBiltis,
-      overallRemarks: formData.overallRemarks || "",
-      deliveredToName: formData.deliveredToName || "",
-      deliveredToContact: formData.deliveredToContact || "",
-    };
-
-    const batch = writeBatch(db);
-
-    if (editingDelivery) {
-      try {
-        const deliveryDocRef = doc(db, "goodsDeliveries", editingDelivery.id);
-        batch.update(deliveryDocRef, {
-            ...deliveryDataPayload,
-            updatedAt: Timestamp.now(),
-            updatedBy: PLACEHOLDER_USER_ID,
-        });
-
-        // Biltis removed from this delivery should become "Received"
-        const biltisNoLongerDelivered = editingDelivery.deliveredBiltis.filter(
-            oldItem => !formData.deliveredBiltis.some(newItem => newItem.biltiId === oldItem.biltiId)
-        );
-        biltisNoLongerDelivered.forEach(item => {
-            const biltiDocRef = doc(db, "biltis", item.biltiId);
-            batch.update(biltiDocRef, { status: "Received", goodsDeliveryNoteId: null });
-        });
-
-        // Biltis added or kept in this delivery should be "Delivered"
-        formData.deliveredBiltis.forEach(item => {
-            const biltiDocRef = doc(db, "biltis", item.biltiId);
-            batch.update(biltiDocRef, { status: "Delivered", goodsDeliveryNoteId: editingDelivery.id });
-        });
+    try {
+      if (editingDelivery) {
+        // Update existing delivery
+        const updateGoodsDelivery = httpsCallable<GoodsDeliveryUpdateRequest, CloudFunctionResponse>(functions, 'updateGoodsDelivery');
+        const updateData: GoodsDeliveryUpdateRequest = {
+          deliveryId: editingDelivery.id,
+          miti: formData.miti.toISOString(),
+          nepaliMiti: formData.nepaliMiti,
+          deliveredBiltis: deliveredBiltis,
+          overallRemarks: formData.overallRemarks,
+          deliveredToName: formData.deliveredToName,
+          deliveredToContact: formData.deliveredToContact,
+        };
         
-        await batch.commit();
-        toast({ title: "Goods Delivery Updated", description: `Delivery Note ${editingDelivery.id} updated.` });
-      } catch (error) {
-        console.error("Error updating goods delivery: ", error);
-        toast({ title: "Error", description: "Failed to update goods delivery.", variant: "destructive" });
-      }
-    } else { // Adding new delivery
-      try {
-        const deliveryCollectionRef = collection(db, "goodsDeliveries");
-        const newDeliveryDocRef = doc(deliveryCollectionRef); // Generate ID upfront
-
-        batch.set(newDeliveryDocRef, {
-            ...deliveryDataPayload,
-            createdBy: PLACEHOLDER_USER_ID,
-            createdAt: Timestamp.now(),
-        });
-
-        formData.deliveredBiltis.forEach(item => {
-            const biltiDocRef = doc(db, "biltis", item.biltiId);
-            batch.update(biltiDocRef, { status: "Delivered", goodsDeliveryNoteId: newDeliveryDocRef.id });
-        });
+        const result = await updateGoodsDelivery(updateData);
+        if (result.data.success) {
+          toast({ title: "Goods Delivery Updated", description: result.data.message });
+        } else {
+          throw new Error(result.data.message);
+        }
+      } else {
+        // Create new delivery
+        const createGoodsDelivery = httpsCallable<GoodsDeliveryCreateRequest, CloudFunctionResponse>(functions, 'createGoodsDelivery');
+        const createData: GoodsDeliveryCreateRequest = {
+          miti: formData.miti.toISOString(),
+          nepaliMiti: formData.nepaliMiti,
+          deliveredBiltis: deliveredBiltis,
+          overallRemarks: formData.overallRemarks,
+          deliveredToName: formData.deliveredToName,
+          deliveredToContact: formData.deliveredToContact,
+        };
         
-        await batch.commit();
-        toast({ title: "Goods Delivery Recorded", description: `Delivery Note created. Biltis marked 'Delivered'.` });
-      } catch (error) {
-        console.error("Error adding goods delivery: ", error);
-        toast({ title: "Error", description: "Failed to record goods delivery.", variant: "destructive" });
+        const result = await createGoodsDelivery(createData);
+        if (result.data.success) {
+          toast({ title: "Goods Delivery Recorded", description: result.data.message });
+        } else {
+          throw new Error(result.data.message);
+        }
       }
+    } catch (error: any) {
+      console.error("Error with goods delivery operation:", error);
+      const errorMessage = error?.message || 'An unknown error occurred';
+      toast({ 
+        title: "Error", 
+        description: `Failed to ${editingDelivery ? 'update' : 'create'} goods delivery: ${errorMessage}`, 
+        variant: "destructive" 
+      });
     }
+
     setIsSubmitting(false);
     setIsFormDialogOpen(false);
     setEditingDelivery(null);
@@ -335,23 +332,28 @@ export default function GoodsDeliveryPage() {
   const confirmDelete = async () => {
     if (deliveryToDelete) {
       setIsSubmitting(true);
-      const batch = writeBatch(db);
       try {
-        const deliveryDocRef = doc(db, "goodsDeliveries", deliveryToDelete.id);
-        batch.delete(deliveryDocRef);
-
-        deliveryToDelete.deliveredBiltis.forEach(item => {
-          const biltiDocRef = doc(db, "biltis", item.biltiId);
-          batch.update(biltiDocRef, { status: "Received", goodsDeliveryNoteId: null });
+        const deleteGoodsDelivery = httpsCallable<GoodsDeliveryDeleteRequest, CloudFunctionResponse>(functions, 'deleteGoodsDelivery');
+        const deleteData: GoodsDeliveryDeleteRequest = {
+          deliveryId: deliveryToDelete.id
+        };
+        
+        const result = await deleteGoodsDelivery(deleteData);
+        if (result.data.success) {
+          toast({ title: "Goods Delivery Deleted", description: result.data.message });
+          fetchGoodsDeliveries();
+          fetchMasterData(); // Refresh biltis
+        } else {
+          throw new Error(result.data.message);
+        }
+      } catch (error: any) {
+        console.error("Error deleting goods delivery:", error);
+        const errorMessage = error?.message || 'An unknown error occurred';
+        toast({ 
+          title: "Error", 
+          description: `Failed to delete goods delivery: ${errorMessage}`, 
+          variant: "destructive" 
         });
-
-        await batch.commit();
-        toast({ title: "Goods Delivery Deleted", description: `Delivery Note ${deliveryToDelete.id} deleted. Bilti statuses reverted.` });
-        fetchGoodsDeliveries();
-        fetchMasterData(); // Refresh biltis
-      } catch (error) {
-        console.error("Error deleting goods delivery: ", error);
-        toast({ title: "Error", description: "Failed to delete goods delivery.", variant: "destructive" });
       } finally {
         setIsSubmitting(false);
       }

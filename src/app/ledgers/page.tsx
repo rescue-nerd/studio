@@ -34,17 +34,27 @@ import {
   query,
   orderBy,
   getDocs,
-  addDoc,
-  doc,
-  updateDoc,
   where,
   Timestamp,
   type DocumentData,
   type QueryDocumentSnapshot,
 } from "firebase/firestore";
-import type { LedgerAccount as FirestoreLedgerAccount, LedgerEntry as FirestoreLedgerEntry, LedgerTransactionType } from "@/types/firestore";
+import { getFunctions, httpsCallable } from "firebase/functions";
+import type { 
+  LedgerAccount as FirestoreLedgerAccount, 
+  LedgerEntry as FirestoreLedgerEntry, 
+  LedgerTransactionType,
+  CloudFunctionResponse,
+  LedgerEntryCreateRequest,
+  LedgerEntryUpdateStatusRequest
+} from "@/types/firestore";
 import { useAuth } from "@/contexts/auth-context"; // Import useAuth
 import { useRouter } from "next/navigation"; // Import useRouter
+
+// Initialize Firebase Functions
+const functions = getFunctions();
+const createManualLedgerEntryFn = httpsCallable<LedgerEntryCreateRequest, CloudFunctionResponse>(functions, 'createManualLedgerEntry');
+const updateLedgerEntryStatusFn = httpsCallable<LedgerEntryUpdateStatusRequest, CloudFunctionResponse>(functions, 'updateLedgerEntryStatus');
 
 type FirestoreLedgerEntryStatus = FirestoreLedgerEntry["status"];
 
@@ -298,37 +308,31 @@ export default function LedgersPage() {
     }
     setIsSubmittingManualEntry(true);
     
-    const newEntryPayload: Omit<FirestoreLedgerEntry, 'id' | 'balanceAfterTransaction'> = {
+    const entryPayload: LedgerEntryCreateRequest = {
       accountId: selectedAccountId,
-      miti: Timestamp.fromDate(manualEntryFormData.miti),
+      miti: manualEntryFormData.miti.toISOString(),
       nepaliMiti: manualEntryFormData.nepaliMiti || "", 
       description: manualEntryFormData.description,
       debit: manualEntryFormData.debit,
       credit: manualEntryFormData.credit,
       referenceNo: manualEntryFormData.referenceNo || "",
       transactionType: manualEntryFormData.transactionType,
-      status: "Pending", 
-      createdBy: authUser.uid, 
-      createdAt: Timestamp.now(),
-      sourceModule: "Manual",
     };
 
     try {
-        const docRef = await addDoc(collection(db, "ledgerEntries"), newEntryPayload);
-        const newEntryForState: LedgerEntry = {
-            ...(newEntryPayload as Omit<FirestoreLedgerEntry, 'id' | 'balanceAfterTransaction' | 'miti' | 'createdAt'>),
-            id: docRef.id,
-            miti: newEntryPayload.miti.toDate(),
-            createdAt: newEntryPayload.createdAt.toDate(),
-            createdBy: authUser.uid,
-        };
-        setAllLedgerEntries(prev => [...prev, newEntryForState]); 
-        toast({ title: "Manual Entry Submitted", description: `Entry for ${selectedAccountDetails?.accountName} submitted for approval.` });
-        setIsManualEntryDialogOpen(false);
-        setManualEntryFormData({...defaultManualEntryFormData, miti: new Date()}); 
-    } catch (error) {
-        console.error("Error submitting manual entry: ", error);
-        toast({ title: "Error", description: "Failed to submit manual entry.", variant: "destructive"});
+        const result = await createManualLedgerEntryFn(entryPayload);
+        if (result.data.success) {
+            // Refresh entries for the selected account
+            await fetchLedgerEntries(selectedAccountId);
+            toast({ title: "Manual Entry Submitted", description: result.data.message });
+            setIsManualEntryDialogOpen(false);
+            setManualEntryFormData({...defaultManualEntryFormData, miti: new Date()}); 
+        } else {
+            toast({ title: "Submission Failed", description: result.data.message || "Failed to submit manual entry.", variant: "destructive"});
+        }
+    } catch (error: any) {
+        console.error("Error submitting manual entry:", error);
+        toast({ title: "Error", description: error.message || "Failed to submit manual entry.", variant: "destructive"});
     } finally {
         setIsSubmittingManualEntry(false);
     }
@@ -345,34 +349,28 @@ export default function LedgersPage() {
     alert(`Entry ID: ${entry.id}\nAccount: ${selectedAccountDetails?.accountName}\nMiti: ${format(entry.miti, "PP")}\nDescription: ${entry.description}\nRef: ${entry.referenceNo || 'N/A'}\nType: ${entry.transactionType}\nStatus: ${entry.status}\n${entry.approvalRemarks ? `Remarks: ${entry.approvalRemarks}\n` : ""}Created: ${entry.createdAt ? format(entry.createdAt, 'Pp') : 'N/A'} by ${entry.createdBy || 'N/A'}`);
   };
 
-  const handleUpdateEntryStatus = async (entryId: string, newStatus: FirestoreLedgerEntryStatus, remarks?: string) => {
+  const handleUpdateEntryStatus = async (entryId: string, newStatus: "Approved" | "Rejected", remarks?: string) => {
     if (!selectedAccountId || !authUser) return;
     setIsUpdatingEntryStatus(entryId);
+    
+    const updatePayload: LedgerEntryUpdateStatusRequest = {
+      entryId,
+      status: newStatus,
+      approvalRemarks: remarks,
+    };
+
     try {
-        const entryDocRef = doc(db, "ledgerEntries", entryId);
-        const updatePayload: Partial<FirestoreLedgerEntry> = {
-            status: newStatus,
-            approvedBy: authUser.uid,
-            approvedAt: Timestamp.now(),
-            approvalRemarks: remarks || `${newStatus} by ${authUser.displayName || authUser.email}`,
-        };
-        await updateDoc(entryDocRef, updatePayload);
-        
-        setAllLedgerEntries(prevEntries => 
-            prevEntries.map(entry => 
-                entry.id === entryId ? { 
-                    ...entry, 
-                    status: newStatus, 
-                    approvedBy: authUser.uid, 
-                    approvedAt: updatePayload.approvedAt!.toDate(),
-                    approvalRemarks: updatePayload.approvalRemarks 
-                } : entry
-            )
-        );
-        toast({ title: `Entry ${newStatus}`, description: `Entry ${entryId} has been ${newStatus.toLowerCase()}.` });
-    } catch (error) {
+        const result = await updateLedgerEntryStatusFn(updatePayload);
+        if (result.data.success) {
+            // Refresh entries for the selected account to get the updated data
+            await fetchLedgerEntries(selectedAccountId);
+            toast({ title: `Entry ${newStatus}`, description: result.data.message });
+        } else {
+            toast({ title: "Update Failed", description: result.data.message || "Failed to update entry status.", variant: "destructive"});
+        }
+    } catch (error: any) {
         console.error(`Error updating entry ${entryId} to ${newStatus}:`, error);
-        toast({ title: "Error", description: `Failed to update entry status.`, variant: "destructive"});
+        toast({ title: "Error", description: error.message || "Failed to update entry status.", variant: "destructive"});
     } finally {
         setIsUpdatingEntryStatus(null);
     }

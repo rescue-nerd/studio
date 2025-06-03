@@ -34,15 +34,17 @@ import { db } from "@/lib/firebase";
 import { 
   collection, 
   getDocs, 
-  addDoc, 
-  doc, 
-  updateDoc, 
-  deleteDoc, 
   Timestamp,
   query,
   orderBy
 } from "firebase/firestore";
+import { getFunctions, httpsCallable, type HttpsCallableResult } from "firebase/functions";
 import type { DocumentNumberingConfig as FirestoreDocumentNumberingConfig, Branch as FirestoreBranch } from "@/types/firestore";
+import type { 
+  CreateDocumentNumberingConfigPayload, 
+  UpdateDocumentNumberingConfigPayload, 
+  DeleteDocumentNumberingConfigPayload 
+} from "@/functions/src/types";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/auth-context"; // Import useAuth
 import { useRouter } from "next/navigation"; // Import useRouter
@@ -61,6 +63,12 @@ const defaultFormData: Omit<DocumentNumberingConfig, 'id' | 'lastGeneratedNumber
   branchId: "Global", 
   minLength: 0,
 };
+
+// Firebase Functions setup
+const functions = getFunctions();
+const createDocumentNumberingConfigFn = httpsCallable<CreateDocumentNumberingConfigPayload, {success: boolean, id: string, message: string}>(functions, 'createDocumentNumberingConfig');
+const updateDocumentNumberingConfigFn = httpsCallable<UpdateDocumentNumberingConfigPayload, {success: boolean, message: string}>(functions, 'updateDocumentNumberingConfig');
+const deleteDocumentNumberingConfigFn = httpsCallable<DeleteDocumentNumberingConfigPayload, {success: boolean, message: string}>(functions, 'deleteDocumentNumberingConfig');
 
 
 export default function AutomaticNumberingPage() {
@@ -173,26 +181,48 @@ export default function AutomaticNumberingPage() {
     }
     setIsSubmitting(true);
 
-    const payload: Omit<FirestoreDocumentNumberingConfig, 'id' | 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy'> & Partial<Pick<FirestoreDocumentNumberingConfig, 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy'>> = {
-      ...formData,
-      branchId: formData.perBranch ? formData.branchId : "Global",
-      lastGeneratedNumber: editingConfig ? editingConfig.lastGeneratedNumber : (formData.startingNumber -1)
-    };
-
     try {
       if (editingConfig) {
-        const configDocRef = doc(db, "documentNumberingConfigs", editingConfig.id);
-        await updateDoc(configDocRef, { ...payload, updatedAt: Timestamp.now(), updatedBy: authUser.uid });
-        toast({ title: "Success", description: "Configuration updated." });
+        // Update existing config
+        const payload: UpdateDocumentNumberingConfigPayload = {
+          configId: editingConfig.id,
+          ...formData,
+          branchId: formData.perBranch ? formData.branchId : "Global",
+        };
+
+        const result: HttpsCallableResult<{success: boolean, message: string}> = await updateDocumentNumberingConfigFn(payload);
+        
+        if (result.data.success) {
+          toast({ title: "Success", description: result.data.message || "Configuration updated." });
+        } else {
+          throw new Error(result.data.message || "Failed to update configuration");
+        }
       } else {
-        await addDoc(collection(db, "documentNumberingConfigs"), { ...payload, createdAt: Timestamp.now(), createdBy: authUser.uid });
-        toast({ title: "Success", description: "Configuration added." });
+        // Create new config
+        const payload: CreateDocumentNumberingConfigPayload = {
+          ...formData,
+          branchId: formData.perBranch ? formData.branchId : "Global",
+          lastGeneratedNumber: formData.startingNumber - 1
+        };
+
+        const result: HttpsCallableResult<{success: boolean, id: string, message: string}> = await createDocumentNumberingConfigFn(payload);
+        
+        if (result.data.success) {
+          toast({ title: "Success", description: result.data.message || "Configuration added." });
+        } else {
+          throw new Error(result.data.message || "Failed to create configuration");
+        }
       }
+      
       fetchConfigs();
       setIsFormOpen(false);
     } catch (error) {
       console.error("Error saving config: ", error);
-      toast({ title: "Error", description: "Failed to save configuration.", variant: "destructive" });
+      toast({ 
+        title: "Error", 
+        description: error instanceof Error ? error.message : "Failed to save configuration.", 
+        variant: "destructive" 
+      });
     } finally {
       setIsSubmitting(false);
     }
@@ -207,12 +237,25 @@ export default function AutomaticNumberingPage() {
     if (!configToDelete) return;
     setIsSubmitting(true);
     try {
-      await deleteDoc(doc(db, "documentNumberingConfigs", configToDelete.id));
-      toast({ title: "Success", description: `Configuration for "${configToDelete.documentType}" deleted.` });
-      fetchConfigs();
+      const payload: DeleteDocumentNumberingConfigPayload = {
+        configId: configToDelete.id
+      };
+
+      const result: HttpsCallableResult<{success: boolean, message: string}> = await deleteDocumentNumberingConfigFn(payload);
+      
+      if (result.data.success) {
+        toast({ title: "Success", description: result.data.message || `Configuration for "${configToDelete.documentType}" deleted.` });
+        fetchConfigs();
+      } else {
+        throw new Error(result.data.message || "Failed to delete configuration");
+      }
     } catch (error) {
       console.error("Error deleting config: ", error);
-      toast({ title: "Error", description: "Failed to delete configuration.", variant: "destructive" });
+      toast({ 
+        title: "Error", 
+        description: error instanceof Error ? error.message : "Failed to delete configuration.", 
+        variant: "destructive" 
+      });
     } finally {
       setIsSubmitting(false);
       setIsDeleteAlertOpen(false);

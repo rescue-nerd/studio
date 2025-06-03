@@ -1,4 +1,3 @@
-
 import type { Timestamp } from "firebase-admin/firestore"; // Use admin SDK Timestamp for functions
 
 // This file mirrors relevant parts of src/types/firestore.ts but for backend functions.
@@ -91,8 +90,30 @@ export interface GoodsDeliveryData {
   miti: Timestamp;
   nepaliMiti?: string;
   deliveredBiltis: DeliveredBiltiItemData[];
+  overallRemarks?: string;
+  deliveredToName?: string;
+  deliveredToContact?: string;
   ledgerProcessed?: boolean;
   createdBy?: string;
+  createdAt?: Timestamp;
+  updatedBy?: string;
+  updatedAt?: Timestamp;
+}
+
+export interface GoodsReceiptData {
+  id?: string;
+  miti: Timestamp;
+  nepaliMiti?: string;
+  manifestId: string;
+  receivingBranchId: string;
+  receivingGodownId?: string;
+  remarks?: string;
+  shortages?: string;
+  damages?: string;
+  createdBy?: string;
+  createdAt?: Timestamp;
+  updatedBy?: string;
+  updatedAt?: Timestamp;
 }
 
 export interface PartyData {
@@ -146,6 +167,9 @@ export interface LedgerEntryData {
   branchId?: string;
   createdAt: Timestamp;
   createdBy?: string;
+  approvedBy?: string;
+  approvedAt?: Timestamp;
+  approvalRemarks?: string;
 }
 
 export interface BranchData {
@@ -236,4 +260,174 @@ export interface ManifestData {
   createdAt?: Timestamp;
   updatedBy?: string;
   updatedAt?: Timestamp;
+}
+
+// Callable Data Interfaces for HTTPS Callable Functions
+// These are sent from client to functions (miti as string)
+
+export interface GoodsReceiptCallableData extends Omit<GoodsReceiptData, 'id' | 'miti' | 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy'> {
+  miti: string;
+}
+
+export interface GoodsDeliveryCallableData extends Omit<GoodsDeliveryData, 'id' | 'miti' | 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy' | 'ledgerProcessed'> {
+  miti: string;
+}
+
+// Optional: Update/Delete payload types for clarity
+export interface UpdateGoodsReceiptPayload extends Partial<GoodsReceiptCallableData> {
+  receiptId: string;
+}
+
+export interface DeleteGoodsReceiptPayload {
+  receiptId: string;
+}
+
+export interface UpdateGoodsDeliveryPayload extends Partial<GoodsDeliveryCallableData> {
+  deliveryId: string;
+}
+
+export interface DeleteGoodsDeliveryPayload {
+  deliveryId: string;
+}
+
+// Ledger Cloud Function Types
+export interface LedgerEntryCallableData extends Omit<LedgerEntryData, 'id' | 'miti' | 'createdAt' | 'createdBy' | 'status'> {
+  miti: string; // Client sends as string
+  accountId: string;
+}
+
+export interface UpdateLedgerEntryStatusPayload {
+  entryId: string;
+  status: "Approved" | "Rejected";
+  approvalRemarks?: string;
+}
+
+// Daybook Transaction Cloud Function Types
+export interface DaybookTransactionCallableData extends Omit<DaybookTransaction, 'id' | 'createdAt'> {
+  daybookId: string;
+  transactionId?: string; // For updates, if not provided a new ID will be generated
+}
+
+export interface DeleteDaybookTransactionPayload {
+  daybookId: string;
+  transactionId: string;
+}
+
+// User Management Function Types
+export interface UpdateUserProfilePayload {
+  uid: string;
+  displayName?: string;
+  email?: string;
+  role?: string;
+  status?: "active" | "disabled";
+  enableEmailNotifications?: boolean;
+  darkModeEnabled?: boolean;
+  autoDataSyncEnabled?: boolean;
+}
+
+export interface UpdateUserBranchAssignmentsPayload {
+  uid: string;
+  assignedBranchIds: string[];
+}
+
+// Content Customization Function Types
+export interface InvoiceLineCustomizationData {
+  id?: string;
+  label: string;
+  fieldName: string;
+  type: "Text" | "Number" | "Currency" | "Percentage" | "Date" | "Textarea" | "Boolean" | "Select";
+  options?: string[];
+  required: boolean;
+  order: number;
+  defaultValue?: string | number | boolean;
+  isEnabled: boolean;
+  createdBy?: string;
+  createdAt?: Timestamp;
+  updatedBy?: string;
+  updatedAt?: Timestamp;
+}
+
+export interface CreateInvoiceLineCustomizationPayload extends Omit<InvoiceLineCustomizationData, 'id' | 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy'> {}
+
+export interface UpdateInvoiceLineCustomizationPayload extends Partial<CreateInvoiceLineCustomizationPayload> {
+  customizationId: string;
+}
+
+export interface DeleteInvoiceLineCustomizationPayload {
+  customizationId: string;
+}
+
+// Narration Template Function Types
+export interface NarrationTemplateData {
+  id?: string;
+  templateName: string;
+  templateText: string;
+  category: "bilti" | "delivery" | "payment" | "expense" | "general";
+  isActive: boolean;
+  createdBy?: string;
+  createdAt?: Timestamp;
+  updatedBy?: string;
+  updatedAt?: Timestamp;
+}
+
+export interface CreateNarrationTemplatePayload extends Omit<NarrationTemplateData, 'id' | 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy'> {}
+
+export interface UpdateNarrationTemplatePayload extends Partial<CreateNarrationTemplatePayload> {
+  templateId: string;
+}
+
+export interface DeleteNarrationTemplatePayload {
+  templateId: string;
+}
+
+// Document Numbering Function Types
+export interface DocumentNumberingConfigData {
+  id?: string;
+  documentType: "bilti" | "manifest" | "invoice" | "receipt" | "delivery";
+  prefix: string;
+  suffix?: string;
+  startingNumber: number;
+  currentNumber: number;
+  digitPadding: number;
+  resetFrequency: "none" | "daily" | "monthly" | "yearly";
+  isActive: boolean;
+  branchId?: string; // For branch-specific numbering
+  createdBy?: string;
+  createdAt?: Timestamp;
+  updatedBy?: string;
+  updatedAt?: Timestamp;
+}
+
+export interface CreateDocumentNumberingConfigPayload extends Omit<DocumentNumberingConfigData, 'id' | 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy'> {}
+
+export interface UpdateDocumentNumberingConfigPayload extends Partial<CreateDocumentNumberingConfigPayload> {
+  configId: string;
+}
+
+export interface DeleteDocumentNumberingConfigPayload {
+  configId: string;
+}
+
+export interface GenerateNextDocumentNumberPayload {
+  documentType: "bilti" | "manifest" | "invoice" | "receipt" | "delivery";
+  branchId?: string;
+}
+
+export interface GenerateNextDocumentNumberResult {
+  nextNumber: string;
+  configId: string;
+}
+
+// Daybook Function Types
+export interface CreateDaybookPayload {
+  branchId: string;
+  nepaliMiti: string;
+  englishMiti: string; // ISO date string
+  openingBalance?: number;
+}
+
+export interface DaybookCreateResponse {
+  success: boolean;
+  id: string;
+  message: string;
 }

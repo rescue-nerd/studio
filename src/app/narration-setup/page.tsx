@@ -33,15 +33,17 @@ import { db } from "@/lib/firebase";
 import { 
   collection, 
   getDocs, 
-  addDoc, 
-  doc, 
-  updateDoc, 
-  deleteDoc, 
   Timestamp,
   query,
   orderBy
 } from "firebase/firestore";
+import { getFunctions, httpsCallable, type HttpsCallableResult } from "firebase/functions";
 import type { NarrationTemplate as FirestoreNarrationTemplate } from "@/types/firestore";
+import type { 
+  CreateNarrationTemplatePayload, 
+  UpdateNarrationTemplatePayload, 
+  DeleteNarrationTemplatePayload 
+} from "@/functions/src/types";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/auth-context"; // Import useAuth
 import { useRouter } from "next/navigation"; // Import useRouter
@@ -53,6 +55,12 @@ const defaultFormData: Omit<NarrationTemplate, 'id' | 'createdAt' | 'createdBy' 
   template: "",
   applicableTo: [], 
 };
+
+// Firebase Functions setup
+const functions = getFunctions();
+const createNarrationTemplateFn = httpsCallable<CreateNarrationTemplatePayload, {success: boolean, id: string, message: string}>(functions, 'createNarrationTemplate');
+const updateNarrationTemplateFn = httpsCallable<UpdateNarrationTemplatePayload, {success: boolean, message: string}>(functions, 'updateNarrationTemplate');
+const deleteNarrationTemplateFn = httpsCallable<DeleteNarrationTemplatePayload, {success: boolean, message: string}>(functions, 'deleteNarrationTemplate');
 
 
 export default function NarrationSetupPage() {
@@ -132,24 +140,45 @@ export default function NarrationSetupPage() {
     }
     setIsSubmitting(true);
 
-    const payload: Omit<FirestoreNarrationTemplate, 'id' | 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy'> & Partial<Pick<FirestoreNarrationTemplate, 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy'>> = {
-      ...formData,
-    };
-
     try {
       if (editingTemplate) {
-        const templateDocRef = doc(db, "narrationTemplates", editingTemplate.id);
-        await updateDoc(templateDocRef, { ...payload, updatedAt: Timestamp.now(), updatedBy: authUser.uid });
-        toast({ title: "Success", description: "Narration template updated." });
+        // Update existing template
+        const payload: UpdateNarrationTemplatePayload = {
+          templateId: editingTemplate.id,
+          ...formData,
+        };
+
+        const result: HttpsCallableResult<{success: boolean, message: string}> = await updateNarrationTemplateFn(payload);
+        
+        if (result.data.success) {
+          toast({ title: "Success", description: result.data.message || "Narration template updated." });
+        } else {
+          throw new Error(result.data.message || "Failed to update template");
+        }
       } else {
-        await addDoc(collection(db, "narrationTemplates"), { ...payload, createdAt: Timestamp.now(), createdBy: authUser.uid });
-        toast({ title: "Success", description: "Narration template added." });
+        // Create new template
+        const payload: CreateNarrationTemplatePayload = {
+          ...formData,
+        };
+
+        const result: HttpsCallableResult<{success: boolean, id: string, message: string}> = await createNarrationTemplateFn(payload);
+        
+        if (result.data.success) {
+          toast({ title: "Success", description: result.data.message || "Narration template added." });
+        } else {
+          throw new Error(result.data.message || "Failed to create template");
+        }
       }
+      
       fetchTemplates();
       setIsFormOpen(false);
     } catch (error) {
       console.error("Error saving template: ", error);
-      toast({ title: "Error", description: "Failed to save template.", variant: "destructive" });
+      toast({ 
+        title: "Error", 
+        description: error instanceof Error ? error.message : "Failed to save template.", 
+        variant: "destructive" 
+      });
     } finally {
       setIsSubmitting(false);
     }
@@ -164,12 +193,25 @@ export default function NarrationSetupPage() {
     if (!templateToDelete) return;
     setIsSubmitting(true);
     try {
-      await deleteDoc(doc(db, "narrationTemplates", templateToDelete.id));
-      toast({ title: "Success", description: `Template "${templateToDelete.title}" deleted.` });
-      fetchTemplates();
+      const payload: DeleteNarrationTemplatePayload = {
+        templateId: templateToDelete.id
+      };
+
+      const result: HttpsCallableResult<{success: boolean, message: string}> = await deleteNarrationTemplateFn(payload);
+      
+      if (result.data.success) {
+        toast({ title: "Success", description: result.data.message || `Template "${templateToDelete.title}" deleted.` });
+        fetchTemplates();
+      } else {
+        throw new Error(result.data.message || "Failed to delete template");
+      }
     } catch (error) {
       console.error("Error deleting template: ", error);
-      toast({ title: "Error", description: "Failed to delete template.", variant: "destructive" });
+      toast({ 
+        title: "Error", 
+        description: error instanceof Error ? error.message : "Failed to delete template.", 
+        variant: "destructive" 
+      });
     } finally {
       setIsSubmitting(false);
       setIsDeleteAlertOpen(false);

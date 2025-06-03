@@ -35,15 +35,17 @@ import { db } from "@/lib/firebase";
 import { 
   collection, 
   getDocs, 
-  addDoc, 
-  doc, 
-  updateDoc, 
-  deleteDoc, 
   Timestamp,
   query,
   orderBy
 } from "firebase/firestore";
+import { getFunctions, httpsCallable, type HttpsCallableResult } from "firebase/functions";
 import type { InvoiceLineCustomization as FirestoreInvoiceLineCustomization, InvoiceLineType } from "@/types/firestore";
+import type { 
+  CreateInvoiceLineCustomizationPayload, 
+  UpdateInvoiceLineCustomizationPayload, 
+  DeleteInvoiceLineCustomizationPayload 
+} from "@/functions/src/types";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/auth-context"; // Import useAuth
 import { useRouter } from "next/navigation"; // Import useRouter
@@ -51,6 +53,12 @@ import { useRouter } from "next/navigation"; // Import useRouter
 interface InvoiceLineCustomization extends FirestoreInvoiceLineCustomization {}
 
 const lineTypes: InvoiceLineType[] = ["Text", "Number", "Currency", "Percentage", "Date", "Textarea", "Boolean", "Select"];
+
+// Firebase Functions setup
+const functions = getFunctions();
+const createInvoiceLineCustomizationFn = httpsCallable<CreateInvoiceLineCustomizationPayload, {success: boolean, id: string, message: string}>(functions, 'createInvoiceLineCustomization');
+const updateInvoiceLineCustomizationFn = httpsCallable<UpdateInvoiceLineCustomizationPayload, {success: boolean, message: string}>(functions, 'updateInvoiceLineCustomization');
+const deleteInvoiceLineCustomizationFn = httpsCallable<DeleteInvoiceLineCustomizationPayload, {success: boolean, message: string}>(functions, 'deleteInvoiceLineCustomization');
 
 const generateFieldName = (label: string) => {
   return label.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/gi, '');
@@ -166,26 +174,49 @@ export default function ContentCustomizationPage() {
     }
     setIsSubmitting(true);
 
-    const payload: Omit<FirestoreInvoiceLineCustomization, 'id' | 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy'> & Partial<Pick<FirestoreInvoiceLineCustomization, 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy'>> = {
-      ...formData,
-      order: editingLine ? editingLine.order : (invoiceLines.length > 0 ? Math.max(...invoiceLines.map(l => l.order)) + 1 : 1),
-      options: formData.type === "Select" ? formData.options : [], 
-    };
-
     try {
       if (editingLine) {
-        const lineDocRef = doc(db, "invoiceLineCustomizations", editingLine.id);
-        await updateDoc(lineDocRef, { ...payload, updatedAt: Timestamp.now(), updatedBy: authUser.uid });
-        toast({ title: "Success", description: "Line configuration updated." });
+        // Update existing customization
+        const payload: UpdateInvoiceLineCustomizationPayload = {
+          customizationId: editingLine.id,
+          ...formData,
+          order: editingLine.order,
+          options: formData.type === "Select" ? formData.options : [], 
+        };
+
+        const result: HttpsCallableResult<{success: boolean, message: string}> = await updateInvoiceLineCustomizationFn(payload);
+        
+        if (result.data.success) {
+          toast({ title: "Success", description: result.data.message || "Line configuration updated." });
+        } else {
+          throw new Error(result.data.message || "Failed to update line configuration");
+        }
       } else {
-        await addDoc(collection(db, "invoiceLineCustomizations"), { ...payload, createdAt: Timestamp.now(), createdBy: authUser.uid });
-        toast({ title: "Success", description: "Line configuration added." });
+        // Create new customization
+        const payload: CreateInvoiceLineCustomizationPayload = {
+          ...formData,
+          order: invoiceLines.length > 0 ? Math.max(...invoiceLines.map(l => l.order)) + 1 : 1,
+          options: formData.type === "Select" ? formData.options : [], 
+        };
+
+        const result: HttpsCallableResult<{success: boolean, id: string, message: string}> = await createInvoiceLineCustomizationFn(payload);
+        
+        if (result.data.success) {
+          toast({ title: "Success", description: result.data.message || "Line configuration added." });
+        } else {
+          throw new Error(result.data.message || "Failed to create line configuration");
+        }
       }
+      
       fetchInvoiceLines();
       setIsFormOpen(false);
     } catch (error) {
       console.error("Error saving line config: ", error);
-      toast({ title: "Error", description: "Failed to save line configuration.", variant: "destructive" });
+      toast({ 
+        title: "Error", 
+        description: error instanceof Error ? error.message : "Failed to save line configuration.", 
+        variant: "destructive" 
+      });
     } finally {
       setIsSubmitting(false);
     }
@@ -200,12 +231,25 @@ export default function ContentCustomizationPage() {
     if (!lineToDelete) return;
     setIsSubmitting(true);
     try {
-      await deleteDoc(doc(db, "invoiceLineCustomizations", lineToDelete.id));
-      toast({ title: "Success", description: `Line "${lineToDelete.label}" deleted.` });
-      fetchInvoiceLines(); 
+      const payload: DeleteInvoiceLineCustomizationPayload = {
+        customizationId: lineToDelete.id
+      };
+
+      const result: HttpsCallableResult<{success: boolean, message: string}> = await deleteInvoiceLineCustomizationFn(payload);
+      
+      if (result.data.success) {
+        toast({ title: "Success", description: result.data.message || `Line "${lineToDelete.label}" deleted.` });
+        fetchInvoiceLines(); 
+      } else {
+        throw new Error(result.data.message || "Failed to delete line configuration");
+      }
     } catch (error) {
       console.error("Error deleting line: ", error);
-      toast({ title: "Error", description: "Failed to delete line configuration.", variant: "destructive" });
+      toast({ 
+        title: "Error", 
+        description: error instanceof Error ? error.message : "Failed to delete line configuration.", 
+        variant: "destructive" 
+      });
     } finally {
       setIsSubmitting(false);
       setIsDeleteAlertOpen(false);

@@ -1,4 +1,3 @@
-
 import type { Timestamp } from 'firebase/firestore';
 
 // Placeholder Account IDs - In a real app, these would come from config/settings
@@ -322,4 +321,98 @@ export interface FirestoreDaybook extends Auditable {
   // createdBy, createdAt, updatedBy, updatedAt inherited from Auditable
 }
 
-    
+// Cloud Function Request/Response Types
+export interface CloudFunctionResponse {
+  success: boolean;
+  id?: string;
+  message: string;
+}
+
+// Goods Receipt Cloud Function Types
+export interface GoodsReceiptCreateRequest {
+  miti: string; // ISO date string
+  nepaliMiti?: string;
+  manifestId: string;
+  receivingBranchId: string;
+  receivingGodownId?: string;
+  remarks?: string;
+  shortages?: string;
+  damages?: string;
+}
+
+export interface GoodsReceiptUpdateRequest {
+  receiptId: string;
+  miti?: string; // ISO date string
+  nepaliMiti?: string;
+  manifestId?: string;
+  receivingBranchId?: string;
+  receivingGodownId?: string;
+  remarks?: string;
+  shortages?: string;
+  damages?: string;
+}
+
+export interface GoodsReceiptDeleteRequest {
+  receiptId: string;
+}
+
+// Goods Delivery Cloud Function Types
+export interface GoodsDeliveryCreateRequest {
+  miti: string; // ISO date string
+  nepaliMiti?: string;
+  deliveredBiltis: DeliveredBiltiItem[];
+  overallRemarks?: string;
+  deliveredToName?: string;
+  deliveredToContact?: string;
+}
+
+export interface GoodsDeliveryUpdateRequest {
+  deliveryId: string;
+  miti?: string; // ISO date string
+  nepaliMiti?: string;
+  deliveredBiltis?: DeliveredBiltiItem[];
+  overallRemarks?: string;
+  deliveredToName?: string;
+  deliveredToContact?: string;
+}
+
+export interface GoodsDeliveryDeleteRequest {
+  deliveryId: string;
+}
+
+// Ledger Cloud Function Types
+export interface LedgerEntryCreateRequest {
+  accountId: string;
+  miti: string; // ISO date string
+  nepaliMiti?: string;
+  description: string;
+  debit: number;
+  credit: number;
+  referenceNo?: string;
+  transactionType: LedgerTransactionType;
+}
+
+export interface LedgerEntryUpdateStatusRequest {
+  entryId: string;
+  status: "Approved" | "Rejected";
+  approvalRemarks?: string;
+}
+
+// Daybook Transaction Cloud Function Types
+export interface DaybookTransactionCreateRequest {
+  daybookId: string;
+  transactionId?: string; // For updates, if not provided a new ID will be generated
+  transactionType: DaybookTransactionType;
+  amount: number;
+  description: string;
+  ledgerAccountId?: string;
+  partyId?: string;
+  referenceId?: string;
+  nepaliMiti?: string;
+}
+
+export interface DaybookTransactionDeleteRequest {
+  daybookId: string;
+  transactionId: string;
+}
+

@@ -26,6 +26,7 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
+  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -39,16 +40,17 @@ import { db } from "@/lib/firebase";
 import { 
   collection, 
   getDocs, 
-  addDoc, 
-  doc, 
-  updateDoc, 
-  deleteDoc, 
   Timestamp,
   query,
-  orderBy,
-  where,
-  writeBatch
+  orderBy
 } from "firebase/firestore";
+import { getFunctions, httpsCallable, type HttpsCallableResult } from "firebase/functions";
+import type { 
+  GoodsReceiptCreateRequest, 
+  GoodsReceiptUpdateRequest, 
+  GoodsReceiptDeleteRequest,
+  CloudFunctionResponse
+} from "@/types/firestore";
 import type { 
   GoodsReceipt as FirestoreGoodsReceipt, 
   Manifest as FirestoreManifest, 
@@ -104,6 +106,9 @@ export default function GoodsReceiptPage() {
 
   const [selectedManifestInForm, setSelectedManifestInForm] = useState<Manifest | null>(null);
   const [selectedReceivingBranchInForm, setSelectedReceivingBranchInForm] = useState<Branch | null>(null);
+
+  // Initialize Firebase Functions
+  const functions = getFunctions();
 
   const fetchMasterData = async () => {
     try {
@@ -188,6 +193,8 @@ export default function GoodsReceiptPage() {
   const handleBranchAdd = async (newBranchData: Omit<Branch, 'id' | 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy' | 'status' | 'managerName' | 'managerUserId' | 'contactEmail' | 'contactPhone'> & { status?: "Active" | "Inactive" }) => {
     setIsSubmitting(true); // Use isSubmitting to disable buttons during this operation
     try {
+      // Note: Branch creation should ideally use a Cloud Function too, but keeping direct Firestore for now
+      const { addDoc } = await import("firebase/firestore");
       const branchPayload: Omit<FirestoreBranch, 'id'> = {
         name: newBranchData.name,
         location: newBranchData.location || "",
@@ -248,64 +255,55 @@ export default function GoodsReceiptPage() {
     }
     setIsSubmitting(true);
     
-    const receiptDataPayload: Omit<FirestoreGoodsReceipt, 'id' | 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy'> & Partial<Pick<FirestoreGoodsReceipt, 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy'>> = {
-      ...formData,
-      miti: Timestamp.fromDate(formData.miti),
-    };
-
-    const batch = writeBatch(db);
-
-    if (editingReceipt) {
-      try {
-        // Note: Typically, you might not change the manifest for an existing receipt.
-        // If manifestId *can* change, logic to revert old manifest status and update new one is needed.
-        // For simplicity, this example assumes manifestId doesn't change on edit or status updates are handled carefully.
-        const receiptDocRef = doc(db, "goodsReceipts", editingReceipt.id);
-        batch.update(receiptDocRef, {
-            ...receiptDataPayload,
-            updatedAt: Timestamp.now(),
-            updatedBy: PLACEHOLDER_USER_ID,
-        });
-        // If the manifest associated with this receipt was changed, update statuses
-        if (editingReceipt.manifestId !== formData.manifestId) {
-            const oldManifestDocRef = doc(db, "manifests", editingReceipt.manifestId);
-            batch.update(oldManifestDocRef, { status: "In Transit", goodsReceiptId: null }); // Revert old
-            
-            const newManifestDocRef = doc(db, "manifests", formData.manifestId);
-            batch.update(newManifestDocRef, { status: "Received", goodsReceiptId: editingReceipt.id }); // Update new
-        } else { // If manifest is same, ensure its status is "Received"
-            const manifestDocRef = doc(db, "manifests", formData.manifestId);
-            batch.update(manifestDocRef, { status: "Received", goodsReceiptId: editingReceipt.id });
+    try {
+      if (editingReceipt) {
+        // Update existing receipt
+        const updateGoodsReceipt = httpsCallable<GoodsReceiptUpdateRequest, CloudFunctionResponse>(functions, 'updateGoodsReceipt');
+        const updateData: GoodsReceiptUpdateRequest = {
+          receiptId: editingReceipt.id,
+          miti: formData.miti.toISOString(),
+          nepaliMiti: formData.nepaliMiti,
+          manifestId: formData.manifestId,
+          receivingBranchId: formData.receivingBranchId,
+          remarks: formData.remarks,
+          // Note: shortages and damages would be handled here if form included them
+        };
+        
+        const result = await updateGoodsReceipt(updateData);
+        if (result.data.success) {
+          toast({ title: "Goods Receipt Updated", description: result.data.message });
+        } else {
+          throw new Error(result.data.message);
         }
+      } else {
+        // Create new receipt
+        const createGoodsReceipt = httpsCallable<GoodsReceiptCreateRequest, CloudFunctionResponse>(functions, 'createGoodsReceipt');
+        const createData: GoodsReceiptCreateRequest = {
+          miti: formData.miti.toISOString(),
+          nepaliMiti: formData.nepaliMiti,
+          manifestId: formData.manifestId,
+          receivingBranchId: formData.receivingBranchId,
+          remarks: formData.remarks,
+          // Note: shortages and damages would be handled here if form included them
+        };
         
-        await batch.commit();
-        toast({ title: "Goods Receipt Updated", description: `Receipt ${editingReceipt.id} updated successfully.` });
-      } catch (error) {
-        console.error("Error updating goods receipt: ", error);
-        toast({ title: "Error", description: "Failed to update goods receipt.", variant: "destructive" });
+        const result = await createGoodsReceipt(createData);
+        if (result.data.success) {
+          toast({ title: "Goods Receipt Created", description: result.data.message });
+        } else {
+          throw new Error(result.data.message);
+        }
       }
-    } else { // Adding new receipt
-      try {
-        const receiptCollectionRef = collection(db, "goodsReceipts");
-        const newReceiptDocRef = doc(receiptCollectionRef); // Generate ID upfront for manifest update
-        
-        batch.set(newReceiptDocRef, {
-            ...receiptDataPayload,
-            createdBy: PLACEHOLDER_USER_ID,
-            createdAt: Timestamp.now(),
-        });
-        
-        // Update Manifest status to "Received"
-        const manifestDocRef = doc(db, "manifests", formData.manifestId);
-        batch.update(manifestDocRef, { status: "Received", goodsReceiptId: newReceiptDocRef.id });
-        
-        await batch.commit();
-        toast({ title: "Goods Receipt Created", description: `New receipt created. Manifest ${formData.manifestId} marked 'Received'.` });
-      } catch (error) {
-        console.error("Error adding goods receipt: ", error);
-        toast({ title: "Error", description: "Failed to create goods receipt.", variant: "destructive" });
-      }
+    } catch (error: any) {
+      console.error("Error with goods receipt operation:", error);
+      const errorMessage = error?.message || 'An unknown error occurred';
+      toast({ 
+        title: "Error", 
+        description: `Failed to ${editingReceipt ? 'update' : 'create'} goods receipt: ${errorMessage}`, 
+        variant: "destructive" 
+      });
     }
+
     setIsSubmitting(false);
     setIsFormDialogOpen(false);
     setEditingReceipt(null);
@@ -323,22 +321,28 @@ export default function GoodsReceiptPage() {
   const confirmDelete = async () => {
     if (receiptToDelete) {
       setIsSubmitting(true);
-      const batch = writeBatch(db);
       try {
-        const receiptDocRef = doc(db, "goodsReceipts", receiptToDelete.id);
-        batch.delete(receiptDocRef);
-
-        // Revert associated Manifest status to "In Transit"
-        const manifestDocRef = doc(db, "manifests", receiptToDelete.manifestId);
-        batch.update(manifestDocRef, { status: "In Transit", goodsReceiptId: null });
-
-        await batch.commit();
-        toast({ title: "Goods Receipt Deleted", description: `Receipt "${receiptToDelete.id}" deleted. Manifest status reverted.` });
-        fetchGoodsReceipts();
-        fetchMasterData(); // Refresh manifests list
-      } catch (error) {
-        console.error("Error deleting goods receipt: ", error);
-        toast({ title: "Error", description: "Failed to delete goods receipt.", variant: "destructive" });
+        const deleteGoodsReceipt = httpsCallable<GoodsReceiptDeleteRequest, CloudFunctionResponse>(functions, 'deleteGoodsReceipt');
+        const deleteData: GoodsReceiptDeleteRequest = {
+          receiptId: receiptToDelete.id
+        };
+        
+        const result = await deleteGoodsReceipt(deleteData);
+        if (result.data.success) {
+          toast({ title: "Goods Receipt Deleted", description: result.data.message });
+          fetchGoodsReceipts();
+          fetchMasterData(); // Refresh manifests list
+        } else {
+          throw new Error(result.data.message);
+        }
+      } catch (error: any) {
+        console.error("Error deleting goods receipt:", error);
+        const errorMessage = error?.message || 'An unknown error occurred';
+        toast({ 
+          title: "Error", 
+          description: `Failed to delete goods receipt: ${errorMessage}`, 
+          variant: "destructive" 
+        });
       } finally {
         setIsSubmitting(false);
       }

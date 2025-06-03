@@ -48,12 +48,9 @@ import {
   orderBy,
   where,
   getDocs,
-  addDoc,
-  doc,
-  updateDoc,
   Timestamp,
-  deleteDoc,
-  writeBatch,
+  doc,
+  getDoc,
 } from "firebase/firestore";
 
 import type {
@@ -64,6 +61,9 @@ import type {
   Bilti as FirestoreBilti,
   Party as FirestoreParty,
   LedgerAccount as FirestoreLedgerAccount,
+  DaybookTransactionCreateRequest,
+  DaybookTransactionDeleteRequest,
+  User as FirestoreUser,
 } from "@/types/firestore";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
@@ -117,7 +117,6 @@ const transactionTypes: DaybookTransactionType[] = [
   "Delivery Expense (Cash Out)",
   "Cash Out (to Expense/Supplier/Other)",
   "Cash In (Other)",
-  "Cash Out (Other)",
   "Cash In (from Party Payment)",
   "Cash Out (to Driver/Staff, Petty Expense)",
   "Adjustment/Correction",
@@ -130,6 +129,9 @@ const functionsInstance = getFunctions(db.app);
 const submitDaybookFn = httpsCallable<{daybookId: string}, {success: boolean, message: string}>(functionsInstance, 'submitDaybook');
 const approveDaybookFn = httpsCallable<{daybookId: string}, {success: boolean, message: string}>(functionsInstance, 'approveDaybook');
 const rejectDaybookFn = httpsCallable<{daybookId: string, remarks: string}, {success: boolean, message: string}>(functionsInstance, 'rejectDaybook');
+const createDaybookTransactionFn = httpsCallable<DaybookTransactionCreateRequest, {success: boolean, id: string, message: string}>(functionsInstance, 'createDaybookTransaction');
+const deleteDaybookTransactionFn = httpsCallable<DaybookTransactionDeleteRequest, {success: boolean, id: string, message: string}>(functionsInstance, 'deleteDaybookTransaction');
+const createDaybookFn = httpsCallable<{branchId: string, nepaliMiti: string, englishMiti: string, openingBalance?: number}, {success: boolean, id: string, message: string}>(functionsInstance, 'createDaybook');
 
 
 export default function DaybookPage() {
@@ -230,7 +232,7 @@ export default function DaybookPage() {
 
       const allFetchedBiltis = biltisSnap.docs.map(d => {
         const data = d.data() as FirestoreBilti;
-        return { ...data, id: d.id, miti: data.miti.toDate() } as Bilti;
+        return { ...data, id: d.id, miti: data.miti.toDate(), createdAt: data.createdAt?.toDate(), updatedAt: data.updatedAt?.toDate() } as Bilti;
       });
       setAllBiltisMaster(allFetchedBiltis);
       setBiltisForSelection(allFetchedBiltis);
@@ -274,7 +276,7 @@ export default function DaybookPage() {
           createdAt: data.createdAt?.toDate(),
           updatedAt: data.updatedAt?.toDate(),
           submittedAt: data.submittedAt?.toDate(),
-          approvedAt: data.approvedAt?.toDate(),
+          approvedBy: data.approvedBy,
           processingTimestamp: data.processingTimestamp?.toDate(),
         };
         setActiveDaybook(loadedDaybook);
@@ -488,77 +490,88 @@ export default function DaybookPage() {
 
     setIsSubmittingTransaction(true);
     let currentActiveDaybookToUpdate = activeDaybookFromState || activeDaybook;
-    let daybookDocRef;
 
     try {
-      const transactionEntry: FirestoreDaybookTransaction = {
-        id: editingTransaction ? editingTransaction.id : `txn_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
-        ...transactionFormData,
-        nepaliMiti: transactionFormData.nepaliMiti || filterNepaliMiti,
-        createdBy: authUser.uid,
-        createdAt: Timestamp.now(),
-        autoLinked: (transactionFormData.transactionType === "Cash In (from Delivery/Receipt)" || transactionFormData.transactionType === "Delivery Expense (Cash Out)") && !!transactionFormData.referenceId,
-      };
-
-      if (!currentActiveDaybookToUpdate) { 
+      if (!currentActiveDaybookToUpdate) {
+        // If no daybook exists, create one first using the Cloud Function
         const parsedEnglishDate = parse(filterNepaliMiti, "yyyy-MM-dd", new Date());
         if (!isValid(parsedEnglishDate)) {
           toast({ title: "Error", description: "Invalid Nepali Miti format. Please use YYYY-MM-DD.", variant: "destructive" });
-          setIsSubmittingTransaction(false);
           return;
         }
 
-        const newDaybookPayload: FirestoreDaybook = {
+        // Create daybook using Cloud Function
+        const createDaybookResult = await createDaybookFn({
           branchId: filterBranchId,
           nepaliMiti: filterNepaliMiti,
-          englishMiti: Timestamp.fromDate(parsedEnglishDate),
-          openingBalance: 0, 
-          totalCashIn: 0, totalCashOut: 0, closingBalance: 0,
-          status: "Draft",
-          transactions: [transactionEntry],
-          createdBy: authUser.uid, 
-          createdAt: Timestamp.now(),
-          processingTimestamp: Timestamp.now(),
-        };
-        daybookDocRef = await addDoc(collection(db, "daybooks"), newDaybookPayload);
-        currentActiveDaybookToUpdate = {
-            ...(newDaybookPayload as Omit<FirestoreDaybook, 'englishMiti' | 'createdAt' | 'updatedAt' | 'submittedAt' | 'approvedAt' | 'transactions' | 'processingTimestamp' >),
-            id: daybookDocRef.id,
-            englishMiti: newDaybookPayload.englishMiti.toDate(),
-            processingTimestamp: newDaybookPayload.processingTimestamp?.toDate(),
-            transactions: newDaybookPayload.transactions.map(tx => ({...tx, createdAt: tx.createdAt.toDate()})), 
-            createdAt: newDaybookPayload.createdAt.toDate()
-        };
-        toast({ title: "Daybook Created & Transaction Added", description: "New daybook initiated with the first transaction." });
-      } else {
-        daybookDocRef = doc(db, "daybooks", currentActiveDaybookToUpdate.id);
-        const updatedTransactions = editingTransaction
-          ? currentActiveDaybookToUpdate.transactions.map(tx => tx.id === editingTransaction.id ? transactionEntry : tx)
-          : [...currentActiveDaybookToUpdate.transactions, transactionEntry];
-
-        await updateDoc(daybookDocRef, {
-            transactions: updatedTransactions.map(tx => ({...tx, createdAt: Timestamp.fromDate(tx.createdAt || new Date())})), 
-            updatedAt: Timestamp.now(),
-            updatedBy: authUser.uid 
+          englishMiti: parsedEnglishDate.toISOString(),
+          openingBalance: 0
         });
-        currentActiveDaybookToUpdate = { ...currentActiveDaybookToUpdate, transactions: updatedTransactions.map(tx => ({...tx, createdAt: tx.createdAt})) as DaybookTransaction[] };
-        toast({ title: editingTransaction ? "Transaction Updated" : "Transaction Added", description: "Daybook successfully updated." });
+        
+        if (!createDaybookResult.data.success) {
+          toast({ 
+            title: "Error", 
+            description: createDaybookResult.data.message || "Failed to create daybook.", 
+            variant: "destructive" 
+          });
+          return;
+        }
+
+        // Reload the daybook to get the created state
+        await loadOrCreateActiveDaybook();
+        currentActiveDaybookToUpdate = activeDaybookFromState || activeDaybook;
+        
+        if (!currentActiveDaybookToUpdate) {
+          toast({ title: "Error", description: "Failed to load created daybook.", variant: "destructive" });
+          return;
+        }
       }
 
-      setActiveDaybook(currentActiveDaybookToUpdate); 
-      setActiveDaybookFromState(currentActiveDaybookToUpdate);
+      // Now create the transaction using Cloud Function
+      const transactionRequest: DaybookTransactionCreateRequest = {
+        daybookId: currentActiveDaybookToUpdate.id,
+        transactionId: editingTransaction?.id, // For updates
+        transactionType: transactionFormData.transactionType,
+        amount: transactionFormData.amount,
+        description: transactionFormData.description,
+        ledgerAccountId: transactionFormData.ledgerAccountId,
+        partyId: transactionFormData.partyId,
+        referenceId: transactionFormData.referenceId,
+        nepaliMiti: transactionFormData.nepaliMiti || filterNepaliMiti,
+      };
 
+      const result = await createDaybookTransactionFn(transactionRequest);
+      
+      if (result.data.success) {
+        // Reload the daybook to get the updated state
+        await loadOrCreateActiveDaybook();
+        
+        toast({ 
+          title: editingTransaction ? "Transaction Updated" : "Transaction Added", 
+          description: result.data.message 
+        });
 
-      setIsTransactionFormOpen(false);
-      setEditingTransaction(null);
-      setTransactionFormData({...initialTransactionFormData, ledgerAccountId: ""}); 
-      setSelectedBiltiForTx(null);
-      setSelectedPartyForTx(null);
-      setSelectedLedgerForTx(null);
+        setIsTransactionFormOpen(false);
+        setEditingTransaction(null);
+        setTransactionFormData({...initialTransactionFormData, ledgerAccountId: ""}); 
+        setSelectedBiltiForTx(null);
+        setSelectedPartyForTx(null);
+        setSelectedLedgerForTx(null);
+      } else {
+        toast({ 
+          title: "Transaction Failed", 
+          description: result.data.message || "An unknown error occurred.", 
+          variant: "destructive"
+        });
+      }
 
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error saving transaction:", error);
-      toast({ title: "Error", description: "Failed to save transaction.", variant: "destructive" });
+      toast({ 
+        title: "Error", 
+        description: error.message || "Failed to save transaction.", 
+        variant: "destructive" 
+      });
     } finally {
       setIsSubmittingTransaction(false);
     }
@@ -568,24 +581,38 @@ export default function DaybookPage() {
     if (!activeDaybookFromState || !transactionToDelete || !authUser) return;
     setIsSubmittingTransaction(true); 
     try {
-        const updatedTransactions = activeDaybookFromState.transactions.filter(tx => tx.id !== transactionToDelete.id);
-        const daybookDocRef = doc(db, "daybooks", activeDaybookFromState.id);
-        await updateDoc(daybookDocRef, {
-            transactions: updatedTransactions.map(tx => ({...tx, createdAt: Timestamp.fromDate(tx.createdAt || new Date())})), 
-            updatedAt: Timestamp.now(),
-            updatedBy: authUser.uid
-        });
+        const deleteRequest: DaybookTransactionDeleteRequest = {
+            daybookId: activeDaybookFromState.id,
+            transactionId: transactionToDelete.id
+        };
 
-        const updatedDaybook = { ...activeDaybookFromState, transactions: updatedTransactions };
-        setActiveDaybook(updatedDaybook);
-        setActiveDaybookFromState(updatedDaybook);
-
-        toast({ title: "Transaction Deleted", description: `Transaction "${transactionToDelete.description}" removed from the daybook.` });
-        setIsDeleteTransactionAlertOpen(false);
-        setTransactionToDelete(null);
-    } catch (error) {
+        const result = await deleteDaybookTransactionFn(deleteRequest);
+        
+        if (result.data.success) {
+            // Reload the daybook to get the updated state
+            await loadOrCreateActiveDaybook();
+            
+            toast({ 
+                title: "Transaction Deleted", 
+                description: result.data.message 
+            });
+            
+            setIsDeleteTransactionAlertOpen(false);
+            setTransactionToDelete(null);
+        } else {
+            toast({ 
+                title: "Delete Failed", 
+                description: result.data.message || "An unknown error occurred.", 
+                variant: "destructive"
+            });
+        }
+    } catch (error: any) {
         console.error("Error deleting transaction:", error);
-        toast({ title: "Error", description: "Failed to delete transaction.", variant: "destructive" });
+        toast({ 
+            title: "Error", 
+            description: error.message || "Failed to delete transaction.", 
+            variant: "destructive" 
+        });
     } finally {
         setIsSubmittingTransaction(false);
     }

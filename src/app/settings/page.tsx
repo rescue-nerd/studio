@@ -21,14 +21,21 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
 import { db } from "@/lib/firebase";
-import { collection, getDocs, doc, updateDoc, Timestamp, query, orderBy, getDoc } from "firebase/firestore";
+import { collection, getDocs, doc, Timestamp, query, orderBy, getDoc } from "firebase/firestore";
+import { getFunctions, httpsCallable, type HttpsCallableResult } from "firebase/functions";
 import type { User as FirestoreUser, Branch as FirestoreBranch } from "@/types/firestore";
+import type { UpdateUserProfilePayload, UpdateUserBranchAssignmentsPayload } from "@/functions/src/types";
 import { Loader2 } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context"; // Import useAuth
 import { useRouter } from "next/navigation"; // Import useRouter
 
 interface User extends FirestoreUser {} 
 interface Branch extends FirestoreBranch { id: string; }
+
+// Firebase Functions setup
+const functions = getFunctions();
+const updateUserProfileFn = httpsCallable<UpdateUserProfilePayload, {success: boolean, message: string}>(functions, 'updateUserProfile');
+const updateUserBranchAssignmentsFn = httpsCallable<UpdateUserBranchAssignmentsPayload, {success: boolean, message: string}>(functions, 'updateUserBranchAssignments');
 
 
 export default function SettingsPage() {
@@ -123,21 +130,36 @@ export default function SettingsPage() {
     }
     setIsSubmittingProfile(true);
     try {
-      const userDocRef = doc(db, "users", currentUserProfile.uid);
-      const dataToUpdate: Partial<FirestoreUser> = {
-        displayName: profileFormData.displayName || null,
+      const payload: UpdateUserProfilePayload = {
+        uid: currentUserProfile.uid,
+        displayName: profileFormData.displayName || undefined,
         enableEmailNotifications: profileFormData.enableEmailNotifications,
         darkModeEnabled: profileFormData.darkModeEnabled,
         autoDataSyncEnabled: profileFormData.autoDataSyncEnabled,
-        updatedAt: Timestamp.now(), 
-        // Email is not updated here, as it's usually handled by Firebase Auth specific methods
       };
-      await updateDoc(userDocRef, dataToUpdate);
-      toast({ title: "Success", description: "Profile updated successfully." });
-      setCurrentUserProfile(prev => prev ? ({...prev, ...dataToUpdate, displayName: dataToUpdate.displayName || undefined }) : null);
+      
+      const result: HttpsCallableResult<{success: boolean, message: string}> = await updateUserProfileFn(payload);
+      
+      if (result.data.success) {
+        toast({ title: "Success", description: result.data.message || "Profile updated successfully." });
+        setCurrentUserProfile(prev => prev ? ({
+          ...prev, 
+          displayName: profileFormData.displayName || undefined,
+          enableEmailNotifications: profileFormData.enableEmailNotifications,
+          darkModeEnabled: profileFormData.darkModeEnabled,
+          autoDataSyncEnabled: profileFormData.autoDataSyncEnabled,
+          updatedAt: Timestamp.now()
+        }) : null);
+      } else {
+        throw new Error(result.data.message || "Failed to update profile");
+      }
     } catch (error) {
       console.error("Error updating profile:", error);
-      toast({ title: "Error", description: "Failed to update profile.", variant: "destructive" });
+      toast({ 
+        title: "Error", 
+        description: error instanceof Error ? error.message : "Failed to update profile.", 
+        variant: "destructive" 
+      });
     } finally {
       setIsSubmittingProfile(false);
     }
@@ -166,19 +188,32 @@ export default function SettingsPage() {
     if (!selectedUserForBranches) return;
     setIsSubmittingAssignments(true);
     try {
-      const userDocRef = doc(db, "users", selectedUserForBranches.uid); // Use uid
-      await updateDoc(userDocRef, {
-        assignedBranchIds: Array.from(tempSelectedBranches),
-        updatedAt: Timestamp.now(),
-      });
-      toast({ title: "Success", description: `Branch assignments for ${selectedUserForBranches.displayName} updated.` });
-      setAllUsers(prevUsers => prevUsers.map(u => 
-        u.uid === selectedUserForBranches.uid ? { ...u, assignedBranchIds: Array.from(tempSelectedBranches) } : u
-      ));
-      setIsBranchDialogOpen(false);
+      const payload: UpdateUserBranchAssignmentsPayload = {
+        uid: selectedUserForBranches.uid,
+        assignedBranchIds: Array.from(tempSelectedBranches)
+      };
+      
+      const result: HttpsCallableResult<{success: boolean, message: string}> = await updateUserBranchAssignmentsFn(payload);
+      
+      if (result.data.success) {
+        toast({ 
+          title: "Success", 
+          description: result.data.message || `Branch assignments for ${selectedUserForBranches.displayName} updated.` 
+        });
+        setAllUsers(prevUsers => prevUsers.map(u => 
+          u.uid === selectedUserForBranches.uid ? { ...u, assignedBranchIds: Array.from(tempSelectedBranches) } : u
+        ));
+        setIsBranchDialogOpen(false);
+      } else {
+        throw new Error(result.data.message || "Failed to update branch assignments");
+      }
     } catch (error) {
       console.error("Error updating branch assignments:", error);
-      toast({ title: "Error", description: "Failed to update branch assignments.", variant: "destructive" });
+      toast({ 
+        title: "Error", 
+        description: error instanceof Error ? error.message : "Failed to update branch assignments.", 
+        variant: "destructive" 
+      });
     } finally {
       setIsSubmittingAssignments(false);
     }
