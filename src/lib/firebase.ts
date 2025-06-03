@@ -1,9 +1,10 @@
 
 // Import the functions you need from the SDKs you need
 import { initializeApp, getApps, type FirebaseApp } from "firebase/app";
-import { getFirestore, type Firestore } from "firebase/firestore";
+import { getFirestore, enableIndexedDbPersistence, type Firestore } from "firebase/firestore";
 import { getAuth, type Auth } from "firebase/auth";
-// TODO: Add SDKs for other Firebase products you want to use
+import { getFunctions, type Functions } from "firebase/functions";
+import { getStorage, type FirebaseStorage } from "firebase/storage";
 // https://firebase.google.com/docs/web/setup#available-libraries
 
 // Your web app's Firebase configuration using environment variables
@@ -20,6 +21,8 @@ const firebaseConfig = {
 let app: FirebaseApp;
 let db: Firestore;
 let auth: Auth;
+let functions: Functions;
+let storage: FirebaseStorage;
 
 if (!getApps().length) {
   app = initializeApp(firebaseConfig);
@@ -29,5 +32,18 @@ if (!getApps().length) {
 
 db = getFirestore(app);
 auth = getAuth(app);
+functions = getFunctions(app, 'us-central1'); // Specify region to match our deployed functions
+storage = getStorage(app);
 
-export { app, db, auth };
+// Enable offline persistence for Firestore when in browser environment
+if (typeof window !== 'undefined') {
+  enableIndexedDbPersistence(db).catch((err) => {
+    if (err.code === 'failed-precondition') {
+      console.warn('Firestore persistence could not be enabled: multiple tabs open');
+    } else if (err.code === 'unimplemented') {
+      console.warn('Firestore persistence is not available in this environment');
+    }
+  });
+}
+
+export { app, db, auth, functions, storage };

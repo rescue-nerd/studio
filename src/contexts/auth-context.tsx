@@ -4,7 +4,8 @@
 import type { User as FirebaseUser } from "firebase/auth";
 import { onAuthStateChanged } from "firebase/auth";
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
-import { auth } from "@/lib/firebase";
+import { auth, db } from "@/lib/firebase";
+import { doc, getDoc } from "firebase/firestore";
 import type { User as FirestoreUser } from "@/types/firestore"; // Your Firestore user type
 
 interface AuthContextType {
@@ -25,9 +26,22 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       setUser(firebaseUser);
       if (firebaseUser) {
-        // Optional: Fetch more user details from Firestore if you store them separately
-        // e.g., const userDoc = await getDoc(doc(db, "users", firebaseUser.uid));
-        // if (userDoc.exists()) setFirestoreUser(userDoc.data() as FirestoreUser);
+        try {
+          // Fetch more user details from Firestore to get role and branch assignments
+          const userDoc = await getDoc(doc(db, "users", firebaseUser.uid));
+          if (userDoc.exists()) {
+            setFirestoreUser({
+              ...userDoc.data() as FirestoreUser,
+              id: userDoc.id
+            });
+          } else {
+            console.warn(`User document not found for uid: ${firebaseUser.uid}`);
+            setFirestoreUser(null);
+          }
+        } catch (error) {
+          console.error("Error fetching user data:", error);
+          setFirestoreUser(null);
+        }
       } else {
         setFirestoreUser(null);
       }

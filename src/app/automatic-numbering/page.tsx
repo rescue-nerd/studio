@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useEffect, type ChangeEvent, type FormEvent } from "react";
@@ -39,6 +38,8 @@ import {
   orderBy
 } from "firebase/firestore";
 import { httpsCallable, type HttpsCallableResult } from "firebase/functions";
+import { functions } from "@/lib/firebase";
+import { getFirebaseErrorMessage } from "@/lib/firebase-error-handler";
 import type { DocumentNumberingConfig as FirestoreDocumentNumberingConfig, Branch as FirestoreBranch } from "@/types/firestore";
 import type { 
   CreateDocumentNumberingConfigPayload, 
@@ -48,8 +49,6 @@ import type {
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/auth-context"; // Import useAuth
 import { useRouter } from "next/navigation"; // Import useRouter
-import { functions } from "@/lib/firebase"; // Import functions from firebase.ts
-import { handleFirebaseError } from "@/lib/firebase-error-handler"; // Import error handler
 
 interface DocumentNumberingConfig extends FirestoreDocumentNumberingConfig {}
 interface Branch extends FirestoreBranch {}
@@ -106,7 +105,7 @@ export default function AutomaticNumberingPage() {
       setBranches([{ id: "Global", name: "Global (Non-Branch Specific)" } as Branch, ...fetchedBranches]);
     } catch (error) {
       console.error("Error fetching branches: ", error);
-      toast({ title: "Error", description: "Failed to fetch branches.", variant: "destructive" });
+      toast({ title: "Error", description: getFirebaseErrorMessage(error), variant: "destructive" });
     }
   };
 
@@ -120,7 +119,7 @@ export default function AutomaticNumberingPage() {
       setConfigs(fetchedConfigs);
     } catch (error) {
       console.error("Error fetching numbering configs: ", error);
-      handleFirebaseError(error, toast);
+      toast({ title: "Error", description: getFirebaseErrorMessage(error), variant: "destructive" });
     }
   };
   
@@ -219,9 +218,10 @@ export default function AutomaticNumberingPage() {
       setIsFormOpen(false);
     } catch (error) {
       console.error("Error saving config: ", error);
-      handleFirebaseError(error, toast, {
-        "functions/already-exists": "A configuration for this document type and branch already exists.",
-        "functions/invalid-argument": "Please check all fields are filled correctly."
+      toast({ 
+        title: "Error", 
+        description: getFirebaseErrorMessage(error),
+        variant: "destructive" 
       });
     } finally {
       setIsSubmitting(false);
@@ -253,7 +253,7 @@ export default function AutomaticNumberingPage() {
       console.error("Error deleting config: ", error);
       toast({ 
         title: "Error", 
-        description: error instanceof Error ? error.message : "Failed to delete configuration.", 
+        description: getFirebaseErrorMessage(error),
         variant: "destructive" 
       });
     } finally {
