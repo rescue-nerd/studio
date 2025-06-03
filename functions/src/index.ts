@@ -7,7 +7,7 @@ import {onCall, HttpsError} from "firebase-functions/v2/https"; // For HTTPS Cal
 import type {
   UserData,
   DaybookData,
-  BiltiData,
+  BiltiData as FunctionsBiltiData, // Renamed to avoid conflict with local BiltiData
   GoodsDeliveryData,
   PartyData,
   LedgerEntryData,
@@ -17,9 +17,9 @@ import type {
   StateData,
   CityData,
   UnitData,
-  TruckData, // Added
-  DriverData, // Added
-  GodownData, // Added
+  TruckData,
+  DriverData,
+  GodownData,
 } from "./types";
 
 admin.initializeApp();
@@ -189,7 +189,7 @@ export const postBiltiLedgerEntries = functions.onDocumentCreated(
   "biltis/{biltiId}",
   async (event) => {
     const biltiId = event.params.biltiId;
-    const biltiData = event.data?.data() as BiltiData | undefined;
+    const biltiData = event.data?.data() as FunctionsBiltiData | undefined;
 
     if (!biltiData) {
       logger.log(`Bilti ${biltiId} data not found on creation. Skipping ledger posting.`);
@@ -308,7 +308,7 @@ export const postGoodsDeliveryLedgerEntries = functions.onDocumentCreated(
         logger.error(`GoodsDelivery ${deliveryId}: Bilti ${item.biltiId} not found. Skipping rebates/discounts for this item.`);
         continue;
       }
-      const bilti = biltiSnap.data() as BiltiData;
+      const bilti = biltiSnap.data() as FunctionsBiltiData;
 
       const partyToCreditSnap = await db.collection("parties").doc(bilti.consigneeId).get();
       if (!partyToCreditSnap.exists) {
@@ -1294,5 +1294,129 @@ export const deleteGodown = onCall({enforceAppCheck: false, consumeAppCheck: "le
     logger.error(`Error deleting godown ${godownId}:`, error);
     if (error instanceof HttpsError) throw error;
     throw new HttpsError("internal", "Failed to delete godown.");
+  }
+});
+
+// --- Bilti / Invoicing CRUD Functions ---
+// Type for data coming from client for Bilti creation/update
+interface BiltiCallableData extends Omit<FunctionsBiltiData, "id" | "miti" | "totalAmount" | "status" | "createdAt" | "createdBy" | "updatedAt" | "updatedBy" | "ledgerProcessed"> {
+  miti: string; // Expect ISO string from client
+}
+
+export const createBilti = onCall({enforceAppCheck: false, consumeAppCheck: "lenient"}, async (request) => {
+  const uid = request.auth?.uid;
+  if (!uid) throw new HttpsError("unauthenticated", "Authentication required.");
+  // TODO: Add role/branch permission checks if necessary for Bilti creation
+
+  const data = request.data as BiltiCallableData;
+
+  // Basic validation
+  if (!data.consignorId || !data.consigneeId || !data.truckId || !data.driverId ||
+      !data.origin || !data.destination || !data.description ||
+      data.packages == null || data.rate == null || !data.payMode || !data.miti) {
+    throw new HttpsError("invalid-argument", "Required Bilti fields are missing.");
+  }
+  if (isNaN(new Date(data.miti).getTime())) {
+    throw new HttpsError("invalid-argument", "Invalid Miti date format.");
+  }
+
+  const totalAmount = (data.packages || 0) * (data.rate || 0);
+
+  try {
+    const newBiltiData: Omit<FunctionsBiltiData, "id"> = {
+      ...data,
+      miti: admin.firestore.Timestamp.fromDate(new Date(data.miti)),
+      totalAmount: totalAmount,
+      status: "Pending", // Initial status
+      createdAt: admin.firestore.Timestamp.now(),
+      createdBy: uid,
+      ledgerProcessed: false, // Default to false, will be set by trigger
+    };
+
+    const newBiltiRef = await db.collection("biltis").add(newBiltiData);
+    logger.info(`Bilti ${newBiltiRef.id} created by ${uid}`);
+    return {success: true, id: newBiltiRef.id, message: "Bilti created successfully."};
+  } catch (error: any) {
+    logger.error("Error creating Bilti:", error);
+    throw new HttpsError("internal", error.message || "Failed to create Bilti.");
+  }
+});
+
+export const updateBilti = onCall({enforceAppCheck: false, consumeAppCheck: "lenient"}, async (request) => {
+  const uid = request.auth?.uid;
+  if (!uid) throw new HttpsError("unauthenticated", "Authentication required.");
+  // TODO: Add role/branch permission checks if necessary for Bilti update (e.g., user can only update biltis from their branch)
+
+  const {biltiId, ...dataToUpdateClient} = request.data as {biltiId: string} & Partial<BiltiCallableData>;
+
+  if (!biltiId) throw new HttpsError("invalid-argument", "Bilti ID is required for updates.");
+  if (Object.keys(dataToUpdateClient).length === 0) throw new HttpsError("invalid-argument", "No data provided for update.");
+
+  // Basic validation for potentially updated fields
+  if (dataToUpdateClient.miti && isNaN(new Date(dataToUpdateClient.miti).getTime())) {
+    throw new HttpsError("invalid-argument", "Invalid Miti date format for update.");
+  }
+
+  try {
+    const biltiRef = db.collection("biltis").doc(biltiId);
+    const biltiDoc = await biltiRef.get();
+    if (!biltiDoc.exists) {
+      throw new HttpsError("not-found", `Bilti with ID ${biltiId} not found.`);
+    }
+    const existingBiltiData = biltiDoc.data() as FunctionsBiltiData;
+
+    // Recalculate totalAmount if packages or rate are being updated
+    const packages = dataToUpdateClient.packages !== undefined ? dataToUpdateClient.packages : existingBiltiData.packages;
+    const rate = dataToUpdateClient.rate !== undefined ? dataToUpdateClient.rate : existingBiltiData.rate;
+    const totalAmount = (packages || 0) * (rate || 0);
+
+    const dataToUpdateFirestore: Partial<FunctionsBiltiData> = {
+      ...dataToUpdateClient,
+      totalAmount: totalAmount,
+      updatedAt: admin.firestore.Timestamp.now(),
+      updatedBy: uid,
+    };
+
+    if (dataToUpdateClient.miti) {
+      dataToUpdateFirestore.miti = admin.firestore.Timestamp.fromDate(new Date(dataToUpdateClient.miti));
+    }
+
+
+    await biltiRef.update(dataToUpdateFirestore);
+    logger.info(`Bilti ${biltiId} updated by ${uid}`);
+    return {success: true, id: biltiId, message: "Bilti updated successfully."};
+  } catch (error: any) {
+    logger.error(`Error updating Bilti ${biltiId}:`, error);
+    if (error instanceof HttpsError) throw error;
+    throw new HttpsError("internal", error.message || "Failed to update Bilti.");
+  }
+});
+
+
+export const deleteBilti = onCall({enforceAppCheck: false, consumeAppCheck: "lenient"}, async (request) => {
+  const uid = request.auth?.uid;
+  if (!uid) throw new HttpsError("unauthenticated", "Authentication required.");
+  // TODO: Add role/branch permission checks for Bilti deletion
+
+  const {biltiId} = request.data as {biltiId: string};
+  if (!biltiId) throw new HttpsError("invalid-argument", "Bilti ID is required for deletion.");
+
+  try {
+    const biltiRef = db.collection("biltis").doc(biltiId);
+    const biltiDoc = await biltiRef.get();
+    if (!biltiDoc.exists) {
+      throw new HttpsError("not-found", `Bilti with ID ${biltiId} not found.`);
+    }
+    // Add more checks if needed, e.g., Bilti status.
+    // For now, allowing deletion regardless of status.
+    // Consider implications for ledger entries if a Bilti is deleted (they won't be auto-reversed by current setup).
+
+    await biltiRef.delete();
+    logger.info(`Bilti ${biltiId} deleted by ${uid}`);
+    return {success: true, id: biltiId, message: "Bilti deleted successfully."};
+  } catch (error: any) {
+    logger.error(`Error deleting Bilti ${biltiId}:`, error);
+    if (error instanceof HttpsError) throw error;
+    throw new HttpsError("internal", error.message || "Failed to delete Bilti.");
   }
 });

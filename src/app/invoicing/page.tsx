@@ -38,14 +38,15 @@ import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import SmartPartySelectDialog from "@/components/shared/smart-party-select-dialog";
 import { db } from "@/lib/firebase";
+import { getFunctions, httpsCallable, type HttpsCallableResult } from "firebase/functions";
 import { 
   collection, 
   getDocs, 
-  addDoc, 
-  doc, 
-  updateDoc, 
-  deleteDoc, 
-  Timestamp,
+  // addDoc, // No longer used for bilti creation
+  // doc, // No longer used directly for bilti update/delete
+  // updateDoc, // No longer used
+  // deleteDoc, // No longer used
+  Timestamp, // Still used for type hints if needed
   query,
   orderBy,
   type DocumentData,
@@ -55,7 +56,7 @@ import type {
   Party as FirestoreParty, 
   Truck as FirestoreTruck, 
   Driver as FirestoreDriver,
-  Bilti as FirestoreBilti,
+  Bilti as FirestoreBilti, // Main Firestore Bilti type
   City as FirestoreCity,
   Godown as FirestoreGodown,
   Branch as FirestoreBranch
@@ -72,7 +73,7 @@ export interface Driver extends FirestoreDriver {}
 export interface Bilti extends Omit<FirestoreBilti, 'miti' | 'createdAt' | 'updatedAt'> {
   id: string;
   miti: Date; 
-  createdAt?: Date | Timestamp;
+  createdAt?: Date | Timestamp; // Client-side might handle as Date, Firestore as Timestamp
   updatedAt?: Date | Timestamp;
 }
 export interface City extends FirestoreCity {}
@@ -81,6 +82,10 @@ export interface Branch extends FirestoreBranch {}
 
 
 const payModes: FirestoreBilti["payMode"][] = ["Paid", "To Pay", "Due"];
+
+// Type for data passed to createBilti/updateBilti Cloud Functions
+type BiltiCallableData = Omit<FirestoreBilti, 'id' | 'miti' | 'totalAmount' | 'status' | 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy' | 'ledgerProcessed'> & { miti: string };
+
 
 const defaultBiltiFormData: Omit<Bilti, 'id' | 'totalAmount' | 'status' | 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy'> = {
   miti: new Date(),
@@ -96,7 +101,13 @@ const defaultBiltiFormData: Omit<Bilti, 'id' | 'totalAmount' | 'status' | 'creat
   payMode: "To Pay",
   truckId: "", 
   driverId: "",
+  // Removed branchId as it's not directly in the default form, can be added if needed
 };
+
+const functionsInstance = getFunctions(db.app);
+const createBiltiFn = httpsCallable<BiltiCallableData, {success: boolean, id: string, message: string}>(functionsInstance, 'createBilti');
+const updateBiltiFn = httpsCallable<{biltiId: string} & Partial<BiltiCallableData>, {success: boolean, id: string, message: string}>(functionsInstance, 'updateBilti');
+const deleteBiltiFn = httpsCallable<{biltiId: string}, {success: boolean, id: string, message: string}>(functionsInstance, 'deleteBilti');
 
 
 export default function InvoicingPage() {
@@ -266,26 +277,30 @@ export default function InvoicingPage() {
 
   const openEditForm = (bilti: Bilti) => {
     setEditingBilti(bilti);
-    const { totalAmount, status, consignorId, consigneeId, createdAt, createdBy, updatedAt, updatedBy, ...editableData } = bilti; 
-    setFormData({...editableData, consignorId, consigneeId, nepaliMiti: bilti.nepaliMiti || ""}); 
-    setSelectedConsignor(parties.find(p => p.id === consignorId) || null);
-    setSelectedConsignee(parties.find(p => p.id === consigneeId) || null);
-    setTotalAmount(bilti.totalAmount); 
+    // Make sure to destructure only known fields from Bilti to avoid passing unknown props to formData
+    const { id, totalAmount: biltiTotalAmount, status, createdAt, createdBy, updatedAt, updatedBy, ...editableData } = bilti; 
+    setFormData({
+      ...editableData, 
+      nepaliMiti: bilti.nepaliMiti || ""
+    }); 
+    setSelectedConsignor(parties.find(p => p.id === bilti.consignorId) || null);
+    setSelectedConsignee(parties.find(p => p.id === bilti.consigneeId) || null);
+    setTotalAmount(biltiTotalAmount); 
     setIsFormDialogOpen(true);
   };
 
   const handlePartyAdd = async (newPartyData: Omit<Party, 'id' | 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy'>) => {
     if (!authUser) return null;
-    setIsSubmitting(true);
+    setIsSubmitting(true); // Potentially use a different loading state for this sub-action
     try {
-      const partyPayload: Omit<FirestoreParty, 'id'> = {
+      const partyPayload: Omit<FirestoreParty, 'id'> & {createdBy: string, createdAt: Timestamp} = { // ensure audit fields
         ...newPartyData,
         assignedLedgerId: newPartyData.assignedLedgerId || `LEDGER-${newPartyData.panNo?.toUpperCase() || Date.now()}`,
         createdAt: Timestamp.now(),
         createdBy: authUser.uid,
       };
       const docRef = await addDoc(collection(db, "parties"), partyPayload);
-      const newParty: Party = { ...partyPayload, id: docRef.id };
+      const newParty: Party = { ...partyPayload, id: docRef.id, createdAt: partyPayload.createdAt.toDate() };
       setParties(prev => [...prev, newParty].sort((a,b) => a.name.localeCompare(b.name)));
       toast({ title: "Party Added", description: `${newParty.name} has been added.` });
       return newParty; 
@@ -294,7 +309,7 @@ export default function InvoicingPage() {
       toast({ title: "Error", description: "Failed to add new party.", variant: "destructive" });
       return null;
     } finally {
-      setIsSubmitting(false);
+      setIsSubmitting(false); // Reset general submitting state or specific one
     }
   };
 
@@ -325,49 +340,40 @@ export default function InvoicingPage() {
     }
     setIsSubmitting(true);
     
-    const currentTotalAmount = (formData.packages || 0) * (formData.rate || 0);
-
-    const biltiDataPayload: Omit<FirestoreBilti, 'id' | 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy' | 'status' > & Partial<Pick<FirestoreBilti, 'status' | 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy'>> = {
-      ...formData,
-      miti: Timestamp.fromDate(formData.miti),
-      totalAmount: currentTotalAmount,
+    // Prepare payload for the backend function
+    const { miti, ...restOfFormData } = formData;
+    const biltiDataPayload: BiltiCallableData = {
+      ...restOfFormData,
+      miti: miti.toISOString(), // Send date as ISO string
+      // totalAmount will be calculated by the backend function
+      // status will be set by the backend function on creation
     };
 
+    try {
+      let result: HttpsCallableResult<{success: boolean; id: string; message: string}>;
+      if (editingBilti) {
+        result = await updateBiltiFn({ biltiId: editingBilti.id, ...biltiDataPayload });
+      } else {
+        result = await createBiltiFn(biltiDataPayload);
+      }
 
-    if (editingBilti) {
-      try {
-        const biltiDocRef = doc(db, "biltis", editingBilti.id);
-        await updateDoc(biltiDocRef, {
-          ...biltiDataPayload,
-          status: editingBilti.status, 
-          updatedAt: Timestamp.now(),
-          updatedBy: authUser.uid,
-        });
-        toast({ title: "Bilti Updated", description: `Bilti ${editingBilti.id} updated.`});
-      } catch (error) {
-        console.error("Error updating bilti: ", error);
-        toast({ title: "Error", description: "Failed to update Bilti.", variant: "destructive" });
+      if (result.data.success) {
+        toast({ title: "Success", description: result.data.message });
+        fetchBiltis(); // Refresh list
+        setIsFormDialogOpen(false);
+        setEditingBilti(null);
+        setSelectedConsignor(null);
+        setSelectedConsignee(null);
+      } else {
+        toast({ title: "Error", description: result.data.message, variant: "destructive" });
       }
-    } else {
-      try {
-        await addDoc(collection(db, "biltis"), {
-          ...biltiDataPayload,
-          status: "Pending" as FirestoreBilti["status"], 
-          createdAt: Timestamp.now(),
-          createdBy: authUser.uid,
-        });
-        toast({ title: "Bilti Created", description: `New Bilti created.` });
-      } catch (error) {
-        console.error("Error adding Bilti: ", error);
-        toast({ title: "Error", description: "Failed to create Bilti.", variant: "destructive" });
-      }
+    } catch (error: any) {
+        console.error("Error saving Bilti:", error);
+        const errorMessage = error.message || (editingBilti ? "Failed to update Bilti." : "Failed to create Bilti.");
+        toast({ title: "Operation Failed", description: errorMessage, variant: "destructive" });
+    } finally {
+        setIsSubmitting(false);
     }
-    setIsSubmitting(false);
-    setIsFormDialogOpen(false);
-    setEditingBilti(null);
-    setSelectedConsignor(null);
-    setSelectedConsignee(null);
-    fetchBiltis(); 
   };
   
   const getPartyName = (partyId: string) => parties.find(p => p.id === partyId)?.name || "N/A";
@@ -389,20 +395,24 @@ export default function InvoicingPage() {
 
   const confirmDelete = async () => {
     if (biltiToDelete) {
-      setIsSubmitting(true);
+      setIsSubmitting(true); // Use general isSubmitting for delete as well
       try {
-        await deleteDoc(doc(db, "biltis", biltiToDelete.id));
-        toast({ title: "Bilti Deleted", description: `Bilti ${biltiToDelete.id} deleted.` });
-        fetchBiltis();
-      } catch (error) {
+        const result = await deleteBiltiFn({ biltiId: biltiToDelete.id });
+        if (result.data.success) {
+            toast({ title: "Bilti Deleted", description: result.data.message });
+            fetchBiltis(); // Refresh list
+        } else {
+            toast({ title: "Error", description: result.data.message, variant: "destructive" });
+        }
+      } catch (error: any) {
          console.error("Error deleting Bilti: ", error);
-        toast({ title: "Error", description: "Failed to delete Bilti.", variant: "destructive" });
+        toast({ title: "Deletion Failed", description: error.message || "Failed to delete Bilti.", variant: "destructive" });
       } finally {
         setIsSubmitting(false);
+        setIsDeleteDialogOpen(false);
+        setBiltiToDelete(null);
       }
     }
-    setIsDeleteDialogOpen(false);
-    setBiltiToDelete(null);
   };
   
   if (authLoading || (!authUser && !authLoading && !isLoading)) { // Ensure isLoading check too if it covers master data
@@ -673,12 +683,12 @@ export default function InvoicingPage() {
                       <Button variant="outline" size="icon" aria-label="Print Bilti" onClick={() => alert(`Print Bilti ${bilti.id} (not implemented)`)} disabled={isSubmitting}>
                         <Printer className="h-4 w-4" />
                       </Button>
-                      <Button variant="outline" size="icon" aria-label="Edit Bilti" onClick={() => openEditForm(bilti)} disabled={isSubmitting}>
+                      <Button variant="outline" size="icon" aria-label="Edit Bilti" onClick={() => openEditForm(bilti)} disabled={isSubmitting || bilti.status !== 'Pending'}>
                         <Edit className="h-4 w-4" />
                       </Button>
                        <AlertDialog open={isDeleteDialogOpen && biltiToDelete?.id === bilti.id} onOpenChange={(open) => { if(!open) setBiltiToDelete(null); setIsDeleteDialogOpen(open);}}>
                          <AlertDialogTrigger asChild>
-                           <Button variant="destructive" size="icon" aria-label="Delete Bilti" onClick={() => handleDeleteClick(bilti)} disabled={isSubmitting}>
+                           <Button variant="destructive" size="icon" aria-label="Delete Bilti" onClick={() => handleDeleteClick(bilti)} disabled={isSubmitting || bilti.status !== 'Pending'}>
                             <Trash2 className="h-4 w-4" />
                           </Button>
                          </AlertDialogTrigger>
@@ -708,7 +718,7 @@ export default function InvoicingPage() {
         </CardContent>
         <CardFooter>
             <p className="text-xs text-muted-foreground">
-                Origin/Destination now dynamically populated. Ledger updates (simulated) would occur server-side upon these operations in a full system.
+                Bilti CRUD operations are now handled by backend functions. Ledger posting upon creation is handled by a separate Firestore trigger.
             </p>
         </CardFooter>
       </Card>
@@ -718,3 +728,4 @@ export default function InvoicingPage() {
     
 
     
+

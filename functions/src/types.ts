@@ -6,7 +6,7 @@ import type { Timestamp } from "firebase-admin/firestore"; // Use admin SDK Time
 
 export interface UserData {
   id?: string; // Firestore document ID
-  uid?: string; // Firebase Auth UID
+  uid: string; // Firebase Auth UID - This should be the document ID in 'users' collection
   status?: "active" | "disabled";
   role?: string;
   email?: string;
@@ -56,10 +56,25 @@ export interface BiltiData {
   nepaliMiti?: string;
   consignorId: string;
   consigneeId: string;
+  origin: string;
+  destination: string;
+  description: string;
+  packages: number;
+  weight?: number;
+  rate: number;
   totalAmount: number;
   payMode: "Paid" | "To Pay" | "Due";
+  status: "Pending" | "Manifested" | "Received" | "Delivered" | "Paid" | "Cancelled";
+  manifestId?: string | null;
+  goodsDeliveryNoteId?: string | null;
+  cashCollectionStatus?: "Pending" | "Partial" | "Collected";
+  truckId: string;
+  driverId: string;
   ledgerProcessed?: boolean;
   createdBy?: string;
+  createdAt?: Timestamp;
+  updatedBy?: string;
+  updatedAt?: Timestamp;
   branchId?: string; // Assuming bilti can be associated with a branch for context
   // Add other fields from your main Bilti type if needed
 }
@@ -180,6 +195,7 @@ export interface UnitData {
 
 // ---- Truck and Driver Types for Functions ----
 export interface TruckData {
+  id?: string;
   truckNo: string;
   type: string; // e.g., "6-Wheeler", "10-Wheeler"
   capacity?: string;
@@ -187,10 +203,11 @@ export interface TruckData {
   ownerPAN?: string;
   status: "Active" | "Inactive" | "Maintenance";
   assignedLedgerId: string;
-  // id, createdAt, createdBy, etc. are handled by the function
+  // createdAt, createdBy, etc. are handled by the function
 }
 
 export interface DriverData {
+  id?: string;
   name: string;
   licenseNo: string;
   contactNo: string;
@@ -198,15 +215,16 @@ export interface DriverData {
   joiningDate?: Timestamp | string; // Client might send string, function converts to Timestamp
   status: "Active" | "Inactive" | "On Leave";
   assignedLedgerId: string;
-  // id, createdAt, createdBy, etc. are handled by the function
+  // createdAt, createdBy, etc. are handled by the function
 }
 
 export interface GodownData {
+  id?: string;
   name: string;
   branchId: string;
   location: string;
   status: "Active" | "Inactive" | "Operational";
-  // id, createdAt, createdBy, etc. are handled by the function
+  // createdAt, createdBy, etc. are handled by the function
 }
 
 
