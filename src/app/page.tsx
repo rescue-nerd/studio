@@ -1,6 +1,14 @@
+
+"use client"; // Required for hooks like useRouter, useAuth
+
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Building2, MapPin, FileText, BookText, Waypoints, Hash, DollarSign, Clock, Users, Route } from "lucide-react";
 import Image from "next/image";
+import Link from 'next/link';
+import { useAuth } from "@/contexts/auth-context"; // Import useAuth
+import { useRouter } from "next/navigation"; // Import useRouter
+import { useEffect } from "react";
+import { Loader2 } from "lucide-react";
 
 const FeatureCard = ({ title, description, icon: Icon, value, subValue }: { title: string; description: string; icon: React.ElementType; value?: string; subValue?: string;}) => (
   <Card className="shadow-lg hover:shadow-xl transition-shadow duration-300">
@@ -17,12 +25,30 @@ const FeatureCard = ({ title, description, icon: Icon, value, subValue }: { titl
 );
 
 export default function DashboardPage() {
+  const { user, loading } = useAuth();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (!loading && !user) {
+      router.push('/login');
+    }
+  }, [user, loading, router]);
+
+  if (loading || !user) {
+    return (
+      <div className="flex justify-center items-center h-screen">
+        <Loader2 className="h-12 w-12 animate-spin text-primary" />
+        <p className="ml-3 text-muted-foreground">{loading ? "Loading..." : "Redirecting..."}</p>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-8">
       <div className="bg-card p-8 rounded-lg shadow-xl">
         <div className="flex flex-col md:flex-row items-center gap-8">
           <div className="flex-1">
-            <h1 className="font-headline text-4xl font-bold text-primary mb-4">Welcome to GorkhaTrans</h1>
+            <h1 className="font-headline text-4xl font-bold text-primary mb-4">Welcome to GorkhaTrans, {user?.displayName || user?.email}!</h1>
             <p className="text-lg text-foreground mb-6">
               Your all-in-one Transportation Management System. Streamline operations, optimize routes, and manage your logistics with ease.
             </p>
@@ -51,8 +77,9 @@ export default function DashboardPage() {
             {[
               { title: "Branch Management", icon: Building2, href:"/branch-management" },
               { title: "Locations & Units", icon: MapPin, href:"/locations" },
-              // { title: "Route Optimization", icon: Waypoints, href:"/route-optimization" }, // Removed Route Optimization
               { title: "Narration Setup", icon: BookText, href:"/narration-setup" },
+              { title: "Content Customization", icon: FileText, href: "/content-customization"},
+              { title: "Auto Numbering", icon: Hash, href: "/automatic-numbering"}
             ].map(item => (
               <Link href={item.href} key={item.title} className="block p-4 bg-secondary hover:bg-accent rounded-lg transition-colors">
                 <div className="flex items-center gap-3">
@@ -86,6 +113,3 @@ export default function DashboardPage() {
     </div>
   );
 }
-
-// Need to import Link from next/link
-import Link from 'next/link';

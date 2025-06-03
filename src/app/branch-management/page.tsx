@@ -27,11 +27,11 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger, // Added AlertDialogTrigger here
+  AlertDialogTrigger, 
 } from "@/components/ui/alert-dialog";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { db } from "@/lib/firebase"; // Import Firestore instance
+import { db } from "@/lib/firebase"; 
 import { 
   collection, 
   getDocs, 
@@ -43,16 +43,14 @@ import {
   query,
   orderBy
 } from "firebase/firestore";
-import type { Branch as FirestoreBranch } from "@/types/firestore"; // Import the Firestore Branch type
+import type { Branch as FirestoreBranch } from "@/types/firestore"; 
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/auth-context"; // Import useAuth
+import { useRouter } from "next/navigation"; // Import useRouter
 
-
-// The local Branch interface should align with FirestoreBranch but 'id' is part of it.
-// Timestamps will be converted to Date objects for easier use in the form if needed,
-// but for display, we can format Firestore Timestamps directly or convert them.
 interface Branch extends Omit<FirestoreBranch, 'createdAt' | 'updatedAt' | 'createdBy' | 'updatedBy'> {
-  id: string; // Explicitly add id here for local state management
-  createdAt?: Date | Timestamp; // Allow both for local state vs. Firestore
+  id: string; 
+  createdAt?: Date | Timestamp; 
   updatedAt?: Date | Timestamp;
   createdBy?: string;
   updatedBy?: string;
@@ -61,37 +59,42 @@ interface Branch extends Omit<FirestoreBranch, 'createdAt' | 'updatedAt' | 'crea
 const defaultBranchFormData: Omit<Branch, 'id' | 'createdAt' | 'updatedAt' | 'createdBy' | 'updatedBy'> = {
   name: "",
   location: "",
-  managerName: "", // Corresponds to managerName in FirestoreBranch
+  managerName: "", 
   status: "Active",
-  // contactEmail and contactPhone are not in the simplified form for now
 };
 
-const PLACEHOLDER_USER_ID = "system_user_placeholder"; // Replace with actual auth user UID later
 
 export default function BranchManagementPage() {
   const [branches, setBranches] = useState<Branch[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [isFormDialogOpen, setIsFormDialogOpen] = useState(false);
   const [editingBranch, setEditingBranch] = useState<Branch | null>(null);
-  // Ensure formData can hold all fields from Branch interface, including optional ones
   const [formData, setFormData] = useState<Omit<Branch, 'id' | 'createdAt' | 'updatedAt' | 'createdBy' | 'updatedBy'>>(defaultBranchFormData);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [branchToDelete, setBranchToDelete] = useState<Branch | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const { toast } = useToast();
+  const { user: authUser, loading: authLoading } = useAuth(); // Get authenticated user
+  const router = useRouter();
+
+  useEffect(() => {
+    if (!authLoading && !authUser) {
+      router.push('/login');
+    }
+  }, [authUser, authLoading, router]);
 
   const fetchBranches = async () => {
+    if (!authUser) return; // Don't fetch if no authenticated user
     setIsLoading(true);
     try {
       const branchesCollectionRef = collection(db, "branches");
       const q = query(branchesCollectionRef, orderBy("createdAt", "desc"));
       const querySnapshot = await getDocs(q);
       const fetchedBranches: Branch[] = querySnapshot.docs.map(doc => {
-        const data = doc.data() as FirestoreBranch; // Cast to FirestoreBranch
+        const data = doc.data() as FirestoreBranch; 
         return {
           ...data,
           id: doc.id,
-          // Timestamps are directly used from Firestore
         };
       });
       setBranches(fetchedBranches);
@@ -108,9 +111,11 @@ export default function BranchManagementPage() {
   };
 
   useEffect(() => {
-    fetchBranches();
+    if(authUser) {
+      fetchBranches();
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [authUser]);
 
 
   const handleInputChange = (e: ChangeEvent<HTMLInputElement>) => {
@@ -130,7 +135,6 @@ export default function BranchManagementPage() {
 
   const openEditForm = (branch: Branch) => {
     setEditingBranch(branch);
-    // Prepare formData for editing, ensure all relevant fields are included
     const { id, createdAt, updatedAt, createdBy, updatedBy, ...editableData } = branch;
     setFormData({
         name: editableData.name,
@@ -146,17 +150,21 @@ export default function BranchManagementPage() {
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
+    if (!authUser) {
+        toast({ title: "Authentication Error", description: "You must be logged in to perform this action.", variant: "destructive"});
+        return;
+    }
     if (!formData.name || !formData.location) {
       toast({ title: "Validation Error", description: "Branch Name and Location are required.", variant: "destructive" });
       return;
     }
     
-    setIsLoading(true); // For the operation itself
+    setIsLoading(true); 
 
-    const branchDataPayload: Omit<FirestoreBranch, 'id' | 'createdAt' | 'updatedAt' | 'createdBy' | 'updatedBy'> & { updatedAt?: Timestamp, createdAt?: Timestamp, createdBy?: string, updatedBy?: string } = {
+    const branchDataPayload: Omit<FirestoreBranch, 'id' | 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy'> & { updatedAt?: Timestamp, createdAt?: Timestamp, createdBy?: string, updatedBy?: string } = {
       name: formData.name,
       location: formData.location,
-      managerName: formData.managerName || null, // managerName is correct for FirestoreBranch
+      managerName: formData.managerName || null, 
       status: formData.status,
       contactEmail: formData.contactEmail || "",
       contactPhone: formData.contactPhone || "",
@@ -165,13 +173,12 @@ export default function BranchManagementPage() {
 
 
     if (editingBranch) {
-      // Edit existing branch
       try {
         const branchDocRef = doc(db, "branches", editingBranch.id);
         await updateDoc(branchDocRef, {
             ...branchDataPayload,
             updatedAt: Timestamp.now(),
-            updatedBy: PLACEHOLDER_USER_ID, 
+            updatedBy: authUser.uid, 
         });
         toast({ title: "Success", description: "Branch updated successfully." });
       } catch (error) {
@@ -179,12 +186,11 @@ export default function BranchManagementPage() {
         toast({ title: "Error", description: "Failed to update branch.", variant: "destructive" });
       }
     } else {
-      // Add new branch
       try {
         await addDoc(collection(db, "branches"), {
             ...branchDataPayload,
             createdAt: Timestamp.now(),
-            createdBy: PLACEHOLDER_USER_ID, 
+            createdBy: authUser.uid, 
         });
         toast({ title: "Success", description: "Branch added successfully." });
       } catch (error) {
@@ -225,6 +231,15 @@ export default function BranchManagementPage() {
     branch.location.toLowerCase().includes(searchTerm.toLowerCase()) ||
     (branch.managerName && branch.managerName.toLowerCase().includes(searchTerm.toLowerCase()))
   );
+
+  if (authLoading || (!authUser && !authLoading)) {
+    return (
+      <div className="flex justify-center items-center h-64">
+        <Loader2 className="h-12 w-12 animate-spin text-primary" />
+        <p className="ml-3 text-muted-foreground">{authLoading ? "Loading authentication..." : "Redirecting to login..."}</p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

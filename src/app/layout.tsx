@@ -1,3 +1,4 @@
+
 import type { Metadata } from 'next';
 import './globals.css';
 import { SidebarProvider, Sidebar, SidebarInset } from '@/components/ui/sidebar';
@@ -5,6 +6,7 @@ import AppSidebarContent from '@/components/layout/app-sidebar-content';
 import AppHeader from '@/components/layout/app-header';
 import { Toaster } from "@/components/ui/toaster";
 import { cn } from '@/lib/utils';
+import { AuthProvider } from '@/contexts/auth-context'; // Import AuthProvider
 
 export const metadata: Metadata = {
   title: 'GorkhaTrans - TMS',
@@ -29,20 +31,22 @@ export default function RootLayout({
         className={cn("font-body antialiased min-h-screen bg-background text-foreground")}
         suppressHydrationWarning={true}
       >
-        <SidebarProvider defaultOpen={true}>
-          <div className="flex min-h-screen">
-            <Sidebar collapsible="icon" className="bg-sidebar text-sidebar-foreground border-r border-sidebar-border hidden md:flex">
-               <AppSidebarContent />
-            </Sidebar>
-            <SidebarInset className="flex-1 flex flex-col">
-              <AppHeader />
-              <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">
-                {children}
-              </main>
-            </SidebarInset>
-          </div>
-        </SidebarProvider>
-        <Toaster />
+        <AuthProvider> {/* Wrap with AuthProvider */}
+          <SidebarProvider defaultOpen={true}>
+            <div className="flex min-h-screen">
+              <Sidebar collapsible="icon" className="bg-sidebar text-sidebar-foreground border-r border-sidebar-border hidden md:flex">
+                 <AppSidebarContent />
+              </Sidebar>
+              <SidebarInset className="flex-1 flex flex-col">
+                <AppHeader />
+                <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">
+                  {children}
+                </main>
+              </SidebarInset>
+            </div>
+          </SidebarProvider>
+          <Toaster />
+        </AuthProvider>
       </body>
     </html>
   );

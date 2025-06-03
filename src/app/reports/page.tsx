@@ -17,6 +17,8 @@ import { useToast } from "@/hooks/use-toast";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import SmartPartySelectDialog from "@/components/shared/smart-party-select-dialog";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "cmdk";
+import { useAuth } from "@/contexts/auth-context"; // Import useAuth
+import { useRouter } from "next/navigation"; // Import useRouter
 
 
 // Simplified Interfaces for mock data within this component
@@ -84,6 +86,8 @@ const mockLedgerEntries: LedgerEntry[] = [
 
 export default function ReportsPage() {
   const { toast } = useToast();
+  const { user: authUser, loading: authLoading } = useAuth();
+  const router = useRouter();
 
   // Daily Bilti Activity State
   const [dailyReportDate, setDailyReportDate] = useState<Date | undefined>(new Date());
@@ -114,17 +118,24 @@ export default function ReportsPage() {
   const [isTruckSelectOpen, setIsTruckSelectOpen] = useState(false);
   const [truckSearchTerm, setTruckSearchTerm] = useState("");
 
+  useEffect(() => {
+    if (!authLoading && !authUser) {
+      router.push('/login');
+    }
+    // Here you would fetch actual data from Firebase if this page were fully connected.
+    // For now, it uses mock data.
+  }, [authUser, authLoading, router]);
+
 
   const getPartyName = (partyId: string) => mockParties.find(p => p.id === partyId)?.name || "N/A";
 
-  // --- Daily Bilti Activity ---
   const handleGenerateDailyReport = () => {
     if (!dailyReportDate) {
       toast({ title: "Error", description: "Please select a date.", variant: "destructive" });
       return;
     }
     setIsDailyLoading(true);
-    setTimeout(() => { // Simulate API call
+    setTimeout(() => { 
       const filtered = mockBiltis.filter(b => format(b.miti, "yyyy-MM-dd") === format(dailyReportDate, "yyyy-MM-dd"));
       setDailyReportData(filtered);
       setDailyReportSummary({
@@ -161,8 +172,6 @@ export default function ReportsPage() {
     toast({title: "Exported", description: "Daily Bilti Activity report exported to CSV."});
   };
 
-
-  // --- Bilti Register ---
   const handleGenerateRegisterReport = () => {
     if (!registerStartDate || !registerEndDate) {
       toast({ title: "Error", description: "Please select a valid date range.", variant: "destructive" });
@@ -180,17 +189,15 @@ export default function ReportsPage() {
     }, 500);
   };
 
-  // --- Party Ledger Summary ---
   const handlePartySelectForLedger = (party: Party) => {
     setSelectedPartyForLedger(party);
     setIsPartySelectOpen(false);
-    // Trigger report generation after party selection
     if (party) {
         setIsPartyLedgerLoading(true);
         setTimeout(() => {
             const entries = mockLedgerEntries.filter(e => e.accountId === party.assignedLedger).sort((a,b) => b.miti.getTime() - a.miti.getTime());
             setPartyLedgerData(entries);
-            const balance = entries.length > 0 ? entries[0].balance : 0; // Assuming last entry has final balance
+            const balance = entries.length > 0 ? entries[0].balance : 0; 
             setPartyLedgerBalance(balance);
             setIsPartyLedgerLoading(false);
         }, 300);
@@ -201,13 +208,10 @@ export default function ReportsPage() {
   };
 
   const handlePartyAddForLedger = (newParty: Party) => {
-    // In a real app, you might add to a global store. For this prototype, just select it.
     setSelectedPartyForLedger(newParty);
-    // mockParties.push(newParty); // Not ideal to mutate mock directly here
     toast({ title: "Party Added (Simulated)", description: `${newParty.name} would be added to master list.`});
   }
   
-   // --- Truck Performance Report ---
   const handleTruckSelect = (truck: Truck | null) => {
     setSelectedTruck(truck);
     setIsTruckSelectOpen(false);
@@ -233,7 +237,6 @@ export default function ReportsPage() {
                 b.miti <= endOfDay(truckReportEndDate)
             );
             const totalFreight = biltisForTruck.reduce((sum, b) => sum + b.totalAmount, 0);
-            // Simulate expenses as a percentage of freight or a fixed amount per bilti
             const simulatedExpenses = totalFreight * 0.6 + biltisForTruck.length * 100; 
             const netRevenue = totalFreight - simulatedExpenses;
             return {
@@ -249,21 +252,30 @@ export default function ReportsPage() {
     }, 500);
   };
 
+  if (authLoading || (!authUser && !authLoading)) {
+    return (
+      <div className="flex justify-center items-center h-64">
+        <Loader2 className="h-12 w-12 animate-spin text-primary" />
+        <p className="ml-3 text-muted-foreground">{authLoading ? "Loading authentication..." : "Redirecting to login..."}</p>
+      </div>
+    );
+  }
+
 
   return (
     <div className="space-y-6">
       <SmartPartySelectDialog
         isOpen={isPartySelectOpen}
         onOpenChange={setIsPartySelectOpen}
-        parties={mockParties}
+        parties={mockParties} // Replace with actual parties from Firestore
         onPartySelect={handlePartySelectForLedger}
-        onPartyAdd={handlePartyAddForLedger} // Needs actual add logic if used
+        onPartyAdd={handlePartyAddForLedger} 
         dialogTitle="Select Party for Ledger"
       />
 
       <div>
         <h1 className="text-3xl font-headline font-bold text-foreground">Reports Dashboard</h1>
-        <p className="text-muted-foreground">Generate and view various reports for insights and data exports.</p>
+        <p className="text-muted-foreground">Generate and view various reports for insights and data exports. (Currently using Mock Data)</p>
       </div>
 
       <Tabs defaultValue="dailyBilti" className="w-full">
@@ -478,4 +490,3 @@ export default function ReportsPage() {
     </div>
   );
 }
-

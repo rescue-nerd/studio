@@ -43,16 +43,17 @@ import {
 } from "firebase/firestore";
 import type { NarrationTemplate as FirestoreNarrationTemplate } from "@/types/firestore";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/auth-context"; // Import useAuth
+import { useRouter } from "next/navigation"; // Import useRouter
 
 interface NarrationTemplate extends FirestoreNarrationTemplate {}
 
 const defaultFormData: Omit<NarrationTemplate, 'id' | 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy'> = {
   title: "",
   template: "",
-  applicableTo: [], // Default to empty array, can be enhanced later
+  applicableTo: [], 
 };
 
-const PLACEHOLDER_USER_ID = "system_user_placeholder";
 
 export default function NarrationSetupPage() {
   const [templates, setTemplates] = useState<NarrationTemplate[]>([]);
@@ -65,8 +66,17 @@ export default function NarrationSetupPage() {
   const [isDeleteAlertOpen, setIsDeleteAlertOpen] = useState(false);
   const [templateToDelete, setTemplateToDelete] = useState<NarrationTemplate | null>(null);
   const { toast } = useToast();
+  const { user: authUser, loading: authLoading } = useAuth(); // Get authenticated user
+  const router = useRouter();
+
+  useEffect(() => {
+    if (!authLoading && !authUser) {
+      router.push('/login');
+    }
+  }, [authUser, authLoading, router]);
 
   const fetchTemplates = async () => {
+    if (!authUser) return;
     setIsLoading(true);
     try {
       const templatesCollectionRef = collection(db, "narrationTemplates");
@@ -86,9 +96,11 @@ export default function NarrationSetupPage() {
   };
 
   useEffect(() => {
-    fetchTemplates();
+    if (authUser) {
+      fetchTemplates();
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [authUser]);
 
   const handleInputChange = (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
@@ -110,6 +122,10 @@ export default function NarrationSetupPage() {
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
+    if (!authUser) {
+        toast({ title: "Authentication Error", description: "You must be logged in.", variant: "destructive" });
+        return;
+    }
     if (!formData.title.trim() || !formData.template.trim()) {
       toast({ title: "Validation Error", description: "Title and Template text are required.", variant: "destructive" });
       return;
@@ -123,10 +139,10 @@ export default function NarrationSetupPage() {
     try {
       if (editingTemplate) {
         const templateDocRef = doc(db, "narrationTemplates", editingTemplate.id);
-        await updateDoc(templateDocRef, { ...payload, updatedAt: Timestamp.now(), updatedBy: PLACEHOLDER_USER_ID });
+        await updateDoc(templateDocRef, { ...payload, updatedAt: Timestamp.now(), updatedBy: authUser.uid });
         toast({ title: "Success", description: "Narration template updated." });
       } else {
-        await addDoc(collection(db, "narrationTemplates"), { ...payload, createdAt: Timestamp.now(), createdBy: PLACEHOLDER_USER_ID });
+        await addDoc(collection(db, "narrationTemplates"), { ...payload, createdAt: Timestamp.now(), createdBy: authUser.uid });
         toast({ title: "Success", description: "Narration template added." });
       }
       fetchTemplates();
@@ -166,6 +182,17 @@ export default function NarrationSetupPage() {
     template.template.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  if (authLoading || (!authUser && !authLoading) || (isLoading && !templates.length)) {
+    return (
+      <div className="flex justify-center items-center h-64">
+        <Loader2 className="h-12 w-12 animate-spin text-primary" />
+        <p className="ml-3 text-muted-foreground">
+          {authLoading ? "Authenticating..." : isLoading ? "Loading templates..." : "Redirecting to login..."}
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row justify-between items-center gap-4">
@@ -194,7 +221,7 @@ export default function NarrationSetupPage() {
               <div>
                 <Label htmlFor="template">Template Text</Label>
                 <Textarea id="template" name="template" value={formData.template} onChange={handleInputChange} placeholder="Enter narration text. Use {{variable_name}} for placeholders." rows={4} required />
-                <p className="text-xs text-muted-foreground mt-1">Example: Being charges for shipment {'{{shipment_id}}'}.</p>
+                <p className="text-xs text-muted-foreground mt-1">Example: Being charges for shipment {{shipment_id}}.</p>
               </div>
               <DialogFooter>
                 <DialogClose asChild><Button type="button" variant="outline" disabled={isSubmitting}>Cancel</Button></DialogClose>

@@ -2,16 +2,17 @@
 import type { Timestamp } from 'firebase/firestore';
 
 export interface User {
-  uid: string; // Firebase Auth UID
-  email: string | null; // Can be null if using anonymous auth or phone
+  uid: string; // Firebase Auth UID - This should be the document ID in 'users' collection
+  email: string | null; 
   displayName?: string | null;
-  role: "superAdmin" | "manager" | "operator" | string; // string for potential custom roles
+  role: "superAdmin" | "manager" | "operator" | string; 
   assignedBranchIds: string[];
   createdAt: Timestamp;
   lastLoginAt?: Timestamp;
   enableEmailNotifications?: boolean;
   darkModeEnabled?: boolean;
   autoDataSyncEnabled?: boolean;
+  updatedAt?: Timestamp; // Added for profile updates
 }
 
 interface Auditable {
@@ -22,18 +23,18 @@ interface Auditable {
 }
 
 export interface Branch extends Auditable {
-  id: string; // Document ID
+  id: string; 
   name: string;
   location: string;
   managerName?: string | null;
-  managerUserId?: string; // Link to User.uid
+  managerUserId?: string; 
   contactEmail?: string;
   contactPhone?: string;
   status?: "Active" | "Inactive";
 }
 
 export interface Party extends Auditable {
-  id: string; // Document ID
+  id: string; 
   name: string;
   type: "Consignor" | "Consignee" | "Both";
   contactNo: string;
@@ -42,49 +43,46 @@ export interface Party extends Auditable {
   city?: string;
   state?: string;
   country?: string;
-  assignedLedgerId: string; // Link to LedgerAccount.id
+  assignedLedgerId: string; 
   status: "Active" | "Inactive";
 }
 
 export interface Truck extends Auditable {
-  id: string; // Document ID
+  id: string; 
   truckNo: string;
-  type: string; // e.g., "6-Wheeler", "10-Wheeler", "Trailer"
-  capacity?: string; // e.g., "10 Ton", "15 CBM" - Made optional
+  type: string; 
+  capacity?: string; 
   ownerName: string;
   ownerPAN?: string;
   status: "Active" | "Inactive" | "Maintenance";
-  assignedLedgerId: string; // Link to LedgerAccount.id
-  updatedBy?: string;
+  assignedLedgerId: string; 
 }
 
 export interface Driver extends Auditable {
-  id: string; // Document ID
+  id: string; 
   name: string;
   licenseNo: string;
   contactNo: string;
   address?: string;
-  joiningDate?: Timestamp; // Stored as Timestamp in Firestore
+  joiningDate?: Timestamp; 
   status: "Active" | "Inactive" | "On Leave";
-  assignedLedgerId: string; // Link to LedgerAccount.id
-  updatedBy?: string;
+  assignedLedgerId: string; 
 }
 
 export interface Godown extends Auditable {
-  id: string; // Document ID
+  id: string; 
   name: string;
-  branchId: string; // Link to Branch.id
+  branchId: string; 
   location: string;
   status: "Active" | "Inactive" | "Operational";
-  updatedBy?: string;
 }
 
 export interface Bilti extends Auditable {
-  id: string; // Document ID (Bilti No.)
-  miti: Timestamp; // Date of Bilti
+  id: string; 
+  miti: Timestamp; 
   nepaliMiti?: string;
-  consignorId: string; // Link to Party.id
-  consigneeId: string; // Link to Party.id
+  consignorId: string; 
+  consigneeId: string; 
   origin: string;
   destination: string;
   description: string;
@@ -94,8 +92,8 @@ export interface Bilti extends Auditable {
   totalAmount: number;
   payMode: "Paid" | "To Pay" | "Due";
   status: "Pending" | "Manifested" | "Received" | "Delivered" | "Paid" | "Cancelled";
-  manifestId?: string;
-  goodsDeliveryNoteId?: string;
+  manifestId?: string | null; // Made nullable
+  goodsDeliveryNoteId?: string | null; // Made nullable
   cashCollectionStatus?: "Pending" | "Partial" | "Collected";
   deliveryExpenses?: Array<{
     daybookTransactionId: string;
@@ -103,12 +101,14 @@ export interface Bilti extends Auditable {
     description: string;
     miti: Timestamp;
   }>;
-  daybookCashInRef?: string;
+  daybookCashInRef?: string | null; // Made nullable
+  truckId: string; // Added from invoicing page
+  driverId: string; // Added from invoicing page
 }
 
 export interface Manifest extends Auditable {
-  id: string; // Document ID (Manifest No.)
-  miti: Timestamp; // Date of Manifest
+  id: string; 
+  miti: Timestamp; 
   nepaliMiti?: string;
   truckId: string;
   driverId: string;
@@ -117,12 +117,12 @@ export interface Manifest extends Auditable {
   attachedBiltiIds: string[];
   remarks?: string;
   status: "Open" | "In Transit" | "Completed" | "Cancelled" | "Received";
-  goodsReceiptId?: string;
+  goodsReceiptId?: string | null; // Made nullable
 }
 
 export interface GoodsReceipt extends Auditable {
-  id: string; // Document ID (GRN No.)
-  miti: Timestamp; // Date of Receipt
+  id: string; 
+  miti: Timestamp; 
   nepaliMiti?: string;
   manifestId: string;
   receivingBranchId: string;
@@ -142,8 +142,8 @@ export interface DeliveredBiltiItem {
 }
 
 export interface GoodsDelivery extends Auditable {
-  id: string; // Document ID (Delivery Note No.)
-  miti: Timestamp; // Date of Delivery
+  id: string; 
+  miti: Timestamp; 
   nepaliMiti?: string;
   deliveredBiltis: DeliveredBiltiItem[];
   overallRemarks?: string;
@@ -152,8 +152,8 @@ export interface GoodsDelivery extends Auditable {
 }
 
 export interface LedgerAccount extends Auditable {
-  id: string;
-  accountId: string;
+  id: string; // Firestore Document ID
+  accountId: string; // Custom/User-defined Account ID or Same as Firestore ID
   accountName: string;
   accountType: "Party" | "Truck" | "Driver" | "Branch" | "Expense" | "Income" | "Bank" | "Cash" | string;
   currentBalance: number;
@@ -192,10 +192,10 @@ export interface LedgerEntry extends Auditable {
   transactionType: LedgerTransactionType;
   status: "Pending" | "Approved" | "Rejected";
   approvalRemarks?: string;
-  approvedBy?: string;
+  approvedBy?: string; // User.uid
   approvedAt?: Timestamp;
   sourceModule?: "Bilti" | "GoodsDelivery" | "GoodsReceipt" | "Manual" | "Payment" | "Daybook" | string;
-  branchId?: string;
+  branchId?: string; // Link to Branch.id
 }
 
 interface AuditableConfig extends Auditable {}
@@ -209,7 +209,7 @@ export interface DocumentNumberingConfig extends AuditableConfig {
   lastGeneratedNumber: number;
   minLength?: number;
   perBranch: boolean;
-  branchId?: string; // Added if perBranch is true
+  branchId?: string; 
 }
 
 export interface NarrationTemplate extends AuditableConfig {
@@ -222,7 +222,7 @@ export interface NarrationTemplate extends AuditableConfig {
 export type InvoiceLineType = "Text" | "Number" | "Currency" | "Percentage" | "Date" | "Textarea" | "Boolean" | "Select";
 
 export interface InvoiceLineCustomization extends AuditableConfig {
-  id: string; // Firestore document ID
+  id: string; 
   label: string;
   fieldName: string;
   type: InvoiceLineType;
@@ -270,9 +270,9 @@ export type DaybookTransactionType =
 export interface DaybookTransaction {
   id: string;
   transactionType: DaybookTransactionType;
-  amount: number; // Assumed to be positive; debit/credit fields can be added if needed for adjustments
-  debit?: number; // For explicit debit in adjustments
-  credit?: number; // For explicit credit in adjustments
+  amount: number; 
+  debit?: number; 
+  credit?: number; 
   referenceId?: string;
   partyId?: string;
   ledgerAccountId?: string;
@@ -281,12 +281,13 @@ export interface DaybookTransaction {
   supportingDocUrl?: string;
   autoLinked: boolean;
   reasonForAdjustment?: string;
-  createdBy: string;
+  createdBy: string; // User.uid
   createdAt: Timestamp;
   nepaliMiti?: string;
 }
 
-export interface FirestoreDaybook extends Auditable {
+export interface FirestoreDaybook extends Auditable { // Extends Auditable now
+  // id implicitly from document
   branchId: string;
   nepaliMiti: string;
   englishMiti: Timestamp;
@@ -297,9 +298,9 @@ export interface FirestoreDaybook extends Auditable {
   status: "Draft" | "Pending Approval" | "Approved" | "Rejected";
   transactions: DaybookTransaction[];
   processingTimestamp?: Timestamp;
-  submittedBy?: string;
+  submittedBy?: string; // User.uid
   submittedAt?: Timestamp;
-  approvedBy?: string;
-  approvedAt?: Timestamp;
+  approvedBy?: string; // User.uid
   approvalRemarks?: string;
+  // createdBy, createdAt, updatedBy, updatedAt inherited from Auditable
 }

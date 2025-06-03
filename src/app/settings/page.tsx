@@ -21,27 +21,27 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
 import { db } from "@/lib/firebase";
-import { collection, getDocs, doc, updateDoc, Timestamp, query, orderBy } from "firebase/firestore";
+import { collection, getDocs, doc, updateDoc, Timestamp, query, orderBy, getDoc } from "firebase/firestore";
 import type { User as FirestoreUser, Branch as FirestoreBranch } from "@/types/firestore";
 import { Loader2 } from "lucide-react";
+import { useAuth } from "@/contexts/auth-context"; // Import useAuth
+import { useRouter } from "next/navigation"; // Import useRouter
 
-// Extend with local 'id' if not directly using uid as document ID
-interface User extends FirestoreUser { id: string; } // Assuming Firestore doc ID is separate from uid for now
+interface User extends FirestoreUser {} 
 interface Branch extends FirestoreBranch { id: string; }
 
-// Placeholder for the current logged-in user's ID. 
-// In a real app, this would come from Firebase Auth.
-const SIMULATED_CURRENT_USER_ID = "usr001"; // We'll try to load this user for the profile section.
 
 export default function SettingsPage() {
   const { toast } = useToast();
+  const { user: authUser, loading: authLoading } = useAuth(); // Get authenticated user
+  const router = useRouter();
 
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingPageData, setIsLoadingPageData] = useState(true);
   const [isSubmittingProfile, setIsSubmittingProfile] = useState(false);
   const [isSubmittingAssignments, setIsSubmittingAssignments] = useState(false);
 
   // Profile State
-  const [currentUserProfile, setCurrentUserProfile] = useState<Partial<User>>({});
+  const [currentUserProfile, setCurrentUserProfile] = useState<User | null>(null);
   const [profileFormData, setProfileFormData] = useState<Partial<User>>({});
 
   // User Management State
@@ -51,15 +51,24 @@ export default function SettingsPage() {
   const [selectedUserForBranches, setSelectedUserForBranches] = useState<User | null>(null);
   const [tempSelectedBranches, setTempSelectedBranches] = useState<Set<string>>(new Set());
 
+  useEffect(() => {
+    if (!authLoading && !authUser) {
+      router.push('/login');
+    }
+  }, [authUser, authLoading, router]);
+
   const fetchAllData = async () => {
-    setIsLoading(true);
+    if (!authUser) return; // Don't fetch if no authenticated user
+
+    setIsLoadingPageData(true);
     try {
       const usersQuery = query(collection(db, "users"), orderBy("displayName"));
       const branchesQuery = query(collection(db, "branches"), orderBy("name"));
 
-      const [usersSnapshot, branchesSnapshot] = await Promise.all([
+      const [usersSnapshot, branchesSnapshot, currentUserDocSnap] = await Promise.all([
         getDocs(usersQuery),
         getDocs(branchesQuery),
+        getDoc(doc(db, "users", authUser.uid)) // Fetch current user's Firestore doc
       ]);
 
       const fetchedUsers: User[] = usersSnapshot.docs.map(docSnap => ({ ...docSnap.data() as FirestoreUser, id: docSnap.id }));
@@ -68,41 +77,34 @@ export default function SettingsPage() {
       const fetchedBranches: Branch[] = branchesSnapshot.docs.map(docSnap => ({ ...docSnap.data() as FirestoreBranch, id: docSnap.id }));
       setAllBranches(fetchedBranches);
 
-      // Load profile for the simulated current user
-      const simCurrentUser = fetchedUsers.find(u => u.id === SIMULATED_CURRENT_USER_ID);
-      if (simCurrentUser) {
-        setCurrentUserProfile(simCurrentUser);
+      if (currentUserDocSnap.exists()) {
+        const userProfileData = currentUserDocSnap.data() as FirestoreUser;
+        setCurrentUserProfile({ ...userProfileData, id: currentUserDocSnap.id });
         setProfileFormData({
-          displayName: simCurrentUser.displayName || "",
-          email: simCurrentUser.email || "", // Email typically not editable here
-          enableEmailNotifications: simCurrentUser.enableEmailNotifications || false,
-          darkModeEnabled: simCurrentUser.darkModeEnabled || false,
-          autoDataSyncEnabled: simCurrentUser.autoDataSyncEnabled || false,
+          displayName: userProfileData.displayName || "",
+          email: userProfileData.email || "", 
+          enableEmailNotifications: userProfileData.enableEmailNotifications || false,
+          darkModeEnabled: userProfileData.darkModeEnabled || false,
+          autoDataSyncEnabled: userProfileData.autoDataSyncEnabled || false,
         });
-      } else if (fetchedUsers.length > 0) {
-        // Fallback to first user if simulated ID not found, for demo purposes
-        setCurrentUserProfile(fetchedUsers[0]);
-         setProfileFormData({
-          displayName: fetchedUsers[0].displayName || "",
-          email: fetchedUsers[0].email || "",
-          enableEmailNotifications: fetchedUsers[0].enableEmailNotifications || false,
-          darkModeEnabled: fetchedUsers[0].darkModeEnabled || false,
-          autoDataSyncEnabled: fetchedUsers[0].autoDataSyncEnabled || false,
-        });
+      } else {
+        toast({ title: "Error", description: "Could not load your user profile.", variant: "destructive" });
       }
 
     } catch (error) {
       console.error("Error fetching settings data:", error);
       toast({ title: "Error", description: "Failed to load settings data.", variant: "destructive" });
     } finally {
-      setIsLoading(false);
+      setIsLoadingPageData(false);
     }
   };
 
   useEffect(() => {
-    fetchAllData();
+    if (authUser) {
+      fetchAllData();
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [authUser]);
 
   const handleProfileInputChange = (e: ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
@@ -115,24 +117,24 @@ export default function SettingsPage() {
 
   const handleUpdateProfile = async (e: FormEvent) => {
     e.preventDefault();
-    if (!currentUserProfile?.id) {
+    if (!currentUserProfile?.uid) { // Use uid from FirestoreUser interface
       toast({ title: "Error", description: "No user profile loaded to update.", variant: "destructive"});
       return;
     }
     setIsSubmittingProfile(true);
     try {
-      const userDocRef = doc(db, "users", currentUserProfile.id);
+      const userDocRef = doc(db, "users", currentUserProfile.uid);
       const dataToUpdate: Partial<FirestoreUser> = {
         displayName: profileFormData.displayName || null,
         enableEmailNotifications: profileFormData.enableEmailNotifications,
         darkModeEnabled: profileFormData.darkModeEnabled,
         autoDataSyncEnabled: profileFormData.autoDataSyncEnabled,
-        updatedAt: Timestamp.now(), // Assuming an updatedAt field
+        updatedAt: Timestamp.now(), 
+        // Email is not updated here, as it's usually handled by Firebase Auth specific methods
       };
       await updateDoc(userDocRef, dataToUpdate);
       toast({ title: "Success", description: "Profile updated successfully." });
-      // Re-fetch or update local state
-      setCurrentUserProfile(prev => ({...prev, ...dataToUpdate, displayName: dataToUpdate.displayName || undefined }));
+      setCurrentUserProfile(prev => prev ? ({...prev, ...dataToUpdate, displayName: dataToUpdate.displayName || undefined }) : null);
     } catch (error) {
       console.error("Error updating profile:", error);
       toast({ title: "Error", description: "Failed to update profile.", variant: "destructive" });
@@ -142,9 +144,9 @@ export default function SettingsPage() {
   };
 
 
-  const openBranchDialog = (user: User) => {
-    setSelectedUserForBranches(user);
-    setTempSelectedBranches(new Set(user.assignedBranchIds || []));
+  const openBranchDialog = (userToManage: User) => {
+    setSelectedUserForBranches(userToManage);
+    setTempSelectedBranches(new Set(userToManage.assignedBranchIds || []));
     setIsBranchDialogOpen(true);
   };
 
@@ -164,15 +166,14 @@ export default function SettingsPage() {
     if (!selectedUserForBranches) return;
     setIsSubmittingAssignments(true);
     try {
-      const userDocRef = doc(db, "users", selectedUserForBranches.id);
+      const userDocRef = doc(db, "users", selectedUserForBranches.uid); // Use uid
       await updateDoc(userDocRef, {
         assignedBranchIds: Array.from(tempSelectedBranches),
-        updatedAt: Timestamp.now(), // Assuming an updatedAt field
+        updatedAt: Timestamp.now(),
       });
       toast({ title: "Success", description: `Branch assignments for ${selectedUserForBranches.displayName} updated.` });
-      // Update local state for allUsers
       setAllUsers(prevUsers => prevUsers.map(u => 
-        u.id === selectedUserForBranches.id ? { ...u, assignedBranchIds: Array.from(tempSelectedBranches) } : u
+        u.uid === selectedUserForBranches.uid ? { ...u, assignedBranchIds: Array.from(tempSelectedBranches) } : u
       ));
       setIsBranchDialogOpen(false);
     } catch (error) {
@@ -183,7 +184,7 @@ export default function SettingsPage() {
     }
   };
 
-  if (isLoading) {
+  if (authLoading || isLoadingPageData) {
     return (
       <div className="flex justify-center items-center h-64">
         <Loader2 className="h-12 w-12 animate-spin text-primary" />
@@ -191,6 +192,17 @@ export default function SettingsPage() {
       </div>
     );
   }
+  
+  if (!authUser) {
+    // This should ideally be handled by a redirect in useEffect or a wrapper component
+    return (
+        <div className="flex flex-col items-center justify-center h-64">
+            <p className="text-lg text-muted-foreground">Please log in to view settings.</p>
+            <Button onClick={() => router.push('/login')} className="mt-4">Go to Login</Button>
+        </div>
+    );
+  }
+
 
   return (
     <div className="space-y-6">
@@ -202,10 +214,10 @@ export default function SettingsPage() {
       <Card className="shadow-lg">
         <CardHeader>
           <CardTitle className="font-headline text-xl">User Profile</CardTitle>
-          <CardDescription>Update your personal information (Viewing as: {currentUserProfile?.displayName || "N/A"}).</CardDescription>
+          <CardDescription>Update your personal information (Viewing as: {currentUserProfile?.displayName || currentUserProfile?.email || "N/A"}).</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          {currentUserProfile?.id ? (
+          {currentUserProfile?.uid ? (
             <form onSubmit={handleUpdateProfile}>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
@@ -219,7 +231,7 @@ export default function SettingsPage() {
               </div>
               <div className="mt-4">
                 <Label htmlFor="password">Change Password</Label>
-                <Input id="password" type="password" placeholder="Enter new password (UI Placeholder)" />
+                <Input id="password" type="password" placeholder="Enter new password (UI Placeholder)" disabled />
               </div>
               <h3 className="text-md font-medium mt-6 mb-2">Preferences</h3>
               <div className="space-y-3">
@@ -247,65 +259,67 @@ export default function SettingsPage() {
         </CardContent>
       </Card>
 
-      <Card className="shadow-lg">
-        <CardHeader>
-          <CardTitle className="font-headline text-xl">User Management</CardTitle>
-          <CardDescription>Manage users, roles, and branch privileges. (Assumes Admin Privileges)</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {allUsers.length === 0 && !isLoading && <p>No users found.</p>}
-          {allUsers.map(user => (
-            <div key={user.id} className="flex items-center justify-between p-3 border rounded-md">
-              <div>
-                <p className="font-medium">{user.displayName || user.email} <span className="text-xs text-muted-foreground">({user.role})</span></p>
-                <p className="text-sm text-muted-foreground">{user.email}</p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Assigned Branches: {
-                    (user.assignedBranchIds && user.assignedBranchIds.length > 0)
-                         ? user.assignedBranchIds.map(branchId => allBranches.find(b => b.id === branchId)?.name || branchId).join(', ')
-                         : (user.role === "superAdmin" ? "All (Super Admin)" : "None")
-                  }
-                </p>
-              </div>
-              {user.role !== "superAdmin" && (
-                <Button variant="outline" size="sm" onClick={() => openBranchDialog(user)} disabled={isSubmittingAssignments || allBranches.length === 0}>
-                  {allBranches.length === 0 ? "No Branches" : "Manage Branches"}
-                </Button>
-              )}
-            </div>
-          ))}
-           <Dialog open={isBranchDialogOpen} onOpenChange={setIsBranchDialogOpen}>
-            <DialogContent className="sm:max-w-md">
-              <DialogHeader>
-                <DialogTitle>Manage Branch Access for {selectedUserForBranches?.displayName || selectedUserForBranches?.email}</DialogTitle>
-                <DialogDescription>Select the branches this user can access.</DialogDescription>
-              </DialogHeader>
-              <ScrollArea className="max-h-60 p-1">
-                <div className="space-y-2 py-2">
-                {allBranches.map(branch => (
-                  <div key={branch.id} className="flex items-center space-x-2">
-                    <Checkbox
-                      id={`branch-${branch.id}`}
-                      checked={tempSelectedBranches.has(branch.id)}
-                      onCheckedChange={(checked) => handleBranchCheckboxChange(branch.id, Boolean(checked))}
-                    />
-                    <Label htmlFor={`branch-${branch.id}`} className="font-normal">{branch.name}</Label>
-                  </div>
-                ))}
-                {allBranches.length === 0 && <p className="text-sm text-muted-foreground">No branches available to assign.</p>}
+      {currentUserProfile?.role === "superAdmin" && ( // Only show User Management to superAdmin
+        <Card className="shadow-lg">
+          <CardHeader>
+            <CardTitle className="font-headline text-xl">User Management</CardTitle>
+            <CardDescription>Manage users, roles, and branch privileges.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {allUsers.length === 0 && !isLoadingPageData && <p>No users found.</p>}
+            {allUsers.map(userToManage => (
+              <div key={userToManage.uid} className="flex items-center justify-between p-3 border rounded-md">
+                <div>
+                  <p className="font-medium">{userToManage.displayName || userToManage.email} <span className="text-xs text-muted-foreground">({userToManage.role})</span></p>
+                  <p className="text-sm text-muted-foreground">{userToManage.email}</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Assigned Branches: {
+                      (userToManage.assignedBranchIds && userToManage.assignedBranchIds.length > 0)
+                           ? userToManage.assignedBranchIds.map(branchId => allBranches.find(b => b.id === branchId)?.name || branchId).join(', ')
+                           : (userToManage.role === "superAdmin" ? "All (Super Admin)" : "None")
+                    }
+                  </p>
                 </div>
-              </ScrollArea>
-              <DialogFooter>
-                <DialogClose asChild><Button type="button" variant="outline" disabled={isSubmittingAssignments}>Cancel</Button></DialogClose>
-                <Button type="button" onClick={saveBranchAssignments} disabled={isSubmittingAssignments}>
-                   {isSubmittingAssignments && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                   Save Assignments
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
-        </CardContent>
-      </Card>
+                {userToManage.role !== "superAdmin" && (
+                  <Button variant="outline" size="sm" onClick={() => openBranchDialog(userToManage)} disabled={isSubmittingAssignments || allBranches.length === 0}>
+                    {allBranches.length === 0 ? "No Branches" : "Manage Branches"}
+                  </Button>
+                )}
+              </div>
+            ))}
+            <Dialog open={isBranchDialogOpen} onOpenChange={setIsBranchDialogOpen}>
+              <DialogContent className="sm:max-w-md">
+                <DialogHeader>
+                  <DialogTitle>Manage Branch Access for {selectedUserForBranches?.displayName || selectedUserForBranches?.email}</DialogTitle>
+                  <DialogDescription>Select the branches this user can access.</DialogDescription>
+                </DialogHeader>
+                <ScrollArea className="max-h-60 p-1">
+                  <div className="space-y-2 py-2">
+                  {allBranches.map(branch => (
+                    <div key={branch.id} className="flex items-center space-x-2">
+                      <Checkbox
+                        id={`branch-${branch.id}`}
+                        checked={tempSelectedBranches.has(branch.id)}
+                        onCheckedChange={(checked) => handleBranchCheckboxChange(branch.id, Boolean(checked))}
+                      />
+                      <Label htmlFor={`branch-${branch.id}`} className="font-normal">{branch.name}</Label>
+                    </div>
+                  ))}
+                  {allBranches.length === 0 && <p className="text-sm text-muted-foreground">No branches available to assign.</p>}
+                  </div>
+                </ScrollArea>
+                <DialogFooter>
+                  <DialogClose asChild><Button type="button" variant="outline" disabled={isSubmittingAssignments}>Cancel</Button></DialogClose>
+                  <Button type="button" onClick={saveBranchAssignments} disabled={isSubmittingAssignments}>
+                     {isSubmittingAssignments && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                     Save Assignments
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+          </CardContent>
+        </Card>
+      )}
 
       <Card className="shadow-lg">
         <CardHeader>
@@ -327,5 +341,3 @@ export default function SettingsPage() {
     </div>
   );
 }
-
-    

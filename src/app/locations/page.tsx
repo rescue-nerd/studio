@@ -35,8 +35,9 @@ import { db } from "@/lib/firebase";
 import { collection, getDocs, addDoc, doc, updateDoc, deleteDoc, Timestamp, query, orderBy } from "firebase/firestore";
 import type { Country as FirestoreCountry, State as FirestoreState, City as FirestoreCity, Unit as FirestoreUnit } from "@/types/firestore";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/auth-context"; // Import useAuth
+import { useRouter } from "next/navigation"; // Import useRouter
 
-// Local interfaces extending Firestore types to include id for local state
 interface Country extends FirestoreCountry {}
 interface State extends FirestoreState {}
 interface City extends FirestoreCity {}
@@ -44,9 +45,7 @@ interface Unit extends FirestoreUnit {}
 
 
 const unitTypes: FirestoreUnit["type"][] = ["Weight", "Distance", "Volume", "Other"];
-const PLACEHOLDER_USER_ID = "system_user_placeholder"; // Replace with actual auth user UID later
 
-// Default form data, excluding id, createdAt, createdBy, updatedAt, updatedBy
 const defaultCountryFormData: Omit<Country, 'id' | keyof AuditableFields> = { name: "", code: "" };
 const defaultStateFormData: Omit<State, 'id' | keyof AuditableFields> = { name: "", countryId: "" };
 const defaultCityFormData: Omit<City, 'id' | keyof AuditableFields> = { name: "", stateId: "" };
@@ -62,23 +61,28 @@ interface AuditableFields {
 
 export default function LocationsPage() {
   const { toast } = useToast();
+  const { user: authUser, loading: authLoading } = useAuth();
+  const router = useRouter();
 
-  // Main data states
   const [countries, setCountries] = useState<Country[]>([]);
   const [states, setStates] = useState<State[]>([]);
   const [cities, setCities] = useState<City[]>([]);
   const [units, setUnits] = useState<Unit[]>([]);
 
-  // Loading states
   const [isLoadingCountries, setIsLoadingCountries] = useState(true);
   const [isLoadingStates, setIsLoadingStates] = useState(true);
   const [isLoadingCities, setIsLoadingCities] = useState(true);
   const [isLoadingUnits, setIsLoadingUnits] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  useEffect(() => {
+    if (!authLoading && !authUser) {
+      router.push('/login');
+    }
+  }, [authUser, authLoading, router]);
 
-  // --- Fetching Data ---
   const fetchCountries = async () => {
+    if (!authUser) return;
     setIsLoadingCountries(true);
     try {
       const q = query(collection(db, "countries"), orderBy("name"));
@@ -93,6 +97,7 @@ export default function LocationsPage() {
   };
 
   const fetchStates = async () => {
+    if (!authUser) return;
     setIsLoadingStates(true);
     try {
       const q = query(collection(db, "states"), orderBy("name"));
@@ -107,6 +112,7 @@ export default function LocationsPage() {
   };
   
   const fetchCities = async () => {
+    if (!authUser) return;
     setIsLoadingCities(true);
     try {
       const q = query(collection(db, "cities"), orderBy("name"));
@@ -121,6 +127,7 @@ export default function LocationsPage() {
   };
 
   const fetchUnits = async () => {
+    if (!authUser) return;
     setIsLoadingUnits(true);
     try {
       const q = query(collection(db, "units"), orderBy("name"));
@@ -135,12 +142,14 @@ export default function LocationsPage() {
   };
 
   useEffect(() => {
-    fetchCountries();
-    fetchStates();
-    fetchCities();
-    fetchUnits();
+    if (authUser) {
+        fetchCountries();
+        fetchStates();
+        fetchCities();
+        fetchUnits();
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [authUser]);
 
   // State for Countries Tab
   const [searchTermCountries, setSearchTermCountries] = useState("");
@@ -185,14 +194,15 @@ export default function LocationsPage() {
   };
   const handleCountrySubmit = async (e: FormEvent) => {
     e.preventDefault();
+    if (!authUser) return;
     setIsSubmitting(true);
     try {
       if (editingCountry) {
         const countryDocRef = doc(db, "countries", editingCountry.id);
-        await updateDoc(countryDocRef, { ...countryFormData, updatedAt: Timestamp.now(), updatedBy: PLACEHOLDER_USER_ID });
+        await updateDoc(countryDocRef, { ...countryFormData, updatedAt: Timestamp.now(), updatedBy: authUser.uid });
         toast({ title: "Success", description: "Country updated successfully." });
       } else {
-        await addDoc(collection(db, "countries"), { ...countryFormData, createdAt: Timestamp.now(), createdBy: PLACEHOLDER_USER_ID });
+        await addDoc(collection(db, "countries"), { ...countryFormData, createdAt: Timestamp.now(), createdBy: authUser.uid });
         toast({ title: "Success", description: "Country added successfully." });
       }
       fetchCountries();
@@ -236,13 +246,14 @@ export default function LocationsPage() {
   };
   const handleStateSubmit = async (e: FormEvent) => {
     e.preventDefault();
+    if (!authUser) return;
     setIsSubmitting(true);
     try {
       if (editingState) {
-        await updateDoc(doc(db, "states", editingState.id), { ...stateFormData, updatedAt: Timestamp.now(), updatedBy: PLACEHOLDER_USER_ID });
+        await updateDoc(doc(db, "states", editingState.id), { ...stateFormData, updatedAt: Timestamp.now(), updatedBy: authUser.uid });
         toast({ title: "Success", description: "State updated." });
       } else {
-        await addDoc(collection(db, "states"), { ...stateFormData, createdAt: Timestamp.now(), createdBy: PLACEHOLDER_USER_ID });
+        await addDoc(collection(db, "states"), { ...stateFormData, createdAt: Timestamp.now(), createdBy: authUser.uid });
         toast({ title: "Success", description: "State added." });
       }
       fetchStates();
@@ -287,13 +298,14 @@ export default function LocationsPage() {
   };
   const handleCitySubmit = async (e: FormEvent) => {
     e.preventDefault();
+    if (!authUser) return;
     setIsSubmitting(true);
     try {
       if (editingCity) {
-        await updateDoc(doc(db, "cities", editingCity.id), { ...cityFormData, updatedAt: Timestamp.now(), updatedBy: PLACEHOLDER_USER_ID });
+        await updateDoc(doc(db, "cities", editingCity.id), { ...cityFormData, updatedAt: Timestamp.now(), updatedBy: authUser.uid });
         toast({ title: "Success", description: "City updated." });
       } else {
-        await addDoc(collection(db, "cities"), { ...cityFormData, createdAt: Timestamp.now(), createdBy: PLACEHOLDER_USER_ID });
+        await addDoc(collection(db, "cities"), { ...cityFormData, createdAt: Timestamp.now(), createdBy: authUser.uid });
         toast({ title: "Success", description: "City added." });
       }
       fetchCities();
@@ -337,13 +349,14 @@ export default function LocationsPage() {
   };
   const handleUnitSubmit = async (e: FormEvent) => {
     e.preventDefault();
+    if (!authUser) return;
     setIsSubmitting(true);
     try {
       if (editingUnit) {
-        await updateDoc(doc(db, "units", editingUnit.id), { ...unitFormData, updatedAt: Timestamp.now(), updatedBy: PLACEHOLDER_USER_ID });
+        await updateDoc(doc(db, "units", editingUnit.id), { ...unitFormData, updatedAt: Timestamp.now(), updatedBy: authUser.uid });
         toast({ title: "Success", description: "Unit updated." });
       } else {
-        await addDoc(collection(db, "units"), { ...unitFormData, createdAt: Timestamp.now(), createdBy: PLACEHOLDER_USER_ID });
+        await addDoc(collection(db, "units"), { ...unitFormData, createdAt: Timestamp.now(), createdBy: authUser.uid });
         toast({ title: "Success", description: "Unit added." });
       }
       fetchUnits();
@@ -375,8 +388,8 @@ export default function LocationsPage() {
   const filteredUnits = units.filter(u => u.name.toLowerCase().includes(searchTermUnits.toLowerCase()) || u.symbol.toLowerCase().includes(searchTermUnits.toLowerCase()));
 
 
-  const renderLoading = (isLoading: boolean) => (
-    isLoading ? (
+  const renderLoading = (isLoadingFlag: boolean) => (
+    isLoadingFlag ? (
       <TableRow>
         <TableCell colSpan={4} className="h-24 text-center">
           <div className="flex justify-center items-center">
@@ -387,6 +400,15 @@ export default function LocationsPage() {
       </TableRow>
     ) : null
   );
+
+  if (authLoading || (!authUser && !authLoading)) {
+    return (
+      <div className="flex justify-center items-center h-64">
+        <Loader2 className="h-12 w-12 animate-spin text-primary" />
+        <p className="ml-3 text-muted-foreground">{authLoading ? "Authenticating..." : "Redirecting to login..."}</p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -496,7 +518,7 @@ export default function LocationsPage() {
                 <CardTitle className="font-headline text-lg">States</CardTitle>
                 <Dialog open={isStateFormOpen} onOpenChange={setIsStateFormOpen}>
                   <DialogTrigger asChild>
-                    <Button variant="outline" size="sm" onClick={openAddStateForm}>
+                    <Button variant="outline" size="sm" onClick={openAddStateForm} disabled={countries.length === 0}>
                       <PlusCircle className="mr-2 h-4 w-4" /> Add New State
                     </Button>
                   </DialogTrigger>
@@ -511,7 +533,7 @@ export default function LocationsPage() {
                       </div>
                       <div>
                         <Label htmlFor="stateCountry">Country</Label>
-                        <Select value={stateFormData.countryId} onValueChange={handleStateCountryChange} required>
+                        <Select value={stateFormData.countryId} onValueChange={handleStateCountryChange} required disabled={countries.length === 0}>
                           <SelectTrigger id="stateCountry"><SelectValue placeholder="Select country" /></SelectTrigger>
                           <SelectContent>
                             {countries.map(country => <SelectItem key={country.id} value={country.id}>{country.name}</SelectItem>)}
@@ -520,7 +542,7 @@ export default function LocationsPage() {
                       </div>
                       <DialogFooter>
                         <DialogClose asChild><Button type="button" variant="outline" disabled={isSubmitting}>Cancel</Button></DialogClose>
-                        <Button type="submit" disabled={isSubmitting}>
+                        <Button type="submit" disabled={isSubmitting || countries.length === 0}>
                           {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}
                           Save State
                         </Button>
@@ -586,7 +608,7 @@ export default function LocationsPage() {
                 <CardTitle className="font-headline text-lg">Cities</CardTitle>
                 <Dialog open={isCityFormOpen} onOpenChange={setIsCityFormOpen}>
                   <DialogTrigger asChild>
-                    <Button variant="outline" size="sm" onClick={openAddCityForm}>
+                    <Button variant="outline" size="sm" onClick={openAddCityForm} disabled={states.length === 0}>
                       <PlusCircle className="mr-2 h-4 w-4" /> Add New City
                     </Button>
                   </DialogTrigger>
@@ -601,7 +623,7 @@ export default function LocationsPage() {
                       </div>
                       <div>
                         <Label htmlFor="cityState">State</Label>
-                        <Select value={cityFormData.stateId} onValueChange={handleCityStateChange} required>
+                        <Select value={cityFormData.stateId} onValueChange={handleCityStateChange} required disabled={states.length === 0}>
                            <SelectTrigger id="cityState"><SelectValue placeholder="Select state" /></SelectTrigger>
                            <SelectContent>
                             {states.map(state => <SelectItem key={state.id} value={state.id}>{state.name} ({getCountryName(state.countryId)})</SelectItem>)}
@@ -610,7 +632,7 @@ export default function LocationsPage() {
                       </div>
                       <DialogFooter>
                         <DialogClose asChild><Button type="button" variant="outline" disabled={isSubmitting}>Cancel</Button></DialogClose>
-                        <Button type="submit" disabled={isSubmitting}>
+                        <Button type="submit" disabled={isSubmitting || states.length === 0}>
                            {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}
                            Save City
                         </Button>
@@ -767,5 +789,3 @@ export default function LocationsPage() {
     </div>
   );
 }
-
-    

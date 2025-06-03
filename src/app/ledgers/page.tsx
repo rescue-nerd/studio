@@ -43,36 +43,35 @@ import {
   type QueryDocumentSnapshot,
 } from "firebase/firestore";
 import type { LedgerAccount as FirestoreLedgerAccount, LedgerEntry as FirestoreLedgerEntry, LedgerTransactionType } from "@/types/firestore";
+import { useAuth } from "@/contexts/auth-context"; // Import useAuth
+import { useRouter } from "next/navigation"; // Import useRouter
 
 type FirestoreLedgerEntryStatus = FirestoreLedgerEntry["status"];
 
-// Local interface extending Firestore type to handle Date objects for UI
 interface LedgerAccount extends Omit<FirestoreLedgerAccount, 'createdAt' | 'updatedAt' | 'lastTransactionAt'> {
   createdAt: Date;
   updatedAt?: Date;
   lastTransactionAt?: Date;
 }
-interface LedgerEntry extends Omit<FirestoreLedgerEntry, 'miti' | 'createdAt' | 'approvedAt'> {
+interface LedgerEntry extends Omit<FirestoreLedgerEntry, 'miti' | 'createdAt' | 'approvedAt' | 'createdBy' | 'approvedBy'> {
   miti: Date;
   createdAt: Date;
   approvedAt?: Date;
+  createdBy?: string;
+  approvedBy?: string;
 }
 
 const transactionTypesForFilter: LedgerTransactionType[] = ["Bilti", "Delivery", "Rebate", "Discount", "Manual Credit", "Manual Debit", "Opening Balance", "Payment", "Receipt", "Expense", "Fuel", "Maintenance"];
 const entryStatusesForFilter: FirestoreLedgerEntryStatus[] = ["Pending", "Approved", "Rejected"];
 
-const defaultManualEntryFormData: Omit<LedgerEntry, 'id' | 'balanceAfterTransaction' | 'accountId' | 'status' | 'approvalRemarks' | 'approvedBy' | 'approvedAt' | 'sourceModule' | 'branchId'> = {
+const defaultManualEntryFormData: Omit<LedgerEntry, 'id' | 'balanceAfterTransaction' | 'accountId' | 'status' | 'approvalRemarks' | 'approvedBy' | 'approvedAt' | 'sourceModule' | 'branchId' | 'createdBy' | 'createdAt'> = {
   miti: new Date(),
   description: "",
   debit: 0,
   credit: 0,
   referenceNo: "",
   transactionType: "Manual Credit" as LedgerTransactionType,
-  createdBy: "CurrentUser", // Placeholder
-  createdAt: new Date(),
 };
-
-const PLACEHOLDER_USER_ID = "system_user_placeholder";
 
 
 export default function LedgersPage() {
@@ -92,12 +91,22 @@ export default function LedgersPage() {
   const [manualEntryFormData, setManualEntryFormData] = useState(defaultManualEntryFormData);
 
   const { toast } = useToast();
+  const { user: authUser, loading: authLoading } = useAuth();
+  const router = useRouter();
+
   const [isLoadingAccounts, setIsLoadingAccounts] = useState(true);
   const [isLoadingEntries, setIsLoadingEntries] = useState(false);
   const [isSubmittingManualEntry, setIsSubmittingManualEntry] = useState(false);
-  const [isUpdatingEntryStatus, setIsUpdatingEntryStatus] = useState<string | null>(null); // Stores ID of entry being updated
+  const [isUpdatingEntryStatus, setIsUpdatingEntryStatus] = useState<string | null>(null); 
+
+  useEffect(() => {
+    if (!authLoading && !authUser) {
+      router.push('/login');
+    }
+  }, [authUser, authLoading, router]);
 
   const fetchLedgerAccounts = async () => {
+    if(!authUser) return;
     setIsLoadingAccounts(true);
     try {
       const q = query(collection(db, "ledgerAccounts"), orderBy("accountName"));
@@ -122,7 +131,7 @@ export default function LedgersPage() {
   };
 
   const fetchLedgerEntries = async (accountId: string) => {
-    if (!accountId) return;
+    if (!accountId || !authUser) return;
     setIsLoadingEntries(true);
     try {
       const q = query(collection(db, "ledgerEntries"), where("accountId", "==", accountId), orderBy("miti", "asc"), orderBy("createdAt", "asc"));
@@ -150,16 +159,18 @@ export default function LedgersPage() {
   };
   
   useEffect(() => {
-    fetchLedgerAccounts();
+    if (authUser) {
+      fetchLedgerAccounts();
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [authUser]);
 
   useEffect(() => {
-    if (selectedAccountId) {
+    if (selectedAccountId && authUser) {
       fetchLedgerEntries(selectedAccountId);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedAccountId]);
+  }, [selectedAccountId, authUser]);
 
 
   const selectedAccountDetails = useMemo(() => {
@@ -172,35 +183,27 @@ export default function LedgersPage() {
 
     const accountEntries = allLedgerEntries.filter(entry => entry.accountId === selectedAccountId);
     
-    // Apply filters
     const filtered = accountEntries
       .filter(entry => filterType === "All" || entry.transactionType === filterType)
       .filter(entry => filterStatus === "All" || entry.status === filterStatus)
       .filter(entry => !filterStartDate || entry.miti >= startOfDay(filterStartDate))
       .filter(entry => !filterEndDate || entry.miti <= endOfDay(filterEndDate));
 
-    // Sort for balance calculation: by miti, then by createdAt, then by status (Approved first), then by ID
     const sortedForBalance = [...filtered].sort((a, b) => {
         const dateComparison = a.miti.getTime() - b.miti.getTime();
         if (dateComparison !== 0) return dateComparison;
-        
-        // Prioritize Opening Balance
         if (a.transactionType === "Opening Balance") return -1;
         if (b.transactionType === "Opening Balance") return 1;
-
         const createdAtComparison = (a.createdAt?.getTime() || 0) - (b.createdAt?.getTime() || 0);
         if (createdAtComparison !== 0) return createdAtComparison;
-        
-        // Prioritize Approved entries for stable balance calculation
         if (a.status === "Approved" && b.status !== "Approved") return -1;
         if (a.status !== "Approved" && b.status === "Approved") return 1;
-
         return a.id.localeCompare(b.id);
     });
 
     let runningBalance = 0;
     const entriesWithBalance = sortedForBalance.map(entry => {
-      let balanceAfterThisEntry = runningBalance; // Balance *before* this entry if it's not approved
+      let balanceAfterThisEntry = runningBalance; 
       if (entry.status === "Approved" || entry.transactionType === "Opening Balance") {
          if (entry.transactionType === "Opening Balance") {
             runningBalance = entry.credit - entry.debit;
@@ -212,7 +215,6 @@ export default function LedgersPage() {
       return { ...entry, balanceAfterTransaction: balanceAfterThisEntry };
     });
 
-    // Sort for display: most recent first
     return entriesWithBalance.sort((a, b) => {
         const dateComparison = b.miti.getTime() - a.miti.getTime();
         if (dateComparison !== 0) return dateComparison;
@@ -224,7 +226,6 @@ export default function LedgersPage() {
 
   const currentAccountBalance = useMemo(() => {
     if (!selectedAccountId) return 0;
-    // Find the last *approved* entry after sorting by miti and createdAt
     const approvedEntries = allLedgerEntries
         .filter(e => e.accountId === selectedAccountId && (e.status === "Approved" || e.transactionType === "Opening Balance"))
         .sort((a, b) => {
@@ -275,6 +276,10 @@ export default function LedgersPage() {
 
   const handleManualEntrySubmit = async (e: FormEvent) => {
     e.preventDefault();
+    if (!authUser) {
+      toast({ title: "Authentication Error", description: "You must be logged in.", variant: "destructive"});
+      return;
+    }
     if (!selectedAccountId) {
         toast({ title: "Error", description: "Please select an account first.", variant: "destructive"});
         return;
@@ -296,14 +301,14 @@ export default function LedgersPage() {
     const newEntryPayload: Omit<FirestoreLedgerEntry, 'id' | 'balanceAfterTransaction'> = {
       accountId: selectedAccountId,
       miti: Timestamp.fromDate(manualEntryFormData.miti),
-      nepaliMiti: manualEntryFormData.nepaliMiti || "", // Assuming you add nepaliMiti to form
+      nepaliMiti: manualEntryFormData.nepaliMiti || "", 
       description: manualEntryFormData.description,
       debit: manualEntryFormData.debit,
       credit: manualEntryFormData.credit,
       referenceNo: manualEntryFormData.referenceNo || "",
       transactionType: manualEntryFormData.transactionType,
       status: "Pending", 
-      createdBy: PLACEHOLDER_USER_ID, 
+      createdBy: authUser.uid, 
       createdAt: Timestamp.now(),
       sourceModule: "Manual",
     };
@@ -311,15 +316,16 @@ export default function LedgersPage() {
     try {
         const docRef = await addDoc(collection(db, "ledgerEntries"), newEntryPayload);
         const newEntryForState: LedgerEntry = {
-            ...newEntryPayload,
+            ...(newEntryPayload as Omit<FirestoreLedgerEntry, 'id' | 'balanceAfterTransaction' | 'miti' | 'createdAt'>),
             id: docRef.id,
             miti: newEntryPayload.miti.toDate(),
             createdAt: newEntryPayload.createdAt.toDate(),
+            createdBy: authUser.uid,
         };
-        setAllLedgerEntries(prev => [...prev, newEntryForState]); // Add to local state to refresh UI
+        setAllLedgerEntries(prev => [...prev, newEntryForState]); 
         toast({ title: "Manual Entry Submitted", description: `Entry for ${selectedAccountDetails?.accountName} submitted for approval.` });
         setIsManualEntryDialogOpen(false);
-        setManualEntryFormData({...defaultManualEntryFormData, miti: new Date(), createdAt: new Date()}); 
+        setManualEntryFormData({...defaultManualEntryFormData, miti: new Date()}); 
     } catch (error) {
         console.error("Error submitting manual entry: ", error);
         toast({ title: "Error", description: "Failed to submit manual entry.", variant: "destructive"});
@@ -340,25 +346,24 @@ export default function LedgersPage() {
   };
 
   const handleUpdateEntryStatus = async (entryId: string, newStatus: FirestoreLedgerEntryStatus, remarks?: string) => {
-    if (!selectedAccountId) return;
+    if (!selectedAccountId || !authUser) return;
     setIsUpdatingEntryStatus(entryId);
     try {
         const entryDocRef = doc(db, "ledgerEntries", entryId);
         const updatePayload: Partial<FirestoreLedgerEntry> = {
             status: newStatus,
-            approvedBy: PLACEHOLDER_USER_ID, // Replace with actual user ID
+            approvedBy: authUser.uid,
             approvedAt: Timestamp.now(),
-            approvalRemarks: remarks || `${newStatus} by ${PLACEHOLDER_USER_ID}`,
+            approvalRemarks: remarks || `${newStatus} by ${authUser.displayName || authUser.email}`,
         };
         await updateDoc(entryDocRef, updatePayload);
         
-        // Update local state
         setAllLedgerEntries(prevEntries => 
             prevEntries.map(entry => 
                 entry.id === entryId ? { 
                     ...entry, 
                     status: newStatus, 
-                    approvedBy: PLACEHOLDER_USER_ID, 
+                    approvedBy: authUser.uid, 
                     approvedAt: updatePayload.approvedAt!.toDate(),
                     approvalRemarks: updatePayload.approvalRemarks 
                 } : entry
@@ -390,6 +395,15 @@ export default function LedgersPage() {
       default: return "outline";
     }
   };
+
+  if (authLoading || (!authUser && !authLoading)) {
+    return (
+      <div className="flex justify-center items-center h-64">
+        <Loader2 className="h-12 w-12 animate-spin text-primary" />
+        <p className="ml-3 text-muted-foreground">{authLoading ? "Loading authentication..." : "Redirecting to login..."}</p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -666,6 +680,3 @@ export default function LedgersPage() {
     </div>
   );
 }
-
-
-    

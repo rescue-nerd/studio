@@ -45,11 +45,12 @@ import {
 } from "firebase/firestore";
 import type { InvoiceLineCustomization as FirestoreInvoiceLineCustomization, InvoiceLineType } from "@/types/firestore";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/auth-context"; // Import useAuth
+import { useRouter } from "next/navigation"; // Import useRouter
 
 interface InvoiceLineCustomization extends FirestoreInvoiceLineCustomization {}
 
 const lineTypes: InvoiceLineType[] = ["Text", "Number", "Currency", "Percentage", "Date", "Textarea", "Boolean", "Select"];
-const PLACEHOLDER_USER_ID = "system_user_placeholder";
 
 const generateFieldName = (label: string) => {
   return label.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/gi, '');
@@ -67,6 +68,9 @@ const defaultFormData: Omit<InvoiceLineCustomization, 'id' | 'createdAt' | 'crea
 
 export default function ContentCustomizationPage() {
   const { toast } = useToast();
+  const { user: authUser, loading: authLoading } = useAuth(); // Get authenticated user
+  const router = useRouter();
+
   const [invoiceLines, setInvoiceLines] = useState<InvoiceLineCustomization[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -78,7 +82,14 @@ export default function ContentCustomizationPage() {
   const [isDeleteAlertOpen, setIsDeleteAlertOpen] = useState(false);
   const [lineToDelete, setLineToDelete] = useState<InvoiceLineCustomization | null>(null);
 
+  useEffect(() => {
+    if (!authLoading && !authUser) {
+      router.push('/login');
+    }
+  }, [authUser, authLoading, router]);
+
   const fetchInvoiceLines = async () => {
+    if (!authUser) return;
     setIsLoading(true);
     try {
       const linesCollectionRef = collection(db, "invoiceLineCustomizations");
@@ -95,9 +106,11 @@ export default function ContentCustomizationPage() {
   };
   
   useEffect(() => {
-    fetchInvoiceLines();
+    if (authUser) {
+      fetchInvoiceLines();
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [authUser]);
 
   const handleInputChange = (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
@@ -132,13 +145,17 @@ export default function ContentCustomizationPage() {
     const { id, createdAt, createdBy, updatedAt, updatedBy, ...editableData } = line;
     setFormData({
         ...editableData,
-        options: line.options || [], // Ensure options is an array
+        options: line.options || [], 
     });
     setIsFormOpen(true);
   };
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
+    if (!authUser) {
+        toast({ title: "Authentication Error", description: "You must be logged in.", variant: "destructive" });
+        return;
+    }
     if (!formData.label.trim() || !formData.fieldName.trim()) {
       toast({ title: "Validation Error", description: "Label is required (Field Name is auto-generated).", variant: "destructive" });
       return;
@@ -152,16 +169,16 @@ export default function ContentCustomizationPage() {
     const payload: Omit<FirestoreInvoiceLineCustomization, 'id' | 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy'> & Partial<Pick<FirestoreInvoiceLineCustomization, 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy'>> = {
       ...formData,
       order: editingLine ? editingLine.order : (invoiceLines.length > 0 ? Math.max(...invoiceLines.map(l => l.order)) + 1 : 1),
-      options: formData.type === "Select" ? formData.options : [], // Clear options if not select type
+      options: formData.type === "Select" ? formData.options : [], 
     };
 
     try {
       if (editingLine) {
         const lineDocRef = doc(db, "invoiceLineCustomizations", editingLine.id);
-        await updateDoc(lineDocRef, { ...payload, updatedAt: Timestamp.now(), updatedBy: PLACEHOLDER_USER_ID });
+        await updateDoc(lineDocRef, { ...payload, updatedAt: Timestamp.now(), updatedBy: authUser.uid });
         toast({ title: "Success", description: "Line configuration updated." });
       } else {
-        await addDoc(collection(db, "invoiceLineCustomizations"), { ...payload, createdAt: Timestamp.now(), createdBy: PLACEHOLDER_USER_ID });
+        await addDoc(collection(db, "invoiceLineCustomizations"), { ...payload, createdAt: Timestamp.now(), createdBy: authUser.uid });
         toast({ title: "Success", description: "Line configuration added." });
       }
       fetchInvoiceLines();
@@ -185,7 +202,7 @@ export default function ContentCustomizationPage() {
     try {
       await deleteDoc(doc(db, "invoiceLineCustomizations", lineToDelete.id));
       toast({ title: "Success", description: `Line "${lineToDelete.label}" deleted.` });
-      fetchInvoiceLines(); // Re-fetch to update list and order if needed
+      fetchInvoiceLines(); 
     } catch (error) {
       console.error("Error deleting line: ", error);
       toast({ title: "Error", description: "Failed to delete line configuration.", variant: "destructive" });
@@ -195,6 +212,17 @@ export default function ContentCustomizationPage() {
       setLineToDelete(null);
     }
   };
+
+  if (authLoading || (!authUser && !authLoading) || (isLoading && !invoiceLines.length)) {
+    return (
+      <div className="flex justify-center items-center h-64">
+        <Loader2 className="h-12 w-12 animate-spin text-primary" />
+        <p className="ml-3 text-muted-foreground">
+          {authLoading ? "Authenticating..." : isLoading ? "Loading configurations..." : "Redirecting to login..."}
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

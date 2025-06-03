@@ -44,12 +44,13 @@ import {
 } from "firebase/firestore";
 import type { DocumentNumberingConfig as FirestoreDocumentNumberingConfig, Branch as FirestoreBranch } from "@/types/firestore";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/auth-context"; // Import useAuth
+import { useRouter } from "next/navigation"; // Import useRouter
 
 interface DocumentNumberingConfig extends FirestoreDocumentNumberingConfig {}
 interface Branch extends FirestoreBranch {}
 
 const documentTypes = ["Invoice", "Waybill", "Receipt", "Credit Note", "Purchase Order", "Manifest", "GoodsReceipt", "GoodsDelivery"];
-const PLACEHOLDER_USER_ID = "system_user_placeholder";
 
 const defaultFormData: Omit<DocumentNumberingConfig, 'id' | 'lastGeneratedNumber' | 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy'> = {
   documentType: documentTypes[0],
@@ -57,13 +58,16 @@ const defaultFormData: Omit<DocumentNumberingConfig, 'id' | 'lastGeneratedNumber
   suffix: "",
   startingNumber: 1,
   perBranch: false,
-  branchId: "Global", // Default for non-per-branch
+  branchId: "Global", 
   minLength: 0,
 };
 
 
 export default function AutomaticNumberingPage() {
   const { toast } = useToast();
+  const { user: authUser, loading: authLoading } = useAuth(); // Get authenticated user
+  const router = useRouter();
+
   const [configs, setConfigs] = useState<DocumentNumberingConfig[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -77,8 +81,14 @@ export default function AutomaticNumberingPage() {
   const [isDeleteAlertOpen, setIsDeleteAlertOpen] = useState(false);
   const [configToDelete, setConfigToDelete] = useState<DocumentNumberingConfig | null>(null);
 
+  useEffect(() => {
+    if (!authLoading && !authUser) {
+      router.push('/login');
+    }
+  }, [authUser, authLoading, router]);
+
   const fetchBranches = async () => {
-    // setIsLoading(true); // Combined loading state
+    if (!authUser) return;
     try {
       const branchesCollectionRef = collection(db, "branches");
       const q = query(branchesCollectionRef, orderBy("name"));
@@ -89,11 +99,10 @@ export default function AutomaticNumberingPage() {
       console.error("Error fetching branches: ", error);
       toast({ title: "Error", description: "Failed to fetch branches.", variant: "destructive" });
     }
-    // setIsLoading(false);
   };
 
   const fetchConfigs = async () => {
-    // setIsLoading(true); // Combined loading state
+     if (!authUser) return;
     try {
       const configsCollectionRef = collection(db, "documentNumberingConfigs");
       const q = query(configsCollectionRef, orderBy("documentType"));
@@ -104,19 +113,20 @@ export default function AutomaticNumberingPage() {
       console.error("Error fetching numbering configs: ", error);
       toast({ title: "Error", description: "Failed to fetch numbering configurations.", variant: "destructive" });
     }
-    // setIsLoading(false);
   };
   
   useEffect(() => {
-    const loadData = async () => {
-        setIsLoading(true);
-        await fetchBranches();
-        await fetchConfigs();
-        setIsLoading(false);
+    if (authUser) {
+        const loadData = async () => {
+            setIsLoading(true);
+            await fetchBranches();
+            await fetchConfigs();
+            setIsLoading(false);
+        }
+        loadData();
     }
-    loadData();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [authUser]);
 
   const handleInputChange = (e: ChangeEvent<HTMLInputElement>) => {
     const { name, value, type, checked } = e.target;
@@ -153,6 +163,10 @@ export default function AutomaticNumberingPage() {
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
+    if (!authUser) {
+      toast({ title: "Authentication Error", description: "You must be logged in.", variant: "destructive" });
+      return;
+    }
     if (!formData.documentType || (formData.perBranch && !formData.branchId)) {
       toast({ title: "Validation Error", description: "Document Type and Branch (if specific) are required.", variant: "destructive" });
       return;
@@ -162,16 +176,16 @@ export default function AutomaticNumberingPage() {
     const payload: Omit<FirestoreDocumentNumberingConfig, 'id' | 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy'> & Partial<Pick<FirestoreDocumentNumberingConfig, 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy'>> = {
       ...formData,
       branchId: formData.perBranch ? formData.branchId : "Global",
-      lastGeneratedNumber: editingConfig ? editingConfig.lastGeneratedNumber : (formData.startingNumber -1) // Or keep existing if editing
+      lastGeneratedNumber: editingConfig ? editingConfig.lastGeneratedNumber : (formData.startingNumber -1)
     };
 
     try {
       if (editingConfig) {
         const configDocRef = doc(db, "documentNumberingConfigs", editingConfig.id);
-        await updateDoc(configDocRef, { ...payload, updatedAt: Timestamp.now(), updatedBy: PLACEHOLDER_USER_ID });
+        await updateDoc(configDocRef, { ...payload, updatedAt: Timestamp.now(), updatedBy: authUser.uid });
         toast({ title: "Success", description: "Configuration updated." });
       } else {
-        await addDoc(collection(db, "documentNumberingConfigs"), { ...payload, createdAt: Timestamp.now(), createdBy: PLACEHOLDER_USER_ID });
+        await addDoc(collection(db, "documentNumberingConfigs"), { ...payload, createdAt: Timestamp.now(), createdBy: authUser.uid });
         toast({ title: "Success", description: "Configuration added." });
       }
       fetchConfigs();
@@ -216,6 +230,17 @@ export default function AutomaticNumberingPage() {
     (config.prefix && config.prefix.toLowerCase().includes(searchTerm.toLowerCase())) ||
     (config.branchId && getBranchNameForDisplay(config.branchId).toLowerCase().includes(searchTerm.toLowerCase()))
   );
+  
+  if (authLoading || (!authUser && !authLoading) || (isLoading && !configs.length)) {
+    return (
+      <div className="flex justify-center items-center h-64">
+        <Loader2 className="h-12 w-12 animate-spin text-primary" />
+        <p className="ml-3 text-muted-foreground">
+          {authLoading ? "Authenticating..." : isLoading ? "Loading configurations..." : "Redirecting to login..."}
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
