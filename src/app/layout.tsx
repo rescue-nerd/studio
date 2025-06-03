@@ -33,11 +33,11 @@ export default function RootLayout({
       >
         <AuthProvider> {/* Wrap with AuthProvider */}
           <SidebarProvider defaultOpen={true}>
-            <div className="flex min-h-screen">
+            <div className="flex min-h-screen w-full"> {/* Added w-full */}
               <Sidebar collapsible="icon" className="bg-sidebar text-sidebar-foreground border-r border-sidebar-border hidden md:flex">
                  <AppSidebarContent />
               </Sidebar>
-              <SidebarInset className="flex-1 flex flex-col">
+              <SidebarInset className="flex-1 flex flex-col"> {/* SidebarInset is now a div */}
                 <AppHeader />
                 <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">
                   {children}
@@ -51,3 +51,4 @@ export default function RootLayout({
     </html>
   );
 }
+

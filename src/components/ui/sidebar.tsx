@@ -126,7 +126,7 @@ const SidebarProvider = React.forwardRef<
       <SidebarContext.Provider value={contextValue}>
         <TooltipProvider delayDuration={0}>
           <div
-            suppressHydrationWarning // Added here
+            suppressHydrationWarning
             style={
               {
                 "--sidebar-width": SIDEBAR_WIDTH,
@@ -312,8 +312,8 @@ const SidebarRail = React.forwardRef<
 SidebarRail.displayName = "SidebarRail"
 
 const SidebarInset = React.forwardRef<
-  React.ElementRef<'main'>,
-  React.ComponentProps<"main">
+  React.ElementRef<'div'>,
+  React.ComponentProps<"div">
 >(({ className, ...props }, ref) => {
   const context = useSidebar();
 
@@ -322,7 +322,7 @@ const SidebarInset = React.forwardRef<
   }
 
   return (
-    <main
+    <div
       ref={ref}
       className={cn(
         "relative flex min-h-svh flex-1 flex-col bg-background",
@@ -761,3 +761,4 @@ export {
   SidebarTrigger,
   useSidebar,
 }
+
