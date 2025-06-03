@@ -38,7 +38,7 @@ import {
   query,
   orderBy
 } from "firebase/firestore";
-import { getFunctions, httpsCallable, type HttpsCallableResult } from "firebase/functions";
+import { httpsCallable, type HttpsCallableResult } from "firebase/functions";
 import type { DocumentNumberingConfig as FirestoreDocumentNumberingConfig, Branch as FirestoreBranch } from "@/types/firestore";
 import type { 
   CreateDocumentNumberingConfigPayload, 
@@ -48,6 +48,8 @@ import type {
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/auth-context"; // Import useAuth
 import { useRouter } from "next/navigation"; // Import useRouter
+import { functions } from "@/lib/firebase"; // Import functions from firebase.ts
+import { handleFirebaseError } from "@/lib/firebase-error-handler"; // Import error handler
 
 interface DocumentNumberingConfig extends FirestoreDocumentNumberingConfig {}
 interface Branch extends FirestoreBranch {}
@@ -65,7 +67,6 @@ const defaultFormData: Omit<DocumentNumberingConfig, 'id' | 'lastGeneratedNumber
 };
 
 // Firebase Functions setup
-const functions = getFunctions();
 const createDocumentNumberingConfigFn = httpsCallable<CreateDocumentNumberingConfigPayload, {success: boolean, id: string, message: string}>(functions, 'createDocumentNumberingConfig');
 const updateDocumentNumberingConfigFn = httpsCallable<UpdateDocumentNumberingConfigPayload, {success: boolean, message: string}>(functions, 'updateDocumentNumberingConfig');
 const deleteDocumentNumberingConfigFn = httpsCallable<DeleteDocumentNumberingConfigPayload, {success: boolean, message: string}>(functions, 'deleteDocumentNumberingConfig');
@@ -119,7 +120,7 @@ export default function AutomaticNumberingPage() {
       setConfigs(fetchedConfigs);
     } catch (error) {
       console.error("Error fetching numbering configs: ", error);
-      toast({ title: "Error", description: "Failed to fetch numbering configurations.", variant: "destructive" });
+      handleFirebaseError(error, toast);
     }
   };
   
@@ -218,10 +219,9 @@ export default function AutomaticNumberingPage() {
       setIsFormOpen(false);
     } catch (error) {
       console.error("Error saving config: ", error);
-      toast({ 
-        title: "Error", 
-        description: error instanceof Error ? error.message : "Failed to save configuration.", 
-        variant: "destructive" 
+      handleFirebaseError(error, toast, {
+        "functions/already-exists": "A configuration for this document type and branch already exists.",
+        "functions/invalid-argument": "Please check all fields are filled correctly."
       });
     } finally {
       setIsSubmitting(false);

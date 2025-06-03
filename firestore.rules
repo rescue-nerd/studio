@@ -1,0 +1,157 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Common functions for role-based access control
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isAdmin() {
+      return isAuthenticated() && 
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'superAdmin';
+    }
+    
+    function isBranchManager() {
+      return isAuthenticated() && 
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'manager';
+    }
+    
+    function isUserPartOfBranch(branchId) {
+      return isAuthenticated() && 
+        (isAdmin() || get(/databases/$(database)/documents/users/$(request.auth.uid)).data.assignedBranchIds.hasAny([branchId]));
+    }
+    
+    // Default deny all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+    
+    // Users collection rules
+    match /users/{userId} {
+      allow read: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
+      allow create: if isAdmin();
+      allow update: if isAuthenticated() && 
+        (request.auth.uid == userId || isAdmin()) &&
+        (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['role']) || isAdmin());
+      allow delete: if isAdmin();
+    }
+    
+    // Branches collection rules
+    match /branches/{branchId} {
+      allow read: if isAuthenticated();
+      allow create, update, delete: if isAdmin();
+    }
+    
+    // Document Numbering Config rules
+    match /documentNumberingConfigs/{configId} {
+      allow read: if isAuthenticated();
+      allow create, update, delete: if isAdmin();
+    }
+    
+    // Daybooks collection rules
+    match /daybooks/{daybookId} {
+      allow read: if isAuthenticated() && (isAdmin() || isUserPartOfBranch(resource.data.branchId));
+      // Only create/update/delete through Cloud Functions
+      allow create, update, delete: if false;
+    }
+    
+    // Parties (customers) collection rules
+    match /parties/{partyId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated() && 
+        (isAdmin() || resource.data.createdBy == request.auth.uid);
+      allow delete: if isAdmin();
+    }
+    
+    // Biltis collection rules
+    match /biltis/{biltiId} {
+      allow read: if isAuthenticated();
+      // Only create/update/delete through Cloud Functions
+      allow create, update, delete: if false;
+    }
+    
+    // Manifests collection rules
+    match /manifests/{manifestId} {
+      allow read: if isAuthenticated();
+      // Only create/update/delete through Cloud Functions
+      allow create, update, delete: if false;
+    }
+    
+    // Goods Receipt collection rules
+    match /goodsReceipts/{receiptId} {
+      allow read: if isAuthenticated();
+      // Only create/update/delete through Cloud Functions
+      allow create, update, delete: if false;
+    }
+    
+    // Goods Delivery collection rules
+    match /goodsDeliveries/{deliveryId} {
+      allow read: if isAuthenticated();
+      // Only create/update/delete through Cloud Functions
+      allow create, update, delete: if false;
+    }
+    
+    // Ledger Entries collection rules
+    match /ledgerEntries/{entryId} {
+      allow read: if isAuthenticated();
+      // Only create/update through Cloud Functions
+      allow create, update, delete: if false;
+    }
+    
+    // Invoice Line Customizations collection rules
+    match /invoiceLineCustomizations/{customizationId} {
+      allow read: if isAuthenticated();
+      allow create, update, delete: if isAdmin();
+    }
+    
+    // Narration Templates collection rules
+    match /narrationTemplates/{templateId} {
+      allow read: if isAuthenticated();
+      allow create, update, delete: if isAdmin();
+    }
+    
+    // Trucks collection rules
+    match /trucks/{truckId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isAuthenticated();
+      allow delete: if isAdmin();
+    }
+    
+    // Drivers collection rules
+    match /drivers/{driverId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isAuthenticated();
+      allow delete: if isAdmin();
+    }
+    
+    // Godowns collection rules
+    match /godowns/{godownId} {
+      allow read: if isAuthenticated();
+      allow create, update, delete: if isAdmin() || isBranchManager();
+    }
+    
+    // Locations collections rules
+    match /countries/{countryId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+    
+    match /states/{stateId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+    
+    match /cities/{cityId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+    
+    // Units collection rules
+    match /units/{unitId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+  }
+}

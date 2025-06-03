@@ -6,15 +6,14 @@ import { getAuth, type Auth } from "firebase/auth";
 // TODO: Add SDKs for other Firebase products you want to use
 // https://firebase.google.com/docs/web/setup#available-libraries
 
-// Your web app's Firebase configuration
-// For a real application, consider using environment variables for this configuration
+// Your web app's Firebase configuration using environment variables
 const firebaseConfig = {
-  apiKey: "AIzaSyBpzB4yM4qvK7TXYc0LA8F4d_jVx8cGjks",
-  authDomain: "gorkhatrans.firebaseapp.com",
-  projectId: "gorkhatrans",
-  storageBucket: "gorkhatrans.appspot.com",
-  messagingSenderId: "224119383159",
-  appId: "1:224119383159:web:e02ca988722b8909759272"
+  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
+  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
+  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
+  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID
 };
 
 // Initialize Firebase
