@@ -370,19 +370,27 @@ export const postGoodsDeliveryLedgerEntries = functions.onDocumentCreated(
     }
   });
 
-// Helper to get user role
-async function getUserRole(uid: string): Promise<string | null> {
-  if (!uid) return null;
+// Helper to get user role and branch assignments
+interface UserPermissions {
+  role: string | null;
+  assignedBranchIds: string[];
+}
+async function getUserPermissions(uid: string): Promise<UserPermissions> {
+  if (!uid) return {role: null, assignedBranchIds: []};
   try {
     const userDoc = await db.collection("users").doc(uid).get();
     if (userDoc.exists) {
-      return (userDoc.data() as UserData)?.role || null;
+      const userData = userDoc.data() as UserData;
+      return {
+        role: userData?.role || null,
+        assignedBranchIds: userData?.assignedBranchIds || [],
+      };
     }
     logger.warn(`User document for UID ${uid} not found.`);
-    return null;
+    return {role: null, assignedBranchIds: []};
   } catch (error) {
-    logger.error(`Error fetching role for user ${uid}:`, error);
-    return null;
+    logger.error(`Error fetching permissions for user ${uid}:`, error);
+    return {role: null, assignedBranchIds: []};
   }
 }
 
@@ -414,7 +422,12 @@ export const submitDaybook = onCall({enforceAppCheck: false, consumeAppCheck: "l
       logger.warn(`submitDaybook: Attempt to submit daybook ${daybookId} with invalid status ${daybookData.status} by user ${uid}.`);
       throw new HttpsError("failed-precondition", `Daybook cannot be submitted. Current status: ${daybookData.status}.`);
     }
-    // TODO: Add more specific permission checks if needed (e.g., user created it, or is branch manager)
+
+    const userPermissions = await getUserPermissions(uid);
+    if (userPermissions.role !== "superAdmin" && !userPermissions.assignedBranchIds.includes(daybookData.branchId)) {
+      logger.warn(`submitDaybook: Permission denied for user ${uid} (Role: ${userPermissions.role}) to submit daybook ${daybookId} for branch ${daybookData.branchId}.`);
+      throw new HttpsError("permission-denied", "You do not have permission to submit daybooks for this branch.");
+    }
 
     await daybookRef.update({
       status: "Pending Approval",
@@ -423,7 +436,7 @@ export const submitDaybook = onCall({enforceAppCheck: false, consumeAppCheck: "l
       updatedAt: admin.firestore.Timestamp.now(),
       updatedBy: uid,
     });
-    logger.info(`Daybook ${daybookId} submitted by ${uid}`);
+    logger.info(`Daybook ${daybookId} submitted by ${uid} (Role: ${userPermissions.role}) for branch ${daybookData.branchId}`);
     return {success: true, message: "Daybook submitted successfully."};
   } catch (error: any) {
     logger.error(`Error submitting daybook ${daybookId} by user ${uid}:`, error);
@@ -445,12 +458,6 @@ export const approveDaybook = onCall({enforceAppCheck: false, consumeAppCheck: "
     throw new HttpsError("invalid-argument", "The function must be called with a 'daybookId'.");
   }
 
-  const userRole = await getUserRole(uid);
-  if (userRole !== "superAdmin") { // TODO: Add "manager" with branch checks
-    logger.warn(`approveDaybook: Permission denied for user ${uid} (Role: ${userRole}) to approve ${daybookId}.`);
-    throw new HttpsError("permission-denied", "You do not have permission to approve daybooks.");
-  }
-
   const daybookRef = db.collection("daybooks").doc(daybookId);
   try {
     const daybookDoc = await daybookRef.get();
@@ -465,6 +472,15 @@ export const approveDaybook = onCall({enforceAppCheck: false, consumeAppCheck: "
       throw new HttpsError("failed-precondition", `Daybook cannot be approved. Current status: ${daybookData.status}.`);
     }
 
+    const userPermissions = await getUserPermissions(uid);
+    const canApprove = userPermissions.role === "superAdmin" ||
+                       (userPermissions.role === "manager" && userPermissions.assignedBranchIds.includes(daybookData.branchId));
+
+    if (!canApprove) {
+      logger.warn(`approveDaybook: Permission denied for user ${uid} (Role: ${userPermissions.role}) to approve ${daybookId} for branch ${daybookData.branchId}.`);
+      throw new HttpsError("permission-denied", "You do not have permission to approve daybooks for this branch.");
+    }
+
     await daybookRef.update({
       status: "Approved",
       approvedAt: admin.firestore.Timestamp.now(),
@@ -472,7 +488,7 @@ export const approveDaybook = onCall({enforceAppCheck: false, consumeAppCheck: "
       updatedAt: admin.firestore.Timestamp.now(),
       updatedBy: uid,
     });
-    logger.info(`Daybook ${daybookId} approved by ${uid} (Role: ${userRole})`);
+    logger.info(`Daybook ${daybookId} approved by ${uid} (Role: ${userPermissions.role}) for branch ${daybookData.branchId}`);
     return {success: true, message: "Daybook approved successfully."};
   } catch (error: any) {
     logger.error(`Error approving daybook ${daybookId} by user ${uid}:`, error);
@@ -494,12 +510,6 @@ export const rejectDaybook = onCall({enforceAppCheck: false, consumeAppCheck: "l
     throw new HttpsError("invalid-argument", "The function must be called with a 'daybookId'.");
   }
 
-  const userRole = await getUserRole(uid);
-  if (userRole !== "superAdmin") { // TODO: Add "manager" with branch checks
-    logger.warn(`rejectDaybook: Permission denied for user ${uid} (Role: ${userRole}) to reject ${daybookId}.`);
-    throw new HttpsError("permission-denied", "You do not have permission to reject daybooks.");
-  }
-
   const daybookRef = db.collection("daybooks").doc(daybookId);
   try {
     const daybookDoc = await daybookRef.get();
@@ -514,6 +524,15 @@ export const rejectDaybook = onCall({enforceAppCheck: false, consumeAppCheck: "l
       throw new HttpsError("failed-precondition", `Daybook cannot be rejected. Current status: ${daybookData.status}.`);
     }
 
+    const userPermissions = await getUserPermissions(uid);
+     const canReject = userPermissions.role === "superAdmin" ||
+                       (userPermissions.role === "manager" && userPermissions.assignedBranchIds.includes(daybookData.branchId));
+
+    if (!canReject) {
+      logger.warn(`rejectDaybook: Permission denied for user ${uid} (Role: ${userPermissions.role}) to reject ${daybookId} for branch ${daybookData.branchId}.`);
+      throw new HttpsError("permission-denied", "You do not have permission to reject daybooks for this branch.");
+    }
+
     await daybookRef.update({
       status: "Rejected",
       approvedAt: admin.firestore.Timestamp.now(), // Using approvedAt for rejection timestamp too
@@ -522,7 +541,7 @@ export const rejectDaybook = onCall({enforceAppCheck: false, consumeAppCheck: "l
       updatedAt: admin.firestore.Timestamp.now(),
       updatedBy: uid,
     });
-    logger.info(`Daybook ${daybookId} rejected by ${uid} (Role: ${userRole}) with remarks: "${remarks || "N/A"}"`);
+    logger.info(`Daybook ${daybookId} rejected by ${uid} (Role: ${userPermissions.role}) for branch ${daybookData.branchId} with remarks: "${remarks || "N/A"}"`);
     return {success: true, message: "Daybook rejected successfully."};
   } catch (error: any) {
     logger.error(`Error rejecting daybook ${daybookId} by user ${uid}:`, error);
