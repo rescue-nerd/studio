@@ -19,6 +19,7 @@ import type {
   UnitData,
   TruckData, // Added
   DriverData, // Added
+  GodownData, // Added
 } from "./types";
 
 admin.initializeApp();
@@ -1134,5 +1135,164 @@ export const deleteDriver = onCall({enforceAppCheck: false, consumeAppCheck: "le
     logger.error(`Error deleting driver ${driverId}:`, error);
     if (error instanceof HttpsError) throw error;
     throw new HttpsError("internal", "Failed to delete driver.");
+  }
+});
+
+
+// --- Party Management CRUD Functions ---
+export const createParty = onCall({enforceAppCheck: false, consumeAppCheck: "lenient"}, async (request) => {
+  const uid = request.auth?.uid;
+  if (!uid) throw new HttpsError("unauthenticated", "Authentication required.");
+  const userPermissions = await getUserPermissions(uid);
+  if (userPermissions.role !== "superAdmin") throw new HttpsError("permission-denied", "Super admin role required.");
+
+  const data = request.data as PartyData; // Expect full PartyData for creation
+  if (!data.name || !data.contactNo || !data.assignedLedgerId || !data.type) {
+    throw new HttpsError("invalid-argument", "Name, Contact No., Type, and Ledger ID are required.");
+  }
+
+  try {
+    const newPartyRef = await db.collection("parties").add({
+      ...data,
+      createdAt: admin.firestore.Timestamp.now(),
+      createdBy: uid,
+    });
+    return {success: true, id: newPartyRef.id, message: "Party created successfully."};
+  } catch (error: any) {
+    logger.error("Error creating party:", error);
+    throw new HttpsError("internal", "Failed to create party.");
+  }
+});
+
+export const updateParty = onCall({enforceAppCheck: false, consumeAppCheck: "lenient"}, async (request) => {
+  const uid = request.auth?.uid;
+  if (!uid) throw new HttpsError("unauthenticated", "Authentication required.");
+  const userPermissions = await getUserPermissions(uid);
+  if (userPermissions.role !== "superAdmin") throw new HttpsError("permission-denied", "Super admin role required.");
+
+  const {partyId, ...dataToUpdate} = request.data as {partyId: string} & Partial<PartyData>;
+  if (!partyId) throw new HttpsError("invalid-argument", "Party ID required for updates.");
+  if (Object.keys(dataToUpdate).length === 0) throw new HttpsError("invalid-argument", "No data provided for update.");
+  // Add more specific validation if needed, e.g., ensure required fields aren't emptied
+  if (dataToUpdate.name === "" || dataToUpdate.contactNo === "" || dataToUpdate.assignedLedgerId === "") {
+    throw new HttpsError("invalid-argument", "Name, Contact No, and Ledger ID cannot be empty if being updated.");
+  }
+
+  try {
+    const partyRef = db.collection("parties").doc(partyId);
+    if (!(await partyRef.get()).exists) throw new HttpsError("not-found", "Party not found.");
+    await partyRef.update({...dataToUpdate, updatedAt: admin.firestore.Timestamp.now(), updatedBy: uid});
+    return {success: true, id: partyId, message: "Party updated successfully."};
+  } catch (error: any) {
+    logger.error(`Error updating party ${partyId}:`, error);
+    if (error instanceof HttpsError) throw error;
+    throw new HttpsError("internal", "Failed to update party.");
+  }
+});
+
+export const deleteParty = onCall({enforceAppCheck: false, consumeAppCheck: "lenient"}, async (request) => {
+  const uid = request.auth?.uid;
+  if (!uid) throw new HttpsError("unauthenticated", "Authentication required.");
+  const userPermissions = await getUserPermissions(uid);
+  if (userPermissions.role !== "superAdmin") throw new HttpsError("permission-denied", "Super admin role required.");
+
+  const {partyId} = request.data as {partyId: string};
+  if (!partyId) throw new HttpsError("invalid-argument", "Party ID required for deletion.");
+
+  try {
+    const partyRef = db.collection("parties").doc(partyId);
+    if (!(await partyRef.get()).exists) throw new HttpsError("not-found", "Party not found.");
+    // TODO: Check for dependencies (e.g., active biltis, ledger balance)
+    await partyRef.delete();
+    return {success: true, id: partyId, message: "Party deleted successfully."};
+  } catch (error: any) {
+    logger.error(`Error deleting party ${partyId}:`, error);
+    if (error instanceof HttpsError) throw error;
+    throw new HttpsError("internal", "Failed to delete party.");
+  }
+});
+
+
+// --- Godown Management CRUD Functions ---
+export const createGodown = onCall({enforceAppCheck: false, consumeAppCheck: "lenient"}, async (request) => {
+  const uid = request.auth?.uid;
+  if (!uid) throw new HttpsError("unauthenticated", "Authentication required.");
+  const userPermissions = await getUserPermissions(uid);
+  if (userPermissions.role !== "superAdmin") throw new HttpsError("permission-denied", "Super admin role required.");
+
+  const data = request.data as GodownData;
+  if (!data.name || !data.branchId || !data.location) {
+    throw new HttpsError("invalid-argument", "Name, Branch ID, and Location are required.");
+  }
+
+  try {
+    // Check if associated branch exists
+    const branchRef = db.collection("branches").doc(data.branchId);
+    if (!(await branchRef.get()).exists) {
+      throw new HttpsError("not-found", `Associated branch with ID ${data.branchId} not found.`);
+    }
+
+    const newGodownRef = await db.collection("godowns").add({
+      ...data,
+      createdAt: admin.firestore.Timestamp.now(),
+      createdBy: uid,
+    });
+    return {success: true, id: newGodownRef.id, message: "Godown created successfully."};
+  } catch (error: any) {
+    logger.error("Error creating godown:", error);
+    if (error instanceof HttpsError) throw error;
+    throw new HttpsError("internal", "Failed to create godown.");
+  }
+});
+
+export const updateGodown = onCall({enforceAppCheck: false, consumeAppCheck: "lenient"}, async (request) => {
+  const uid = request.auth?.uid;
+  if (!uid) throw new HttpsError("unauthenticated", "Authentication required.");
+  const userPermissions = await getUserPermissions(uid);
+  if (userPermissions.role !== "superAdmin") throw new HttpsError("permission-denied", "Super admin role required.");
+
+  const {godownId, ...dataToUpdate} = request.data as {godownId: string} & Partial<GodownData>;
+  if (!godownId) throw new HttpsError("invalid-argument", "Godown ID required for updates.");
+  if (Object.keys(dataToUpdate).length === 0) throw new HttpsError("invalid-argument", "No data provided for update.");
+
+  try {
+    const godownRef = db.collection("godowns").doc(godownId);
+    if (!(await godownRef.get()).exists) throw new HttpsError("not-found", "Godown not found.");
+
+    if (dataToUpdate.branchId) {
+        const branchRef = db.collection("branches").doc(dataToUpdate.branchId);
+        if (!(await branchRef.get()).exists) {
+             throw new HttpsError("not-found", `Associated branch with ID ${dataToUpdate.branchId} not found.`);
+        }
+    }
+
+    await godownRef.update({...dataToUpdate, updatedAt: admin.firestore.Timestamp.now(), updatedBy: uid});
+    return {success: true, id: godownId, message: "Godown updated successfully."};
+  } catch (error: any) {
+    logger.error(`Error updating godown ${godownId}:`, error);
+    if (error instanceof HttpsError) throw error;
+    throw new HttpsError("internal", "Failed to update godown.");
+  }
+});
+
+export const deleteGodown = onCall({enforceAppCheck: false, consumeAppCheck: "lenient"}, async (request) => {
+  const uid = request.auth?.uid;
+  if (!uid) throw new HttpsError("unauthenticated", "Authentication required.");
+  const userPermissions = await getUserPermissions(uid);
+  if (userPermissions.role !== "superAdmin") throw new HttpsError("permission-denied", "Super admin role required.");
+
+  const {godownId} = request.data as {godownId: string};
+  if (!godownId) throw new HttpsError("invalid-argument", "Godown ID required for deletion.");
+
+  try {
+    const godownRef = db.collection("godowns").doc(godownId);
+    if (!(await godownRef.get()).exists) throw new HttpsError("not-found", "Godown not found.");
+    // TODO: Check for dependencies (e.g., if goods are currently stored)
+    await godownRef.delete();
+    return {success: true, id: godownId, message: "Godown deleted successfully."};
+  } catch (error: any) {
+    logger.error(`Error deleting godown ${godownId}:`, error);
+    if (error instanceof HttpsError) throw error;
+    throw new HttpsError("internal", "Failed to delete godown.");
   }
 });

@@ -33,12 +33,18 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { db } from "@/lib/firebase";
-import { collection, getDocs, addDoc, doc, updateDoc, deleteDoc, Timestamp, query, orderBy } from "firebase/firestore";
+import { getFunctions, httpsCallable, type HttpsCallableResult } from "firebase/functions";
+import { collection, getDocs, query, orderBy } from "firebase/firestore";
 import type { Godown as FirestoreGodown, Branch as FirestoreBranch } from "@/types/firestore";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/auth-context";
+import { useRouter } from "next/navigation";
 
 interface Godown extends FirestoreGodown {}
-interface Branch extends FirestoreBranch {} // For fetched branches
+interface Branch extends FirestoreBranch {} 
+
+type GodownFormDataCallable = Omit<FirestoreGodown, 'id' | 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy'>;
+type UpdateGodownFormDataCallable = Partial<GodownFormDataCallable> & { godownId: string };
 
 const godownStatuses: FirestoreGodown["status"][] = ["Active", "Inactive", "Operational"];
 
@@ -49,11 +55,15 @@ const defaultGodownFormData: Omit<Godown, 'id' | 'createdAt' | 'createdBy' | 'up
   status: "Active",
 };
 
-const PLACEHOLDER_USER_ID = "system_user_placeholder";
+const functionsInstance = getFunctions(db.app);
+const createGodownFn = httpsCallable<GodownFormDataCallable, {success: boolean, id: string, message: string}>(functionsInstance, 'createGodown');
+const updateGodownFn = httpsCallable<UpdateGodownFormDataCallable, {success: boolean, id: string, message: string}>(functionsInstance, 'updateGodown');
+const deleteGodownFn = httpsCallable<{godownId: string}, {success: boolean, id: string, message: string}>(functionsInstance, 'deleteGodown');
+
 
 export default function GodownsPage() {
   const [godowns, setGodowns] = useState<Godown[]>([]);
-  const [branches, setBranches] = useState<Branch[]>([]); // State for branches
+  const [branches, setBranches] = useState<Branch[]>([]); 
   const [searchTerm, setSearchTerm] = useState("");
   const [isFormDialogOpen, setIsFormDialogOpen] = useState(false);
   const [editingGodown, setEditingGodown] = useState<Godown | null>(null);
@@ -61,11 +71,21 @@ export default function GodownsPage() {
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [godownToDelete, setGodownToDelete] = useState<Godown | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingBranches, setIsLoadingBranches] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { toast } = useToast();
+  const { user: authUser, loading: authLoading } = useAuth();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (!authLoading && !authUser) {
+      router.push('/login');
+    }
+  }, [authUser, authLoading, router]);
 
   const fetchBranches = async () => {
-    // No separate loading state for branches as it's a dependency for godowns form
+    if (!authUser) return;
+    setIsLoadingBranches(true);
     try {
       const branchesCollectionRef = collection(db, "branches");
       const q = query(branchesCollectionRef, orderBy("name"));
@@ -75,20 +95,19 @@ export default function GodownsPage() {
         return { ...data, id: docSnap.id };
       });
       setBranches(fetchedBranches);
-      // Set default branchId if not already set and branches are available
-      if (fetchedBranches.length > 0 && !defaultGodownFormData.branchId) {
-          defaultGodownFormData.branchId = fetchedBranches[0].id;
-          if (!editingGodown) { // only update formData if not editing
-            setFormData(prev => ({...prev, branchId: fetchedBranches[0].id}));
-          }
+      if (fetchedBranches.length > 0 && !formData.branchId) {
+          setFormData(prev => ({...prev, branchId: fetchedBranches[0].id}));
       }
     } catch (error) {
       console.error("Error fetching branches: ", error);
       toast({ title: "Error", description: "Failed to fetch branches for dropdown.", variant: "destructive" });
+    } finally {
+      setIsLoadingBranches(false);
     }
   };
   
   const fetchGodowns = async () => {
+    if (!authUser) return;
     setIsLoading(true);
     try {
       const godownsCollectionRef = collection(db, "godowns");
@@ -108,10 +127,12 @@ export default function GodownsPage() {
   };
 
   useEffect(() => {
-    fetchBranches(); // Fetch branches first or in parallel
-    fetchGodowns();
+    if(authUser){
+      fetchBranches(); 
+      fetchGodowns();
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [authUser]);
 
   const handleInputChange = (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
@@ -141,46 +162,40 @@ export default function GodownsPage() {
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
+    if (!authUser) {
+      toast({ title: "Authentication Error", description: "You must be logged in.", variant: "destructive"});
+      return;
+    }
     if (!formData.name || !formData.branchId || !formData.location) {
         toast({ title: "Validation Error", description: "Name, Linked Branch, and Location are required.", variant: "destructive"});
         return;
     }
     setIsSubmitting(true);
 
-    const godownDataPayload: Omit<FirestoreGodown, 'id' | 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy'> & Partial<Pick<FirestoreGodown, 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy'>> = {
-        ...formData,
-    };
+    const godownDataPayload: GodownFormDataCallable = { ...formData };
 
-    if (editingGodown) {
-      try {
-        const godownDocRef = doc(db, "godowns", editingGodown.id);
-        await updateDoc(godownDocRef, {
-            ...godownDataPayload,
-            updatedAt: Timestamp.now(),
-            updatedBy: PLACEHOLDER_USER_ID,
-        });
-        toast({ title: "Success", description: "Godown updated successfully." });
-      } catch (error) {
-        console.error("Error updating godown: ", error);
-        toast({ title: "Error", description: "Failed to update godown.", variant: "destructive" });
+    try {
+      let result: HttpsCallableResult<{success: boolean; id: string; message: string}>;
+      if (editingGodown) {
+        result = await updateGodownFn({ godownId: editingGodown.id, ...godownDataPayload });
+      } else {
+        result = await createGodownFn(godownDataPayload);
       }
-    } else {
-      try {
-        await addDoc(collection(db, "godowns"), {
-            ...godownDataPayload,
-            createdAt: Timestamp.now(),
-            createdBy: PLACEHOLDER_USER_ID,
-        });
-        toast({ title: "Success", description: "Godown added successfully." });
-      } catch (error) {
-        console.error("Error adding godown: ", error);
-        toast({ title: "Error", description: "Failed to add godown.", variant: "destructive" });
+
+      if (result.data.success) {
+        toast({ title: "Success", description: result.data.message });
+        fetchGodowns();
+        setIsFormDialogOpen(false);
+        setEditingGodown(null);
+      } else {
+        toast({ title: "Error", description: result.data.message, variant: "destructive" });
       }
+    } catch (error: any) {
+      console.error("Error saving godown:", error);
+      toast({ title: "Error", description: error.message || "Failed to save godown.", variant: "destructive" });
+    } finally {
+      setIsSubmitting(false);
     }
-    setIsSubmitting(false);
-    setIsFormDialogOpen(false);
-    setEditingGodown(null);
-    fetchGodowns();
   };
 
   const handleDeleteClick = (godown: Godown) => {
@@ -192,18 +207,22 @@ export default function GodownsPage() {
     if (godownToDelete) {
       setIsSubmitting(true);
       try {
-        await deleteDoc(doc(db, "godowns", godownToDelete.id));
-        toast({ title: "Success", description: `Godown "${godownToDelete.name}" deleted.`});
-        fetchGodowns();
-      } catch (error) {
+        const result = await deleteGodownFn({ godownId: godownToDelete.id });
+        if (result.data.success) {
+          toast({ title: "Success", description: result.data.message});
+          fetchGodowns();
+        } else {
+          toast({ title: "Error", description: result.data.message, variant: "destructive" });
+        }
+      } catch (error: any) {
         console.error("Error deleting godown: ", error);
-        toast({ title: "Error", description: "Failed to delete godown.", variant: "destructive" });
+        toast({ title: "Error", description: error.message || "Failed to delete godown.", variant: "destructive" });
       } finally {
         setIsSubmitting(false);
+        setIsDeleteDialogOpen(false);
+        setGodownToDelete(null);
       }
     }
-    setIsDeleteDialogOpen(false);
-    setGodownToDelete(null);
   };
 
   const getBranchNameById = (branchId: string): string => {
@@ -228,6 +247,15 @@ export default function GodownsPage() {
     }
   };
 
+  if (authLoading || (!authUser && !authLoading)) {
+    return (
+      <div className="flex justify-center items-center h-64">
+        <Loader2 className="h-12 w-12 animate-spin text-primary" />
+        <p className="ml-3 text-muted-foreground">{authLoading ? "Authenticating..." : "Redirecting to login..."}</p>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row justify-between items-center gap-4">
@@ -237,7 +265,7 @@ export default function GodownsPage() {
         </div>
         <Dialog open={isFormDialogOpen} onOpenChange={setIsFormDialogOpen}>
           <DialogTrigger asChild>
-            <Button onClick={openAddForm} disabled={isSubmitting || branches.length === 0}>
+            <Button onClick={openAddForm} disabled={isSubmitting || isLoadingBranches || branches.length === 0}>
               <PlusCircle className="mr-2 h-4 w-4" /> Add New Godown
             </Button>
           </DialogTrigger>
@@ -255,9 +283,9 @@ export default function GodownsPage() {
               </div>
               <div className="grid grid-cols-4 items-center gap-4">
                 <Label htmlFor="branchId" className="text-right">Linked Branch</Label>
-                <Select value={formData.branchId} onValueChange={handleSelectChange('branchId') as (value: string) => void} required disabled={branches.length === 0}>
+                <Select value={formData.branchId} onValueChange={handleSelectChange('branchId') as (value: string) => void} required disabled={isLoadingBranches || branches.length === 0}>
                   <SelectTrigger className="col-span-3">
-                    <SelectValue placeholder={branches.length === 0 ? "Loading branches..." : "Select branch"} />
+                    <SelectValue placeholder={isLoadingBranches ? "Loading branches..." : (branches.length === 0 ? "No branches found" : "Select branch")} />
                   </SelectTrigger>
                   <SelectContent>
                     {branches.map(branch => <SelectItem key={branch.id} value={branch.id}>{branch.name}</SelectItem>)}
@@ -277,7 +305,7 @@ export default function GodownsPage() {
               </div>
               <DialogFooter>
                 <DialogClose asChild><Button type="button" variant="outline" disabled={isSubmitting}>Cancel</Button></DialogClose>
-                <Button type="submit" disabled={isSubmitting || branches.length === 0}>
+                <Button type="submit" disabled={isSubmitting || isLoadingBranches || branches.length === 0}>
                   {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                   Save Godown
                 </Button>

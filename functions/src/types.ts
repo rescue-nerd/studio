@@ -87,6 +87,14 @@ export interface PartyData {
   id?: string; // Document ID is implicit
   name: string;
   assignedLedgerId: string; // Crucial for ledger posting
+  type?: "Consignor" | "Consignee" | "Both";
+  contactNo?: string;
+  panNo?: string;
+  address?: string;
+  city?: string;
+  state?: string;
+  country?: string;
+  status?: "Active" | "Inactive";
   // Add other fields from your main Party type if needed
 }
 
@@ -190,6 +198,14 @@ export interface DriverData {
   joiningDate?: Timestamp | string; // Client might send string, function converts to Timestamp
   status: "Active" | "Inactive" | "On Leave";
   assignedLedgerId: string;
+  // id, createdAt, createdBy, etc. are handled by the function
+}
+
+export interface GodownData {
+  name: string;
+  branchId: string;
+  location: string;
+  status: "Active" | "Inactive" | "Operational";
   // id, createdAt, createdBy, etc. are handled by the function
 }
 

@@ -33,11 +33,17 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { db } from "@/lib/firebase";
-import { collection, getDocs, addDoc, doc, updateDoc, deleteDoc, Timestamp, query, orderBy } from "firebase/firestore";
+import { getFunctions, httpsCallable, type HttpsCallableResult } from "firebase/functions";
+import { collection, getDocs, query, orderBy } from "firebase/firestore";
 import type { Party as FirestoreParty } from "@/types/firestore";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/auth-context";
+import { useRouter } from "next/navigation";
 
 interface Party extends FirestoreParty {}
+type PartyFormDataCallable = Omit<FirestoreParty, 'id' | 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy'>;
+type UpdatePartyFormDataCallable = Partial<PartyFormDataCallable> & { partyId: string };
+
 
 const partyTypes: FirestoreParty["type"][] = ["Consignor", "Consignee", "Both"];
 const partyStatuses: FirestoreParty["status"][] = ["Active", "Inactive"];
@@ -55,7 +61,11 @@ const defaultPartyFormData: Omit<Party, 'id' | 'createdAt' | 'createdBy' | 'upda
   status: "Active",
 };
 
-const PLACEHOLDER_USER_ID = "system_user_placeholder";
+const functionsInstance = getFunctions(db.app);
+const createPartyFn = httpsCallable<PartyFormDataCallable, {success: boolean, id: string, message: string}>(functionsInstance, 'createParty');
+const updatePartyFn = httpsCallable<UpdatePartyFormDataCallable, {success: boolean, id: string, message: string}>(functionsInstance, 'updateParty');
+const deletePartyFn = httpsCallable<{partyId: string}, {success: boolean, id: string, message: string}>(functionsInstance, 'deleteParty');
+
 
 export default function PartiesPage() {
   const [parties, setParties] = useState<Party[]>([]);
@@ -68,8 +78,17 @@ export default function PartiesPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { toast } = useToast();
+  const { user: authUser, loading: authLoading } = useAuth();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (!authLoading && !authUser) {
+      router.push('/login');
+    }
+  }, [authUser, authLoading, router]);
 
   const fetchParties = async () => {
+    if(!authUser) return;
     setIsLoading(true);
     try {
       const partiesCollectionRef = collection(db, "parties");
@@ -89,9 +108,11 @@ export default function PartiesPage() {
   };
 
   useEffect(() => {
-    fetchParties();
+    if(authUser){
+      fetchParties();
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [authUser]);
 
   const handleInputChange = (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
@@ -123,46 +144,40 @@ export default function PartiesPage() {
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
+    if (!authUser) {
+      toast({ title: "Authentication Error", description: "You must be logged in.", variant: "destructive"});
+      return;
+    }
     if (!formData.name || !formData.contactNo || !formData.assignedLedgerId) {
         toast({ title: "Validation Error", description: "Name, Contact No., and Ledger A/C ID are required.", variant: "destructive"});
         return;
     }
     setIsSubmitting(true);
 
-    const partyDataPayload: Omit<FirestoreParty, 'id' | 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy'> & Partial<Pick<FirestoreParty, 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy'>> = {
-        ...formData,
-    };
+    const partyDataPayload: PartyFormDataCallable = { ...formData };
 
-    if (editingParty) {
-      try {
-        const partyDocRef = doc(db, "parties", editingParty.id);
-        await updateDoc(partyDocRef, {
-            ...partyDataPayload,
-            updatedAt: Timestamp.now(),
-            updatedBy: PLACEHOLDER_USER_ID,
-        });
-        toast({ title: "Success", description: "Party updated successfully." });
-      } catch (error) {
-        console.error("Error updating party: ", error);
-        toast({ title: "Error", description: "Failed to update party.", variant: "destructive" });
+    try {
+      let result: HttpsCallableResult<{success: boolean; id: string; message: string}>;
+      if (editingParty) {
+        result = await updatePartyFn({ partyId: editingParty.id, ...partyDataPayload });
+      } else {
+        result = await createPartyFn(partyDataPayload);
       }
-    } else {
-      try {
-        await addDoc(collection(db, "parties"), {
-            ...partyDataPayload,
-            createdAt: Timestamp.now(),
-            createdBy: PLACEHOLDER_USER_ID,
-        });
-        toast({ title: "Success", description: "Party added successfully." });
-      } catch (error) {
-        console.error("Error adding party: ", error);
-        toast({ title: "Error", description: "Failed to add party.", variant: "destructive" });
+
+      if (result.data.success) {
+        toast({ title: "Success", description: result.data.message });
+        fetchParties();
+        setIsFormDialogOpen(false);
+        setEditingParty(null);
+      } else {
+        toast({ title: "Error", description: result.data.message, variant: "destructive" });
       }
+    } catch (error: any) {
+      console.error("Error saving party:", error);
+      toast({ title: "Error", description: error.message || "Failed to save party.", variant: "destructive" });
+    } finally {
+      setIsSubmitting(false);
     }
-    setIsSubmitting(false);
-    setIsFormDialogOpen(false);
-    setEditingParty(null);
-    fetchParties();
   };
 
   const handleDeleteClick = (party: Party) => {
@@ -174,18 +189,22 @@ export default function PartiesPage() {
     if (partyToDelete) {
       setIsSubmitting(true);
       try {
-        await deleteDoc(doc(db, "parties", partyToDelete.id));
-        toast({ title: "Success", description: `Party "${partyToDelete.name}" deleted.`});
-        fetchParties();
-      } catch (error) {
+        const result = await deletePartyFn({ partyId: partyToDelete.id });
+        if (result.data.success) {
+          toast({ title: "Success", description: result.data.message});
+          fetchParties();
+        } else {
+          toast({ title: "Error", description: result.data.message, variant: "destructive" });
+        }
+      } catch (error: any) {
         console.error("Error deleting party: ", error);
-        toast({ title: "Error", description: "Failed to delete party.", variant: "destructive" });
+        toast({ title: "Error", description: error.message || "Failed to delete party.", variant: "destructive" });
       } finally {
         setIsSubmitting(false);
+        setIsDeleteDialogOpen(false);
+        setPartyToDelete(null);
       }
     }
-    setIsDeleteDialogOpen(false);
-    setPartyToDelete(null);
   };
 
   const filteredParties = parties.filter(party =>
@@ -197,6 +216,15 @@ export default function PartiesPage() {
   const getStatusBadgeVariant = (status: Party["status"]): "default" | "destructive" => {
     return status === "Active" ? "default" : "destructive";
   };
+  
+  if (authLoading || (!authUser && !authLoading)) {
+    return (
+      <div className="flex justify-center items-center h-64">
+        <Loader2 className="h-12 w-12 animate-spin text-primary" />
+        <p className="ml-3 text-muted-foreground">{authLoading ? "Authenticating..." : "Redirecting to login..."}</p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -207,7 +235,7 @@ export default function PartiesPage() {
         </div>
         <Dialog open={isFormDialogOpen} onOpenChange={setIsFormDialogOpen}>
           <DialogTrigger asChild>
-            <Button onClick={openAddForm} disabled={isSubmitting}>
+            <Button onClick={openAddForm} disabled={isSubmitting || isLoading}>
               <PlusCircle className="mr-2 h-4 w-4" /> Add New Party
             </Button>
           </DialogTrigger>
