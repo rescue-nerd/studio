@@ -2,7 +2,7 @@
 "use client"; 
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Building2, MapPin, FileText, BookText, Hash, DollarSign, Clock, Users, Package, PlusSquare, ClipboardPlus, ArchiveRestore } from "lucide-react";
+import { Building2, MapPin, FileText, BookText, Hash, DollarSign, Clock, Users, Package, PlusSquare, ClipboardPlus, ArchiveRestore, PackageOpen } from "lucide-react";
 import Image from "next/image";
 import Link from 'next/link';
 import { useAuth } from "@/contexts/auth-context"; 
