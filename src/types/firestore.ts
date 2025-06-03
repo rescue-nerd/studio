@@ -208,7 +208,8 @@ export interface DocumentNumberingConfig extends AuditableConfig {
   startingNumber: number;
   lastGeneratedNumber: number;
   minLength?: number; 
-  perBranch: boolean; 
+  perBranch: boolean;
+  branchId?: string; // Added if perBranch is true
 }
 
 export interface NarrationTemplate extends AuditableConfig {
@@ -218,11 +219,13 @@ export interface NarrationTemplate extends AuditableConfig {
   applicableTo?: string[]; 
 }
 
+export type InvoiceLineType = "Text" | "Number" | "Currency" | "Percentage" | "Date" | "Textarea" | "Boolean" | "Select";
+
 export interface InvoiceLineCustomization extends AuditableConfig {
-  id: string;
-  fieldName: string; 
+  id: string; // Firestore document ID
   label: string; 
-  type: "Text" | "Number" | "Currency" | "Percentage" | "Date" | "Textarea" | "Boolean" | "Select";
+  fieldName: string; 
+  type: InvoiceLineType;
   options?: string[]; 
   required: boolean;
   order: number; 
@@ -278,6 +281,7 @@ export interface DaybookTransaction {
   reasonForAdjustment?: string; 
   createdBy: string; 
   createdAt: Timestamp;
+  nepaliMiti?: string; // Ensuring this exists as per daybook component
 }
 
 export interface FirestoreDaybook extends Auditable {
