@@ -26,6 +26,7 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
+  AlertDialogTrigger, // Added AlertDialogTrigger
 } from "@/components/ui/alert-dialog";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -60,6 +61,8 @@ import type {
   Branch as FirestoreBranch
 } from "@/types/firestore";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { useAuth } from "@/contexts/auth-context"; // Import useAuth
+import { useRouter } from "next/navigation"; // Import useRouter
 
 
 // Interfaces (aligning with Firestore types)
@@ -95,7 +98,6 @@ const defaultBiltiFormData: Omit<Bilti, 'id' | 'totalAmount' | 'status' | 'creat
   driverId: "",
 };
 
-const PLACEHOLDER_USER_ID = "system_user_placeholder";
 
 export default function InvoicingPage() {
   const [biltis, setBiltis] = useState<Bilti[]>([]);
@@ -106,6 +108,9 @@ export default function InvoicingPage() {
   const [godowns, setGodowns] = useState<Godown[]>([]);
   const [branchesForLocations, setBranchesForLocations] = useState<Branch[]>([]);
 
+  const { toast } = useToast();
+  const { user: authUser, loading: authLoading } = useAuth(); // Get authenticated user
+  const router = useRouter(); // Import useRouter
 
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -114,7 +119,6 @@ export default function InvoicingPage() {
   const [editingBilti, setEditingBilti] = useState<Bilti | null>(null);
   const [formData, setFormData] = useState<Omit<Bilti, 'id' | 'totalAmount' | 'status' | 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy'>>(defaultBiltiFormData);
   const [totalAmount, setTotalAmount] = useState(0);
-  const { toast } = useToast();
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [biltiToDelete, setBiltiToDelete] = useState<Bilti | null>(null);
 
@@ -124,9 +128,16 @@ export default function InvoicingPage() {
   const [selectedConsignor, setSelectedConsignor] = useState<Party | null>(null);
   const [selectedConsignee, setSelectedConsignee] = useState<Party | null>(null);
 
+  useEffect(() => {
+    if (!authLoading && !authUser) {
+      router.push('/login');
+    }
+  }, [authUser, authLoading, router]);
+
   
   const fetchMasterData = async () => {
-    setIsLoading(true); // Ensure loading is true at the start
+    if (!authUser) return;
+    // setIsLoading(true); // Ensure loading is true at the start // Already handled by parent loadAllData
     try {
       const [partiesSnapshot, trucksSnapshot, driversSnapshot, citiesSnapshot, godownsSnapshot, branchesSnapshot] = await Promise.all([
         getDocs(query(collection(db, "parties"), orderBy("name"))),
@@ -143,7 +154,7 @@ export default function InvoicingPage() {
       setGodowns(godownsSnapshot.docs.map(doc => ({ ...doc.data() as FirestoreGodown, id: doc.id })));
       setBranchesForLocations(branchesSnapshot.docs.map(doc => ({ ...doc.data() as FirestoreBranch, id: doc.id })));
       
-      if (!editingBilti) {
+      if (!editingBilti) { // Only set defaults if not editing
         setFormData(prev => ({
           ...prev,
           truckId: trucksSnapshot.docs.length > 0 ? trucksSnapshot.docs[0].id : "",
@@ -160,6 +171,7 @@ export default function InvoicingPage() {
   };
   
   const fetchBiltis = async () => {
+    if (!authUser) return;
     // setIsLoading(true); // isLoading is handled by the calling useEffect
     try {
       const biltisCollectionRef = collection(db, "biltis");
@@ -185,15 +197,17 @@ export default function InvoicingPage() {
   };
   
   useEffect(() => {
-    const loadAllData = async () => {
-        setIsLoading(true);
-        await fetchMasterData();
-        await fetchBiltis();
-        setIsLoading(false);
+    if (authUser) {
+      const loadAllData = async () => {
+          setIsLoading(true);
+          await fetchMasterData();
+          await fetchBiltis();
+          setIsLoading(false);
+      }
+      loadAllData();
     }
-    loadAllData();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [authUser]);
 
   const dynamicLocationOptions = useMemo(() => {
     const cityNames = cities.map(c => ({ value: c.name, label: `${c.name} (City)` }));
@@ -261,13 +275,14 @@ export default function InvoicingPage() {
   };
 
   const handlePartyAdd = async (newPartyData: Omit<Party, 'id' | 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy'>) => {
+    if (!authUser) return null;
     setIsSubmitting(true);
     try {
       const partyPayload: Omit<FirestoreParty, 'id'> = {
         ...newPartyData,
         assignedLedgerId: newPartyData.assignedLedgerId || `LEDGER-${newPartyData.panNo?.toUpperCase() || Date.now()}`,
         createdAt: Timestamp.now(),
-        createdBy: PLACEHOLDER_USER_ID,
+        createdBy: authUser.uid,
       };
       const docRef = await addDoc(collection(db, "parties"), partyPayload);
       const newParty: Party = { ...partyPayload, id: docRef.id };
@@ -296,6 +311,10 @@ export default function InvoicingPage() {
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
+    if (!authUser) {
+        toast({ title: "Authentication Error", description: "You must be logged in.", variant: "destructive"});
+        return;
+    }
     if (!formData.consignorId || !formData.consigneeId || !formData.truckId || !formData.driverId || !formData.origin || !formData.destination || !formData.description) {
         toast({
             title: "Missing Fields",
@@ -322,7 +341,7 @@ export default function InvoicingPage() {
           ...biltiDataPayload,
           status: editingBilti.status, 
           updatedAt: Timestamp.now(),
-          updatedBy: PLACEHOLDER_USER_ID,
+          updatedBy: authUser.uid,
         });
         toast({ title: "Bilti Updated", description: `Bilti ${editingBilti.id} updated.`});
       } catch (error) {
@@ -335,7 +354,7 @@ export default function InvoicingPage() {
           ...biltiDataPayload,
           status: "Pending" as FirestoreBilti["status"], 
           createdAt: Timestamp.now(),
-          createdBy: PLACEHOLDER_USER_ID,
+          createdBy: authUser.uid,
         });
         toast({ title: "Bilti Created", description: `New Bilti created.` });
       } catch (error) {
@@ -385,6 +404,16 @@ export default function InvoicingPage() {
     setIsDeleteDialogOpen(false);
     setBiltiToDelete(null);
   };
+  
+  if (authLoading || (!authUser && !authLoading && !isLoading)) { // Ensure isLoading check too if it covers master data
+    return (
+      <div className="flex justify-center items-center h-64">
+        <Loader2 className="h-12 w-12 animate-spin text-primary" />
+        <p className="ml-3 text-muted-foreground">{authLoading ? "Authenticating..." : "Redirecting to login..."}</p>
+      </div>
+    );
+  }
+
 
   return (
     <div className="space-y-6">
@@ -632,6 +661,7 @@ export default function InvoicingPage() {
                         bilti.status === "Manifested" ? "bg-blue-200 text-blue-800" :
                         bilti.status === "Received" ? "bg-orange-200 text-orange-800" :
                         bilti.status === "Delivered" ? "bg-green-200 text-green-800" :
+                        bilti.status === "Paid" ? "bg-accent text-accent-foreground" : // Added Paid status styling
                         bilti.status === "Cancelled" ? "bg-red-200 text-red-800" : 
                         "bg-gray-200 text-gray-800"
                      )}>
