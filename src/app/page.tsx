@@ -15,32 +15,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 
-const FeatureCard = ({ title, description, icon: Icon, value, subValue, isLoading }: { title: string; description: string; icon: React.ElementType; value?: string | number; subValue?: string; isLoading?: boolean;}) => (
-  <Card className="shadow-lg hover:shadow-xl transition-shadow duration-300">
-    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-      <CardTitle className="text-lg font-headline font-medium text-primary">{title}</CardTitle>
-      <Icon className="h-6 w-6 text-muted-foreground" />
-    </CardHeader>
-    <CardContent>
-      <p className="text-sm text-muted-foreground mb-2">{description}</p>
-      {isLoading ? (
-        <div className="space-y-2">
-          <Skeleton className="h-8 w-3/4" />
-          {subValue && <Skeleton className="h-4 w-1/2" />}
-        </div>
-      ) : (
-        <>
-          {value !== undefined && (
-            <div className="text-2xl font-bold text-foreground">
-              {typeof value === 'number' && title.toLowerCase().includes('revenue') ? `Rs. ${value.toFixed(2)}` : value.toString()}
-            </div>
-          )}
-          {subValue && <p className="text-xs text-muted-foreground">{subValue}</p>}
-        </>
-      )}
-    </CardContent>
-  </Card>
-);
+// FeatureCard component is removed as it's no longer used.
 
 const QuickActionCard = ({ title, icon: Icon, href, description }: { title: string; icon: React.ElementType; href: string; description?: string; }) => (
   <Link href={href} passHref>
@@ -60,13 +35,7 @@ export default function DashboardPage() {
   const router = useRouter();
   const { toast } = useToast();
 
-  const [dashboardData, setDashboardData] = useState({
-    totalShipmentsMonth: 0,
-    revenueMonth: 0,
-    activeBranches: 0,
-    managedLocations: 0,
-  });
-  const [isDashboardLoading, setIsDashboardLoading] = useState(true);
+  // Removed dashboardData and isDashboardLoading states
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -74,75 +43,7 @@ export default function DashboardPage() {
     }
   }, [user, authLoading, router]);
 
-  useEffect(() => {
-    if (!user) return;
-
-    const fetchData = async () => {
-      setIsDashboardLoading(true);
-      try {
-        const now = new Date();
-        const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-        const lastDayOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
-
-        const biltisCollectionRef = collection(db, "biltis");
-        const shipmentsQuery = query(biltisCollectionRef,
-          where("miti", ">=", Timestamp.fromDate(firstDayOfMonth)),
-          where("miti", "<=", Timestamp.fromDate(lastDayOfMonth))
-        );
-        const shipmentsSnapshotPromise = getCountFromServer(shipmentsQuery);
-
-        const revenueQuery = query(biltisCollectionRef,
-          where("miti", ">=", Timestamp.fromDate(firstDayOfMonth)),
-          where("miti", "<=", Timestamp.fromDate(lastDayOfMonth))
-        );
-        const revenueSnapshotPromise = getDocs(revenueQuery);
-
-        const branchesCollectionRef = collection(db, "branches");
-        const activeBranchesQuery = query(branchesCollectionRef, where("status", "==", "Active"));
-        const activeBranchesSnapshotPromise = getCountFromServer(activeBranchesQuery);
-
-        const citiesCountSnapshotPromise = getCountFromServer(collection(db, "cities"));
-        const statesCountSnapshotPromise = getCountFromServer(collection(db, "states"));
-        const countriesCountSnapshotPromise = getCountFromServer(collection(db, "countries"));
-
-        const [
-          shipmentsSnapshot,
-          revenueSnapshot,
-          activeBranchesSnapshot,
-          citiesCountSnapshot,
-          statesCountSnapshot,
-          countriesCountSnapshot,
-        ] = await Promise.all([
-          shipmentsSnapshotPromise,
-          revenueSnapshotPromise,
-          activeBranchesSnapshotPromise,
-          citiesCountSnapshotPromise,
-          statesCountSnapshotPromise,
-          countriesCountSnapshotPromise,
-        ]);
-        
-        const totalShipmentsMonth = shipmentsSnapshot.data().count;
-        const revenueMonth = revenueSnapshot.docs.reduce((sum, doc) => sum + (doc.data().totalAmount || 0), 0);
-        const activeBranches = activeBranchesSnapshot.data().count;
-        const managedLocations = citiesCountSnapshot.data().count + statesCountSnapshot.data().count + countriesCountSnapshot.data().count;
-
-        setDashboardData({
-          totalShipmentsMonth,
-          revenueMonth,
-          activeBranches,
-          managedLocations,
-        });
-
-      } catch (error) {
-        console.error("Error fetching dashboard data:", error);
-        toast({ title: "Error", description: "Could not load dashboard statistics.", variant: "destructive" });
-      } finally {
-        setIsDashboardLoading(false);
-      }
-    };
-
-    fetchData();
-  }, [user, toast]);
+  // Removed useEffect for fetchData as FeatureCards are removed
 
   if (authLoading || !user) {
     return (
@@ -159,7 +60,7 @@ export default function DashboardPage() {
         <CardContent className="p-0">
           <div className="relative">
             <Image 
-              src="https://placehold.co/1200x300.png" // Wider banner
+              src="https://placehold.co/1200x300.png" 
               alt="Logistics background" 
               width={1200} 
               height={300} 
@@ -180,12 +81,7 @@ export default function DashboardPage() {
         </CardContent>
       </Card>
 
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
-        <FeatureCard title="Total Shipments" description="Current month" icon={Package} value={dashboardData.totalShipmentsMonth} isLoading={isDashboardLoading} />
-        <FeatureCard title="Revenue" description="Current month" icon={DollarSign} value={dashboardData.revenueMonth} isLoading={isDashboardLoading}/>
-        <FeatureCard title="Active Branches" description="Across all regions" icon={Building2} value={dashboardData.activeBranches} isLoading={isDashboardLoading} />
-        <FeatureCard title="Managed Locations" description="Cities, states, countries" icon={MapPin} value={dashboardData.managedLocations} isLoading={isDashboardLoading} />
-      </div>
+      {/* The div containing FeatureCards has been removed */}
       
       <div>
         <h2 className="text-2xl font-headline font-semibold text-foreground mb-4">Quick Actions</h2>
@@ -243,5 +139,3 @@ export default function DashboardPage() {
     </div>
   );
 }
-
-    
