@@ -35,6 +35,6 @@ module.exports = {
     "@typescript-eslint/no-explicit-any": "warn", // Warn instead of error for 'any'
     "max-len": ["warn", {"code": 120}], // Warn for lines longer than 120 chars
     "no-dupe-class-members": "off", // Allow constructor overloads etc.
-    "@typescript-eslint/no-dupe-class-members": ["error"]
+    "@typescript-eslint/no-dupe-class-members": ["error"],
   },
 };

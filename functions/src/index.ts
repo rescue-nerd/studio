@@ -177,15 +177,15 @@ export const postBiltiLedgerEntries = functions.onDocumentCreated(
     const consignor = consignorSnap.data() as PartyData;
     const consignee = consigneeSnap.data() as PartyData;
     const ledgerEntryBase: Omit<LedgerEntryData, "id" | "accountId" | "debit" | "credit"> = {
-      miti: biltiData.miti, 
-      nepaliMiti: biltiData.nepaliMiti || "", 
+      miti: biltiData.miti,
+      nepaliMiti: biltiData.nepaliMiti || "",
       description: "", // Will be set per entry
-      referenceNo: `BLT-${biltiId}`, 
-      sourceModule: "Bilti", 
-      status: "Approved", 
-      createdAt: admin.firestore.Timestamp.now(), 
-      createdBy: biltiData.createdBy || "system-bilti-processor", 
-      transactionType: "Bilti", 
+      referenceNo: `BLT-${biltiId}`,
+      sourceModule: "Bilti",
+      status: "Approved",
+      createdAt: admin.firestore.Timestamp.now(),
+      createdBy: biltiData.createdBy || "system-bilti-processor",
+      transactionType: "Bilti",
       branchId: biltiData.branchId || "UNKNOWN_BRANCH",
     };
     const freightAmount = biltiData.totalAmount;
@@ -268,53 +268,53 @@ async function getUserPermissions(uid: string): Promise<UserPermissions> {
 }
 
 // Daybook Workflow Functions (submitDaybook, approveDaybook, rejectDaybook) ...
-export const submitDaybook = onCall({enforceAppCheck: false}, async (_request) => { /* ... */ });
-export const approveDaybook = onCall({enforceAppCheck: false}, async (_request) => { /* ... */ });
-export const rejectDaybook = onCall({enforceAppCheck: false}, async (_request) => { /* ... */ });
+export const submitDaybook = onCall({enforceAppCheck: false}, async () => {/* ... */});
+export const approveDaybook = onCall({enforceAppCheck: false}, async () => {/* ... */});
+export const rejectDaybook = onCall({enforceAppCheck: false}, async () => {/* ... */});
 
 // Branch Management CRUD Functions ...
-export const createBranch = onCall({enforceAppCheck: false}, async (_request) => { /* ... */ });
-export const updateBranch = onCall({enforceAppCheck: false}, async (_request) => { /* ... */ });
-export const deleteBranch = onCall({enforceAppCheck: false}, async (_request) => { /* ... */ });
+export const createBranch = onCall({enforceAppCheck: false}, async () => {/* ... */});
+export const updateBranch = onCall({enforceAppCheck: false}, async () => {/* ... */});
+export const deleteBranch = onCall({enforceAppCheck: false}, async () => {/* ... */});
 
 // Locations & Units CRUD Functions ...
-export const createCountry = onCall({enforceAppCheck: false}, async (_request) => { /* ... */ });
-export const updateCountry = onCall({enforceAppCheck: false}, async (_request) => { /* ... */ });
-export const deleteCountry = onCall({enforceAppCheck: false}, async (_request) => { /* ... */ });
-export const createState = onCall({enforceAppCheck: false}, async (_request) => { /* ... */ });
-export const updateState = onCall({enforceAppCheck: false}, async (_request) => { /* ... */ });
-export const deleteState = onCall({enforceAppCheck: false}, async (_request) => { /* ... */ });
-export const createCity = onCall({enforceAppCheck: false}, async (_request) => { /* ... */ });
-export const updateCity = onCall({enforceAppCheck: false}, async (_request) => { /* ... */ });
-export const deleteCity = onCall({enforceAppCheck: false}, async (_request) => { /* ... */ });
-export const createUnit = onCall({enforceAppCheck: false}, async (_request) => { /* ... */ });
-export const updateUnit = onCall({enforceAppCheck: false}, async (_request) => { /* ... */ });
-export const deleteUnit = onCall({enforceAppCheck: false}, async (_request) => { /* ... */ });
+export const createCountry = onCall({enforceAppCheck: false}, async () => {/* ... */});
+export const updateCountry = onCall({enforceAppCheck: false}, async () => {/* ... */});
+export const deleteCountry = onCall({enforceAppCheck: false}, async () => {/* ... */});
+export const createState = onCall({enforceAppCheck: false}, async () => {/* ... */});
+export const updateState = onCall({enforceAppCheck: false}, async () => {/* ... */});
+export const deleteState = onCall({enforceAppCheck: false}, async () => {/* ... */});
+export const createCity = onCall({enforceAppCheck: false}, async () => {/* ... */});
+export const updateCity = onCall({enforceAppCheck: false}, async () => {/* ... */});
+export const deleteCity = onCall({enforceAppCheck: false}, async () => {/* ... */});
+export const createUnit = onCall({enforceAppCheck: false}, async () => {/* ... */});
+export const updateUnit = onCall({enforceAppCheck: false}, async () => {/* ... */});
+export const deleteUnit = onCall({enforceAppCheck: false}, async () => {/* ... */});
 
 // Truck Management CRUD Functions ...
-export const createTruck = onCall({enforceAppCheck: false}, async (_request) => { /* ... */ });
-export const updateTruck = onCall({enforceAppCheck: false}, async (_request) => { /* ... */ });
-export const deleteTruck = onCall({enforceAppCheck: false}, async (_request) => { /* ... */ });
+export const createTruck = onCall({enforceAppCheck: false}, async () => {/* ... */});
+export const updateTruck = onCall({enforceAppCheck: false}, async () => {/* ... */});
+export const deleteTruck = onCall({enforceAppCheck: false}, async () => {/* ... */});
 
 // Driver Management CRUD Functions ...
-export const createDriver = onCall({enforceAppCheck: false}, async (_request) => { /* ... */ });
-export const updateDriver = onCall({enforceAppCheck: false}, async (_request) => { /* ... */ });
-export const deleteDriver = onCall({enforceAppCheck: false}, async (_request) => { /* ... */ });
+export const createDriver = onCall({enforceAppCheck: false}, async () => {/* ... */});
+export const updateDriver = onCall({enforceAppCheck: false}, async () => {/* ... */});
+export const deleteDriver = onCall({enforceAppCheck: false}, async () => {/* ... */});
 
 // Party Management CRUD Functions ...
-export const createParty = onCall({enforceAppCheck: false}, async (_request) => { /* ... */ });
-export const updateParty = onCall({enforceAppCheck: false}, async (_request) => { /* ... */ });
-export const deleteParty = onCall({enforceAppCheck: false}, async (_request) => { /* ... */ });
+export const createParty = onCall({enforceAppCheck: false}, async () => {/* ... */});
+export const updateParty = onCall({enforceAppCheck: false}, async () => {/* ... */});
+export const deleteParty = onCall({enforceAppCheck: false}, async () => {/* ... */});
 
 // Godown Management CRUD Functions ...
-export const createGodown = onCall({enforceAppCheck: false}, async (_request) => { /* ... */ });
-export const updateGodown = onCall({enforceAppCheck: false}, async (_request) => { /* ... */ });
-export const deleteGodown = onCall({enforceAppCheck: false}, async (_request) => { /* ... */ });
+export const createGodown = onCall({enforceAppCheck: false}, async () => {/* ... */});
+export const updateGodown = onCall({enforceAppCheck: false}, async () => {/* ... */});
+export const deleteGodown = onCall({enforceAppCheck: false}, async () => {/* ... */});
 
 // Bilti / Invoicing CRUD Functions ...
-export const createBilti = onCall({enforceAppCheck: false}, async (_request) => { /* ... */ });
-export const updateBilti = onCall({enforceAppCheck: false}, async (_request) => { /* ... */ });
-export const deleteBilti = onCall({enforceAppCheck: false}, async (_request) => { /* ... */ });
+export const createBilti = onCall({enforceAppCheck: false}, async () => {/* ... */});
+export const updateBilti = onCall({enforceAppCheck: false}, async () => {/* ... */});
+export const deleteBilti = onCall({enforceAppCheck: false}, async () => {/* ... */});
 
 
 // --- Manifest CRUD Functions ---
@@ -382,7 +382,7 @@ export const updateManifest = onCall({enforceAppCheck: false}, async (request) =
     }
     // Prevent editing if manifest is no longer "Open" (unless superAdmin)
     if (existingManifest.status !== "Open" && userPermissions.role !== "superAdmin") {
-        throw new HttpsError("failed-precondition", `Cannot update manifest. Status: ${existingManifest.status}.`);
+      throw new HttpsError("failed-precondition", `Cannot update manifest. Status: ${existingManifest.status}.`);
     }
 
 
@@ -402,14 +402,14 @@ export const updateManifest = onCall({enforceAppCheck: false}, async (request) =
       const oldBiltiIds = new Set(existingManifest.attachedBiltiIds);
 
       // Biltis to remove from manifest (revert to Pending)
-      oldBiltiIds.forEach(biltiId => {
+      oldBiltiIds.forEach((biltiId) => {
         if (!newBiltiIds.has(biltiId)) {
           const biltiRef = db.collection("biltis").doc(biltiId);
           batch.update(biltiRef, {status: "Pending", manifestId: null});
         }
       });
       // Biltis to add to manifest (set to Manifested)
-      newBiltiIds.forEach(biltiId => {
+      newBiltiIds.forEach((biltiId) => {
         if (!oldBiltiIds.has(biltiId)) {
           const biltiRef = db.collection("biltis").doc(biltiId);
           batch.update(biltiRef, {status: "Manifested", manifestId: manifestId});
@@ -447,8 +447,8 @@ export const deleteManifest = onCall({enforceAppCheck: false}, async (request) =
       throw new HttpsError("permission-denied", "You do not have permission to delete this manifest.");
     }
     // Prevent deletion if manifest is not "Open" (unless superAdmin)
-     if (manifestData.status !== "Open" && userPermissions.role !== "superAdmin") {
-        throw new HttpsError("failed-precondition", `Cannot delete manifest. Status: ${manifestData.status}. Only 'Open' manifests can be deleted by non-admins.`);
+    if (manifestData.status !== "Open" && userPermissions.role !== "superAdmin") {
+      throw new HttpsError("failed-precondition", `Cannot delete manifest. Status: ${manifestData.status}. Only 'Open' manifests can be deleted by non-admins.`);
     }
 
     batch.delete(manifestRef);
@@ -469,8 +469,8 @@ export const deleteManifest = onCall({enforceAppCheck: false}, async (request) =
 });
 
 // --- Goods Receipt CRUD Functions ---
-interface GoodsReceiptCallableData extends Omit<GoodsReceiptData, "id" | "miti" | "createdAt" | "createdBy" | "updatedAt" | "updatedBy"> { 
-  miti: string; 
+interface GoodsReceiptCallableData extends Omit<GoodsReceiptData, "id" | "miti" | "createdAt" | "createdBy" | "updatedAt" | "updatedBy"> {
+  miti: string;
 }
 
 export const createGoodsReceipt = onCall({enforceAppCheck: false}, async (request) => {
@@ -495,7 +495,7 @@ export const createGoodsReceipt = onCall({enforceAppCheck: false}, async (reques
     const manifestRef = db.collection("manifests").doc(data.manifestId);
     const manifestDoc = await manifestRef.get();
     if (!manifestDoc.exists) throw new HttpsError("not-found", "Manifest not found.");
-    
+
     const manifestData = manifestDoc.data() as ManifestData;
     if (manifestData.status !== "In Transit") {
       throw new HttpsError("failed-precondition", `Cannot receive goods. Manifest status: ${manifestData.status}. Expected: In Transit.`);
@@ -511,20 +511,20 @@ export const createGoodsReceipt = onCall({enforceAppCheck: false}, async (reques
     batch.set(newReceiptRef, newReceiptData);
 
     // Update manifest status to "Received"
-    batch.update(manifestRef, { 
-      status: "Received", 
+    batch.update(manifestRef, {
+      status: "Received",
       goodsReceiptId: newReceiptRef.id,
       updatedAt: admin.firestore.Timestamp.now(),
-      updatedBy: uid
+      updatedBy: uid,
     });
 
-    // Update bilti statuses to "Received" 
+    // Update bilti statuses to "Received"
     for (const biltiId of manifestData.attachedBiltiIds) {
       const biltiRef = db.collection("biltis").doc(biltiId);
-      batch.update(biltiRef, { 
+      batch.update(biltiRef, {
         status: "Received",
         updatedAt: admin.firestore.Timestamp.now(),
-        updatedBy: uid 
+        updatedBy: uid,
       });
     }
 
@@ -558,9 +558,10 @@ export const updateGoodsReceipt = onCall({enforceAppCheck: false}, async (reques
       throw new HttpsError("permission-denied", "You do not have permission to update this receipt.");
     }
 
-    const {miti: _, ...dataToUpdate} = dataToUpdateClient;
+    // Process dataToUpdateClient without type conflicts
+    const {miti: _, ...otherFields} = dataToUpdateClient;
     const dataToUpdateFirestore: Partial<GoodsReceiptData> = {
-      ...dataToUpdate,
+      ...otherFields,
       updatedAt: admin.firestore.Timestamp.now(),
       updatedBy: uid,
     };
@@ -572,34 +573,34 @@ export const updateGoodsReceipt = onCall({enforceAppCheck: false}, async (reques
     if (dataToUpdateClient.manifestId && dataToUpdateClient.manifestId !== existingReceipt.manifestId) {
       // Revert old manifest status
       const oldManifestRef = db.collection("manifests").doc(existingReceipt.manifestId);
-      batch.update(oldManifestRef, { 
-        status: "In Transit", 
+      batch.update(oldManifestRef, {
+        status: "In Transit",
         goodsReceiptId: null,
         updatedAt: admin.firestore.Timestamp.now(),
-        updatedBy: uid
+        updatedBy: uid,
       });
 
       // Update new manifest
       const newManifestRef = db.collection("manifests").doc(dataToUpdateClient.manifestId);
       const newManifestDoc = await newManifestRef.get();
       if (!newManifestDoc.exists) throw new HttpsError("not-found", "New manifest not found.");
-      
+
       const newManifestData = newManifestDoc.data() as ManifestData;
       if (newManifestData.status !== "In Transit") {
         throw new HttpsError("failed-precondition", `Cannot update to this manifest. Status: ${newManifestData.status}. Expected: In Transit.`);
       }
 
-      batch.update(newManifestRef, { 
-        status: "Received", 
+      batch.update(newManifestRef, {
+        status: "Received",
         goodsReceiptId: receiptId,
         updatedAt: admin.firestore.Timestamp.now(),
-        updatedBy: uid
+        updatedBy: uid,
       });
     }
 
     batch.update(receiptRef, dataToUpdateFirestore);
     await batch.commit();
-    
+
     logger.info(`Goods Receipt ${receiptId} updated by ${uid}`);
     return {success: true, id: receiptId, message: "Goods receipt updated successfully."};
   } catch (error: any) {
@@ -636,20 +637,20 @@ export const deleteGoodsReceipt = onCall({enforceAppCheck: false}, async (reques
     const manifestDoc = await manifestRef.get();
     if (manifestDoc.exists) {
       const manifestData = manifestDoc.data() as ManifestData;
-      batch.update(manifestRef, { 
-        status: "In Transit", 
+      batch.update(manifestRef, {
+        status: "In Transit",
         goodsReceiptId: null,
         updatedAt: admin.firestore.Timestamp.now(),
-        updatedBy: uid
+        updatedBy: uid,
       });
 
       // Revert bilti statuses to "Manifested"
       for (const biltiId of manifestData.attachedBiltiIds) {
         const biltiRef = db.collection("biltis").doc(biltiId);
-        batch.update(biltiRef, { 
+        batch.update(biltiRef, {
           status: "Manifested",
           updatedAt: admin.firestore.Timestamp.now(),
-          updatedBy: uid
+          updatedBy: uid,
         });
       }
     }
@@ -665,7 +666,7 @@ export const deleteGoodsReceipt = onCall({enforceAppCheck: false}, async (reques
 });
 
 // --- Goods Delivery CRUD Functions ---
-interface GoodsDeliveryCallableData extends Omit<GoodsDeliveryData, "id" | "miti" | "createdAt" | "createdBy" | "updatedAt" | "updatedBy" | "ledgerProcessed"> { 
+interface GoodsDeliveryCallableData extends Omit<GoodsDeliveryData, "id" | "miti" | "createdAt" | "createdBy" | "updatedAt" | "updatedBy" | "ledgerProcessed"> {
   miti: string;
 }
 
@@ -690,7 +691,7 @@ export const createGoodsDelivery = onCall({enforceAppCheck: false}, async (reque
       if (!biltiDoc.exists) {
         throw new HttpsError("not-found", `Bilti ${item.biltiId} not found.`);
       }
-      
+
       const biltiData = biltiDoc.data() as FunctionsBiltiData;
       if (biltiData.status !== "Received") {
         throw new HttpsError("failed-precondition", `Bilti ${item.biltiId} status: ${biltiData.status}. Expected: Received.`);
@@ -714,11 +715,11 @@ export const createGoodsDelivery = onCall({enforceAppCheck: false}, async (reque
     // Update bilti statuses to "Delivered"
     for (const item of data.deliveredBiltis) {
       const biltiRef = db.collection("biltis").doc(item.biltiId);
-      batch.update(biltiRef, { 
+      batch.update(biltiRef, {
         status: "Delivered",
         goodsDeliveryNoteId: newDeliveryRef.id,
         updatedAt: admin.firestore.Timestamp.now(),
-        updatedBy: uid
+        updatedBy: uid,
       });
     }
 
@@ -760,9 +761,10 @@ export const updateGoodsDelivery = onCall({enforceAppCheck: false}, async (reque
       }
     }
 
-    const {miti: _, ...dataToUpdate} = dataToUpdateClient;
+    // Process dataToUpdateClient without type conflicts
+    const {miti: _, ...otherFields} = dataToUpdateClient;
     const dataToUpdateFirestore: Partial<GoodsDeliveryData> = {
-      ...dataToUpdate,
+      ...otherFields,
       updatedAt: admin.firestore.Timestamp.now(),
       updatedBy: uid,
     };
@@ -772,18 +774,18 @@ export const updateGoodsDelivery = onCall({enforceAppCheck: false}, async (reque
 
     // Handle changes in deliveredBiltis
     if (dataToUpdateClient.deliveredBiltis) {
-      const newBiltiIds = new Set(dataToUpdateClient.deliveredBiltis.map(item => item.biltiId));
-      const oldBiltiIds = new Set(existingDelivery.deliveredBiltis.map(item => item.biltiId));
+      const newBiltiIds = new Set(dataToUpdateClient.deliveredBiltis.map((item) => item.biltiId));
+      const oldBiltiIds = new Set(existingDelivery.deliveredBiltis.map((item) => item.biltiId));
 
       // Biltis removed from delivery should become "Received"
-      oldBiltiIds.forEach(biltiId => {
+      oldBiltiIds.forEach((biltiId) => {
         if (!newBiltiIds.has(biltiId)) {
           const biltiRef = db.collection("biltis").doc(biltiId);
-          batch.update(biltiRef, { 
-            status: "Received", 
+          batch.update(biltiRef, {
+            status: "Received",
             goodsDeliveryNoteId: null,
             updatedAt: admin.firestore.Timestamp.now(),
-            updatedBy: uid
+            updatedBy: uid,
           });
         }
       });
@@ -796,17 +798,17 @@ export const updateGoodsDelivery = onCall({enforceAppCheck: false}, async (reque
           if (!biltiDoc.exists) {
             throw new HttpsError("not-found", `Bilti ${item.biltiId} not found.`);
           }
-          
+
           const biltiData = biltiDoc.data() as FunctionsBiltiData;
           if (biltiData.status !== "Received") {
             throw new HttpsError("failed-precondition", `Bilti ${item.biltiId} status: ${biltiData.status}. Expected: Received.`);
           }
 
-          batch.update(biltiRef, { 
+          batch.update(biltiRef, {
             status: "Delivered",
             goodsDeliveryNoteId: deliveryId,
             updatedAt: admin.firestore.Timestamp.now(),
-            updatedBy: uid
+            updatedBy: uid,
           });
         }
       }
@@ -814,7 +816,7 @@ export const updateGoodsDelivery = onCall({enforceAppCheck: false}, async (reque
 
     batch.update(deliveryRef, dataToUpdateFirestore);
     await batch.commit();
-    
+
     logger.info(`Goods Delivery ${deliveryId} updated by ${uid}`);
     return {success: true, id: deliveryId, message: "Goods delivery updated successfully."};
   } catch (error: any) {
@@ -857,11 +859,11 @@ export const deleteGoodsDelivery = onCall({enforceAppCheck: false}, async (reque
     // Revert bilti statuses to "Received"
     for (const item of deliveryData.deliveredBiltis) {
       const biltiRef = db.collection("biltis").doc(item.biltiId);
-      batch.update(biltiRef, { 
+      batch.update(biltiRef, {
         status: "Received",
         goodsDeliveryNoteId: null,
         updatedAt: admin.firestore.Timestamp.now(),
-        updatedBy: uid
+        updatedBy: uid,
       });
     }
 
@@ -895,7 +897,7 @@ export const createManualLedgerEntry = onCall({enforceAppCheck: false}, async (r
   if (!userPermissions || userPermissions.role === "user") {
     throw new HttpsError("permission-denied", "Insufficient permissions to create manual ledger entries.");
   }
-  
+
   try {
     const newEntryRef = db.collection("ledgerEntries").doc();
     const newEntryData: LedgerEntryData = {
@@ -936,7 +938,7 @@ export const updateLedgerEntryStatus = onCall({enforceAppCheck: false}, async (r
   try {
     const entryRef = db.collection("ledgerEntries").doc(entryId);
     const entryDoc = await entryRef.get();
-    
+
     if (!entryDoc.exists) {
       throw new HttpsError("not-found", "Ledger entry not found.");
     }
@@ -979,19 +981,19 @@ export const createDaybookTransaction = onCall({enforceAppCheck: false}, async (
   if (!userPermissions) {
     throw new HttpsError("permission-denied", "Unable to verify user permissions.");
   }
-  
+
   try {
     const daybookRef = db.collection("daybooks").doc(daybookId);
     const daybookDoc = await daybookRef.get();
-    
+
     if (!daybookDoc.exists) {
       throw new HttpsError("not-found", "Daybook not found.");
     }
 
     const daybookData = daybookDoc.data() as DaybookData;
-    
+
     // Check if user has permission to edit this daybook
-    if (userPermissions.role !== "superAdmin" && 
+    if (userPermissions.role !== "superAdmin" &&
         !userPermissions.assignedBranchIds.includes(daybookData.branchId)) {
       throw new HttpsError("permission-denied", "You do not have permission to edit this daybook.");
     }
@@ -1010,8 +1012,8 @@ export const createDaybookTransaction = onCall({enforceAppCheck: false}, async (
 
     // Update daybook with new transaction
     const existingTransactions = daybookData.transactions || [];
-    const transactionIndex = existingTransactions.findIndex(tx => tx.id === newTransactionId);
-    
+    const transactionIndex = existingTransactions.findIndex((tx) => tx.id === newTransactionId);
+
     let updatedTransactions: DaybookTransaction[];
     if (transactionIndex >= 0) {
       // Update existing transaction
@@ -1025,14 +1027,14 @@ export const createDaybookTransaction = onCall({enforceAppCheck: false}, async (
     await daybookRef.update({
       transactions: updatedTransactions,
       updatedAt: admin.firestore.Timestamp.now(),
-      updatedBy: uid
+      updatedBy: uid,
     });
 
-    logger.info(`Transaction ${newTransactionId} ${transactionIndex >= 0 ? 'updated' : 'added'} to daybook ${daybookId} by ${uid}`);
+    logger.info(`Transaction ${newTransactionId} ${transactionIndex >= 0 ? "updated" : "added"} to daybook ${daybookId} by ${uid}`);
     return {
-      success: true, 
-      id: newTransactionId, 
-      message: `Transaction ${transactionIndex >= 0 ? 'updated' : 'added'} successfully.`
+      success: true,
+      id: newTransactionId,
+      message: `Transaction ${transactionIndex >= 0 ? "updated" : "added"} successfully.`,
     };
   } catch (error: any) {
     logger.error(`Error managing transaction in daybook ${daybookId}:`, error);
@@ -1055,19 +1057,19 @@ export const deleteDaybookTransaction = onCall({enforceAppCheck: false}, async (
   if (!userPermissions) {
     throw new HttpsError("permission-denied", "Unable to verify user permissions.");
   }
-  
+
   try {
     const daybookRef = db.collection("daybooks").doc(daybookId);
     const daybookDoc = await daybookRef.get();
-    
+
     if (!daybookDoc.exists) {
       throw new HttpsError("not-found", "Daybook not found.");
     }
 
     const daybookData = daybookDoc.data() as DaybookData;
-    
+
     // Check if user has permission to edit this daybook
-    if (userPermissions.role !== "superAdmin" && 
+    if (userPermissions.role !== "superAdmin" &&
         !userPermissions.assignedBranchIds.includes(daybookData.branchId)) {
       throw new HttpsError("permission-denied", "You do not have permission to edit this daybook.");
     }
@@ -1079,8 +1081,8 @@ export const deleteDaybookTransaction = onCall({enforceAppCheck: false}, async (
 
     // Remove transaction from daybook
     const existingTransactions = daybookData.transactions || [];
-    const updatedTransactions = existingTransactions.filter(tx => tx.id !== transactionId);
-    
+    const updatedTransactions = existingTransactions.filter((tx) => tx.id !== transactionId);
+
     if (updatedTransactions.length === existingTransactions.length) {
       throw new HttpsError("not-found", "Transaction not found in daybook.");
     }
@@ -1088,7 +1090,7 @@ export const deleteDaybookTransaction = onCall({enforceAppCheck: false}, async (
     await daybookRef.update({
       transactions: updatedTransactions,
       updatedAt: admin.firestore.Timestamp.now(),
-      updatedBy: uid
+      updatedBy: uid,
     });
 
     logger.info(`Transaction ${transactionId} deleted from daybook ${daybookId} by ${uid}`);
@@ -1122,7 +1124,7 @@ export const updateUserProfile = onCall(
       // Verify the user has permission (only admins or the user themselves)
       const currentUserDoc = await db.collection("users").doc(uid).get();
       const currentUserData = currentUserDoc.data();
-      
+
       if (!currentUserData) {
         throw new HttpsError("not-found", "Current user not found.");
       }
@@ -1137,7 +1139,7 @@ export const updateUserProfile = onCall(
       // Prepare update data
       const updateData: any = {
         updatedAt: admin.firestore.Timestamp.now(),
-        updatedBy: uid
+        updatedBy: uid,
       };
 
       if (data.displayName !== undefined) updateData.displayName = data.displayName;
@@ -1154,13 +1156,13 @@ export const updateUserProfile = onCall(
       await db.collection("users").doc(data.uid).update(updateData);
 
       logger.info(`User profile updated: ${data.uid} by ${uid}`);
-      return { success: true, uid: data.uid, message: "User profile updated successfully." };
+      return {success: true, uid: data.uid, message: "User profile updated successfully."};
     } catch (error: any) {
       logger.error(`Error updating user profile ${data.uid}:`, error);
       if (error instanceof HttpsError) throw error;
       throw new HttpsError("internal", error.message || "Failed to update user profile.");
     }
-  }
+  },
 );
 
 export const updateUserBranchAssignments = onCall(
@@ -1183,20 +1185,20 @@ export const updateUserBranchAssignments = onCall(
       // Verify the user has permission (only admins)
       const currentUserDoc = await db.collection("users").doc(uid).get();
       const currentUserData = currentUserDoc.data();
-      
+
       if (!currentUserData || (currentUserData.role !== "superAdmin" && currentUserData.role !== "admin")) {
         throw new HttpsError("permission-denied", "Only administrators can update branch assignments.");
       }
 
       // Validate branches exist
       const branchChecks = await Promise.all(
-        data.assignedBranchIds.map(branchId => db.collection("branches").doc(branchId).get())
+        data.assignedBranchIds.map((branchId) => db.collection("branches").doc(branchId).get()),
       );
 
       const invalidBranches = branchChecks
-        .map((doc, index) => ({ doc, branchId: data.assignedBranchIds[index] }))
-        .filter(({ doc }) => !doc.exists)
-        .map(({ branchId }) => branchId);
+        .map((doc, index) => ({doc, branchId: data.assignedBranchIds[index]}))
+        .filter(({doc}) => !doc.exists)
+        .map(({branchId}) => branchId);
 
       if (invalidBranches.length > 0) {
         throw new HttpsError("invalid-argument", `Invalid branch IDs: ${invalidBranches.join(", ")}`);
@@ -1209,13 +1211,13 @@ export const updateUserBranchAssignments = onCall(
       });
 
       logger.info(`User branch assignments updated: ${data.uid} by ${uid}`);
-      return { success: true, uid: data.uid, message: "Branch assignments updated successfully." };
+      return {success: true, uid: data.uid, message: "Branch assignments updated successfully."};
     } catch (error: any) {
       logger.error(`Error updating branch assignments for user ${data.uid}:`, error);
       if (error instanceof HttpsError) throw error;
       throw new HttpsError("internal", error.message || "Failed to update branch assignments.");
     }
-  }
+  },
 );
 
 // ===============================
@@ -1248,19 +1250,19 @@ export const createInvoiceLineCustomization = onCall(
       const customizationData: InvoiceLineCustomizationData = {
         ...data,
         createdAt: admin.firestore.Timestamp.now(),
-        createdBy: uid
+        createdBy: uid,
       };
 
       const docRef = await db.collection("invoiceLineCustomizations").add(customizationData);
 
       logger.info(`Invoice line customization created: ${docRef.id} by ${uid}`);
-      return { success: true, id: docRef.id, message: "Invoice line customization created successfully." };
+      return {success: true, id: docRef.id, message: "Invoice line customization created successfully."};
     } catch (error: any) {
-      logger.error(`Error creating invoice line customization:`, error);
+      logger.error("Error creating invoice line customization:", error);
       if (error instanceof HttpsError) throw error;
       throw new HttpsError("internal", error.message || "Failed to create invoice line customization.");
     }
-  }
+  },
 );
 
 export const updateInvoiceLineCustomization = onCall(
@@ -1295,7 +1297,7 @@ export const updateInvoiceLineCustomization = onCall(
 
       const updateData: any = {
         updatedAt: admin.firestore.Timestamp.now(),
-        updatedBy: uid
+        updatedBy: uid,
       };
 
       if (data.label !== undefined) updateData.label = data.label;
@@ -1310,13 +1312,13 @@ export const updateInvoiceLineCustomization = onCall(
       await customizationRef.update(updateData);
 
       logger.info(`Invoice line customization updated: ${data.customizationId} by ${uid}`);
-      return { success: true, id: data.customizationId, message: "Invoice line customization updated successfully." };
+      return {success: true, id: data.customizationId, message: "Invoice line customization updated successfully."};
     } catch (error: any) {
       logger.error(`Error updating invoice line customization ${data.customizationId}:`, error);
       if (error instanceof HttpsError) throw error;
       throw new HttpsError("internal", error.message || "Failed to update invoice line customization.");
     }
-  }
+  },
 );
 
 export const deleteInvoiceLineCustomization = onCall(
@@ -1352,13 +1354,13 @@ export const deleteInvoiceLineCustomization = onCall(
       await customizationRef.delete();
 
       logger.info(`Invoice line customization deleted: ${data.customizationId} by ${uid}`);
-      return { success: true, id: data.customizationId, message: "Invoice line customization deleted successfully." };
+      return {success: true, id: data.customizationId, message: "Invoice line customization deleted successfully."};
     } catch (error: any) {
       logger.error(`Error deleting invoice line customization ${data.customizationId}:`, error);
       if (error instanceof HttpsError) throw error;
       throw new HttpsError("internal", error.message || "Failed to delete invoice line customization.");
     }
-  }
+  },
 );
 
 // ===============================
@@ -1391,19 +1393,19 @@ export const createNarrationTemplate = onCall(
       const templateData: NarrationTemplateData = {
         ...data,
         createdAt: admin.firestore.Timestamp.now(),
-        createdBy: uid
+        createdBy: uid,
       };
 
       const docRef = await db.collection("narrationTemplates").add(templateData);
 
       logger.info(`Narration template created: ${docRef.id} by ${uid}`);
-      return { success: true, id: docRef.id, message: "Narration template created successfully." };
+      return {success: true, id: docRef.id, message: "Narration template created successfully."};
     } catch (error: any) {
-      logger.error(`Error creating narration template:`, error);
+      logger.error("Error creating narration template:", error);
       if (error instanceof HttpsError) throw error;
       throw new HttpsError("internal", error.message || "Failed to create narration template.");
     }
-  }
+  },
 );
 
 export const updateNarrationTemplate = onCall(
@@ -1438,7 +1440,7 @@ export const updateNarrationTemplate = onCall(
 
       const updateData: any = {
         updatedAt: admin.firestore.Timestamp.now(),
-        updatedBy: uid
+        updatedBy: uid,
       };
 
       if (data.templateName !== undefined) updateData.templateName = data.templateName;
@@ -1449,13 +1451,13 @@ export const updateNarrationTemplate = onCall(
       await templateRef.update(updateData);
 
       logger.info(`Narration template updated: ${data.templateId} by ${uid}`);
-      return { success: true, id: data.templateId, message: "Narration template updated successfully." };
+      return {success: true, id: data.templateId, message: "Narration template updated successfully."};
     } catch (error: any) {
       logger.error(`Error updating narration template ${data.templateId}:`, error);
       if (error instanceof HttpsError) throw error;
       throw new HttpsError("internal", error.message || "Failed to update narration template.");
     }
-  }
+  },
 );
 
 export const deleteNarrationTemplate = onCall(
@@ -1491,13 +1493,13 @@ export const deleteNarrationTemplate = onCall(
       await templateRef.delete();
 
       logger.info(`Narration template deleted: ${data.templateId} by ${uid}`);
-      return { success: true, id: data.templateId, message: "Narration template deleted successfully." };
+      return {success: true, id: data.templateId, message: "Narration template deleted successfully."};
     } catch (error: any) {
       logger.error(`Error deleting narration template ${data.templateId}:`, error);
       if (error instanceof HttpsError) throw error;
       throw new HttpsError("internal", error.message || "Failed to delete narration template.");
     }
-  }
+  },
 );
 
 // ===============================
@@ -1530,7 +1532,7 @@ export const createDocumentNumberingConfig = onCall(
       // Check for existing config with same document type and branch
       const existingQuery = db.collection("documentNumberingConfigs")
         .where("documentType", "==", data.documentType);
-      
+
       if (data.branchId) {
         existingQuery.where("branchId", "==", data.branchId);
       }
@@ -1543,19 +1545,19 @@ export const createDocumentNumberingConfig = onCall(
       const configData: DocumentNumberingConfigData = {
         ...data,
         createdAt: admin.firestore.Timestamp.now(),
-        createdBy: uid
+        createdBy: uid,
       };
 
       const docRef = await db.collection("documentNumberingConfigs").add(configData);
 
       logger.info(`Document numbering config created: ${docRef.id} by ${uid}`);
-      return { success: true, id: docRef.id, message: "Document numbering config created successfully." };
+      return {success: true, id: docRef.id, message: "Document numbering config created successfully."};
     } catch (error: any) {
-      logger.error(`Error creating document numbering config:`, error);
+      logger.error("Error creating document numbering config:", error);
       if (error instanceof HttpsError) throw error;
       throw new HttpsError("internal", error.message || "Failed to create document numbering config.");
     }
-  }
+  },
 );
 
 export const updateDocumentNumberingConfig = onCall(
@@ -1590,7 +1592,7 @@ export const updateDocumentNumberingConfig = onCall(
 
       const updateData: any = {
         updatedAt: admin.firestore.Timestamp.now(),
-        updatedBy: uid
+        updatedBy: uid,
       };
 
       if (data.documentType !== undefined) updateData.documentType = data.documentType;
@@ -1606,13 +1608,13 @@ export const updateDocumentNumberingConfig = onCall(
       await configRef.update(updateData);
 
       logger.info(`Document numbering config updated: ${data.configId} by ${uid}`);
-      return { success: true, id: data.configId, message: "Document numbering config updated successfully." };
+      return {success: true, id: data.configId, message: "Document numbering config updated successfully."};
     } catch (error: any) {
       logger.error(`Error updating document numbering config ${data.configId}:`, error);
       if (error instanceof HttpsError) throw error;
       throw new HttpsError("internal", error.message || "Failed to update document numbering config.");
     }
-  }
+  },
 );
 
 export const deleteDocumentNumberingConfig = onCall(
@@ -1648,13 +1650,13 @@ export const deleteDocumentNumberingConfig = onCall(
       await configRef.delete();
 
       logger.info(`Document numbering config deleted: ${data.configId} by ${uid}`);
-      return { success: true, id: data.configId, message: "Document numbering config deleted successfully." };
+      return {success: true, id: data.configId, message: "Document numbering config deleted successfully."};
     } catch (error: any) {
       logger.error(`Error deleting document numbering config ${data.configId}:`, error);
       if (error instanceof HttpsError) throw error;
       throw new HttpsError("internal", error.message || "Failed to delete document numbering config.");
     }
-  }
+  },
 );
 
 export const generateNextDocumentNumber = onCall(
@@ -1700,27 +1702,27 @@ export const generateNextDocumentNumber = onCall(
 
       // Generate the next number
       const nextNumber = configData.currentNumber;
-      const paddedNumber = nextNumber.toString().padStart(configData.digitPadding, '0');
-      const fullNumber = `${configData.prefix}${paddedNumber}${configData.suffix || ''}`;
+      const paddedNumber = nextNumber.toString().padStart(configData.digitPadding, "0");
+      const fullNumber = `${configData.prefix}${paddedNumber}${configData.suffix || ""}`;
 
       // Update the current number in the config
       await configDoc.ref.update({
         currentNumber: nextNumber + 1,
         updatedAt: admin.firestore.Timestamp.now(),
-        updatedBy: uid
+        updatedBy: uid,
       });
 
       logger.info(`Generated next document number for ${data.documentType}: ${fullNumber}`);
-      return { 
-        nextNumber: fullNumber, 
-        configId: configDoc.id 
+      return {
+        nextNumber: fullNumber,
+        configId: configDoc.id,
       } as GenerateNextDocumentNumberResult;
     } catch (error: any) {
       logger.error(`Error generating next document number for ${data.documentType}:`, error);
       if (error instanceof HttpsError) throw error;
       throw new HttpsError("internal", error.message || "Failed to generate next document number.");
     }
-  }
+  },
 );
 
 // =====================================================
@@ -1733,20 +1735,20 @@ export const generateNextDocumentNumber = onCall(
 export const createDaybook = onCall({enforceAppCheck: false}, async (request) => {
   const {auth, data} = request;
   const payload = data as CreateDaybookPayload;
-  
+
   if (!auth) {
     throw new HttpsError("unauthenticated", "User must be authenticated.");
   }
 
   const uid = auth.uid;
   const userPermissions = await getUserPermissions(uid);
-  
+
   if (!userPermissions) {
     throw new HttpsError("permission-denied", "Unable to verify user permissions.");
   }
-  
+
   // Check if user has permission to create daybooks for this branch
-  if (userPermissions.role !== "superAdmin" && 
+  if (userPermissions.role !== "superAdmin" &&
       !userPermissions.assignedBranchIds.includes(payload.branchId)) {
     throw new HttpsError("permission-denied", "You do not have permission to create daybooks for this branch.");
   }
@@ -1791,7 +1793,7 @@ export const createDaybook = onCall({enforceAppCheck: false}, async (request) =>
     return {
       success: true,
       id: daybookRef.id,
-      message: "Daybook created successfully."
+      message: "Daybook created successfully.",
     } as DaybookCreateResponse;
   } catch (error: any) {
     logger.error("Error creating daybook:", error);

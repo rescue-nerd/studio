@@ -1,4 +1,4 @@
-import type { Timestamp } from "firebase-admin/firestore"; // Use admin SDK Timestamp for functions
+import type {Timestamp} from "firebase-admin/firestore"; // Use admin SDK Timestamp for functions
 
 // This file mirrors relevant parts of src/types/firestore.ts but for backend functions.
 // Ensure consistency or share types if possible in a monorepo setup.
@@ -265,11 +265,11 @@ export interface ManifestData {
 // Callable Data Interfaces for HTTPS Callable Functions
 // These are sent from client to functions (miti as string)
 
-export interface GoodsReceiptCallableData extends Omit<GoodsReceiptData, 'id' | 'miti' | 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy'> {
+export interface GoodsReceiptCallableData extends Omit<GoodsReceiptData, "id" | "miti" | "createdAt" | "createdBy" | "updatedAt" | "updatedBy"> {
   miti: string;
 }
 
-export interface GoodsDeliveryCallableData extends Omit<GoodsDeliveryData, 'id' | 'miti' | 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy' | 'ledgerProcessed'> {
+export interface GoodsDeliveryCallableData extends Omit<GoodsDeliveryData, "id" | "miti" | "createdAt" | "createdBy" | "updatedAt" | "updatedBy" | "ledgerProcessed"> {
   miti: string;
 }
 
@@ -291,7 +291,7 @@ export interface DeleteGoodsDeliveryPayload {
 }
 
 // Ledger Cloud Function Types
-export interface LedgerEntryCallableData extends Omit<LedgerEntryData, 'id' | 'miti' | 'createdAt' | 'createdBy' | 'status'> {
+export interface LedgerEntryCallableData extends Omit<LedgerEntryData, "id" | "miti" | "createdAt" | "createdBy" | "status"> {
   miti: string; // Client sends as string
   accountId: string;
 }
@@ -303,7 +303,7 @@ export interface UpdateLedgerEntryStatusPayload {
 }
 
 // Daybook Transaction Cloud Function Types
-export interface DaybookTransactionCallableData extends Omit<DaybookTransaction, 'id' | 'createdAt'> {
+export interface DaybookTransactionCallableData extends Omit<DaybookTransaction, "id" | "createdAt"> {
   daybookId: string;
   transactionId?: string; // For updates, if not provided a new ID will be generated
 }
@@ -347,7 +347,7 @@ export interface InvoiceLineCustomizationData {
   updatedAt?: Timestamp;
 }
 
-export interface CreateInvoiceLineCustomizationPayload extends Omit<InvoiceLineCustomizationData, 'id' | 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy'> {}
+export interface CreateInvoiceLineCustomizationPayload extends Omit<InvoiceLineCustomizationData, "id" | "createdAt" | "createdBy" | "updatedAt" | "updatedBy"> {}
 
 export interface UpdateInvoiceLineCustomizationPayload extends Partial<CreateInvoiceLineCustomizationPayload> {
   customizationId: string;
@@ -370,7 +370,7 @@ export interface NarrationTemplateData {
   updatedAt?: Timestamp;
 }
 
-export interface CreateNarrationTemplatePayload extends Omit<NarrationTemplateData, 'id' | 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy'> {}
+export interface CreateNarrationTemplatePayload extends Omit<NarrationTemplateData, "id" | "createdAt" | "createdBy" | "updatedAt" | "updatedBy"> {}
 
 export interface UpdateNarrationTemplatePayload extends Partial<CreateNarrationTemplatePayload> {
   templateId: string;
@@ -398,7 +398,7 @@ export interface DocumentNumberingConfigData {
   updatedAt?: Timestamp;
 }
 
-export interface CreateDocumentNumberingConfigPayload extends Omit<DocumentNumberingConfigData, 'id' | 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy'> {}
+export interface CreateDocumentNumberingConfigPayload extends Omit<DocumentNumberingConfigData, "id" | "createdAt" | "createdBy" | "updatedAt" | "updatedBy"> {}
 
 export interface UpdateDocumentNumberingConfigPayload extends Partial<CreateDocumentNumberingConfigPayload> {
   configId: string;
