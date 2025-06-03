@@ -126,6 +126,7 @@ const SidebarProvider = React.forwardRef<
       <SidebarContext.Provider value={contextValue}>
         <TooltipProvider delayDuration={0}>
           <div
+            suppressHydrationWarning // Added here
             style={
               {
                 "--sidebar-width": SIDEBAR_WIDTH,
