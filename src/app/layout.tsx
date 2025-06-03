@@ -37,7 +37,7 @@ export default function RootLayout({
               <Sidebar collapsible="icon" className="bg-sidebar text-sidebar-foreground border-r border-sidebar-border hidden md:flex">
                  <AppSidebarContent />
               </Sidebar>
-              <SidebarInset className="flex-1 flex flex-col"> {/* SidebarInset is now a div */}
+              <SidebarInset className="flex flex-col"> {/* SidebarInset is now a div, removed redundant flex-1 */}
                 <AppHeader />
                 <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">
                   {children}
