@@ -27,6 +27,7 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
+  AlertDialogTrigger, // Added AlertDialogTrigger
 } from "@/components/ui/alert-dialog";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -60,6 +61,8 @@ import type {
   Branch as FirestoreBranch,
   Party as FirestoreParty
 } from "@/types/firestore";
+import { useAuth } from "@/contexts/auth-context"; 
+import { useRouter } from "next/navigation";
 
 
 // Local Interfaces
@@ -92,7 +95,6 @@ const defaultManifestFormData: Omit<Manifest, 'id' | 'status' | 'createdAt' | 'c
   remarks: "",
 };
 
-const PLACEHOLDER_USER_ID = "system_user_placeholder";
 
 export default function ManifestsPage() {
   const [manifests, setManifests] = useState<Manifest[]>([]);
@@ -116,9 +118,18 @@ export default function ManifestsPage() {
   const { toast } = useToast();
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [manifestToDelete, setManifestToDelete] = useState<Manifest | null>(null);
+  const { user: authUser, loading: authLoading } = useAuth(); 
+  const router = useRouter();
+
+  useEffect(() => {
+    if (!authLoading && !authUser) {
+      router.push('/login');
+    }
+  }, [authUser, authLoading, router]);
 
 
   const fetchMasterData = async () => {
+    if (!authUser) return;
     // setIsLoading(true); // Handled by overall load
     try {
       const [trucksSnap, driversSnap, branchesSnap, partiesSnap, biltisSnap] = await Promise.all([
@@ -149,6 +160,7 @@ export default function ManifestsPage() {
   };
 
   const fetchManifests = async () => {
+    if (!authUser) return;
     // setIsLoading(true); // Handled by overall load
     try {
       const manifestsCollectionRef = collection(db, "manifests");
@@ -170,15 +182,17 @@ export default function ManifestsPage() {
   };
   
   useEffect(() => {
-    const loadAllData = async () => {
-        setIsLoading(true);
-        await fetchMasterData(); // Fetches biltis too
-        await fetchManifests();
-        setIsLoading(false);
+    if(authUser){
+      const loadAllData = async () => {
+          setIsLoading(true);
+          await fetchMasterData(); // Fetches biltis too
+          await fetchManifests();
+          setIsLoading(false);
+      }
+      loadAllData();
     }
-    loadAllData();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [authUser]);
 
 
   const handleInputChange = (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -247,6 +261,10 @@ export default function ManifestsPage() {
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
+    if (!authUser) {
+        toast({ title: "Authentication Error", description: "You must be logged in.", variant: "destructive" });
+        return;
+    }
     if (!formData.truckId || !formData.driverId || !formData.fromBranchId || !formData.toBranchId) {
         toast({ title: "Missing Fields", description: "Truck, Driver, From Branch, and To Branch are required.", variant: "destructive" });
         return;
@@ -271,7 +289,7 @@ export default function ManifestsPage() {
         batch.update(manifestDocRef, {
             ...manifestDataPayload,
             updatedAt: Timestamp.now(),
-            updatedBy: PLACEHOLDER_USER_ID,
+            updatedBy: authUser.uid,
         });
 
         // Logic to update Bilti statuses:
@@ -302,7 +320,7 @@ export default function ManifestsPage() {
             ...manifestDataPayload,
             status: "Open" as FirestoreManifest["status"],
             createdAt: Timestamp.now(),
-            createdBy: PLACEHOLDER_USER_ID,
+            createdBy: authUser.uid,
         });
 
         const newBatch = writeBatch(db); // New batch for bilti updates with new manifest ID
