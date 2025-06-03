@@ -12,7 +12,11 @@ import type {
   PartyData,
   LedgerEntryData,
   LedgerTransactionType,
-  BranchData, // Added BranchData
+  BranchData,
+  CountryData, // Added
+  StateData,   // Added
+  CityData,    // Added
+  UnitData,    // Added
 } from "./types";
 
 admin.initializeApp();
@@ -599,8 +603,8 @@ export const updateBranch = onCall({enforceAppCheck: false, consumeAppCheck: "le
   if (!branchId) {
     throw new HttpsError("invalid-argument", "Branch ID is required for updates.");
   }
-  if (!dataToUpdate.name || !dataToUpdate.location) {
-    throw new HttpsError("invalid-argument", "Branch Name and Location are required.");
+  if (!dataToUpdate.name || !dataToUpdate.location) { // Ensure name and location are still present if being updated
+    throw new HttpsError("invalid-argument", "Branch Name and Location are required if being updated.");
   }
 
   try {
@@ -646,11 +650,7 @@ export const deleteBranch = onCall({enforceAppCheck: false, consumeAppCheck: "le
     if (!branchDoc.exists) {
       throw new HttpsError("not-found", `Branch with ID ${branchId} not found.`);
     }
-    // Add dependency checks here if needed before deletion
-    // For example, check if any users, daybooks, biltis, etc., are linked to this branch.
-    // If dependencies exist, you might want to prevent deletion or handle it accordingly.
-    // For now, direct deletion is implemented.
-
+    // TODO: Add dependency checks (e.g., if users, daybooks, biltis are linked)
     await branchRef.delete();
     logger.info(`Branch ${branchId} deleted by ${uid}`);
     return {success: true, id: branchId, message: "Branch deleted successfully."};
@@ -658,5 +658,304 @@ export const deleteBranch = onCall({enforceAppCheck: false, consumeAppCheck: "le
     logger.error(`Error deleting branch ${branchId}:`, error);
     if (error instanceof HttpsError) throw error;
     throw new HttpsError("internal", error.message || "Failed to delete branch.");
+  }
+});
+
+
+// --- Locations & Units CRUD Functions ---
+
+// -- Countries --
+export const createCountry = onCall({enforceAppCheck: false, consumeAppCheck: "lenient"}, async (request) => {
+  const uid = request.auth?.uid;
+  if (!uid) throw new HttpsError("unauthenticated", "Authentication required.");
+  const userPermissions = await getUserPermissions(uid);
+  if (userPermissions.role !== "superAdmin") throw new HttpsError("permission-denied", "Super admin role required.");
+
+  const data = request.data as Omit<CountryData, "id">;
+  if (!data.name || !data.code) throw new HttpsError("invalid-argument", "Country Name and Code are required.");
+
+  try {
+    const newCountryRef = await db.collection("countries").add({
+      ...data,
+      createdAt: admin.firestore.Timestamp.now(),
+      createdBy: uid,
+    });
+    return {success: true, id: newCountryRef.id, message: "Country created."};
+  } catch (error: any) {
+    logger.error("Error creating country:", error);
+    throw new HttpsError("internal", "Failed to create country.");
+  }
+});
+
+export const updateCountry = onCall({enforceAppCheck: false, consumeAppCheck: "lenient"}, async (request) => {
+  const uid = request.auth?.uid;
+  if (!uid) throw new HttpsError("unauthenticated", "Authentication required.");
+  const userPermissions = await getUserPermissions(uid);
+  if (userPermissions.role !== "superAdmin") throw new HttpsError("permission-denied", "Super admin role required.");
+
+  const {countryId, ...dataToUpdate} = request.data as {countryId: string} & Partial<Omit<CountryData, "id">>;
+  if (!countryId) throw new HttpsError("invalid-argument", "Country ID required.");
+  if (!dataToUpdate.name || !dataToUpdate.code) throw new HttpsError("invalid-argument", "Name and Code are required.");
+
+  try {
+    const countryRef = db.collection("countries").doc(countryId);
+    if (!(await countryRef.get()).exists) throw new HttpsError("not-found", "Country not found.");
+    await countryRef.update({...dataToUpdate, updatedAt: admin.firestore.Timestamp.now(), updatedBy: uid});
+    return {success: true, id: countryId, message: "Country updated."};
+  } catch (error: any) {
+    logger.error(`Error updating country ${countryId}:`, error);
+    if (error instanceof HttpsError) throw error;
+    throw new HttpsError("internal", "Failed to update country.");
+  }
+});
+
+export const deleteCountry = onCall({enforceAppCheck: false, consumeAppCheck: "lenient"}, async (request) => {
+  const uid = request.auth?.uid;
+  if (!uid) throw new HttpsError("unauthenticated", "Authentication required.");
+  const userPermissions = await getUserPermissions(uid);
+  if (userPermissions.role !== "superAdmin") throw new HttpsError("permission-denied", "Super admin role required.");
+
+  const {countryId} = request.data as {countryId: string};
+  if (!countryId) throw new HttpsError("invalid-argument", "Country ID required.");
+
+  try {
+    const countryRef = db.collection("countries").doc(countryId);
+    if (!(await countryRef.get()).exists) throw new HttpsError("not-found", "Country not found.");
+
+    const statesSnapshot = await db.collection("states").where("countryId", "==", countryId).limit(1).get();
+    if (!statesSnapshot.empty) {
+      throw new HttpsError("failed-precondition", `Cannot delete country. It has associated states.`);
+    }
+
+    await countryRef.delete();
+    return {success: true, id: countryId, message: "Country deleted."};
+  } catch (error: any) {
+    logger.error(`Error deleting country ${countryId}:`, error);
+    if (error instanceof HttpsError) throw error;
+    throw new HttpsError("internal", "Failed to delete country.");
+  }
+});
+
+// -- States --
+export const createState = onCall({enforceAppCheck: false, consumeAppCheck: "lenient"}, async (request) => {
+  const uid = request.auth?.uid;
+  if (!uid) throw new HttpsError("unauthenticated", "Authentication required.");
+  const userPermissions = await getUserPermissions(uid);
+  if (userPermissions.role !== "superAdmin") throw new HttpsError("permission-denied", "Super admin role required.");
+
+  const data = request.data as Omit<StateData, "id">;
+  if (!data.name || !data.countryId) throw new HttpsError("invalid-argument", "State Name and Country ID are required.");
+
+  try {
+    const countryRef = db.collection("countries").doc(data.countryId);
+    if (!(await countryRef.get()).exists) throw new HttpsError("not-found", "Associated country not found.");
+
+    const newStateRef = await db.collection("states").add({
+      ...data,
+      createdAt: admin.firestore.Timestamp.now(),
+      createdBy: uid,
+    });
+    return {success: true, id: newStateRef.id, message: "State created."};
+  } catch (error: any) {
+    logger.error("Error creating state:", error);
+    if (error instanceof HttpsError) throw error;
+    throw new HttpsError("internal", "Failed to create state.");
+  }
+});
+
+export const updateState = onCall({enforceAppCheck: false, consumeAppCheck: "lenient"}, async (request) => {
+  const uid = request.auth?.uid;
+  if (!uid) throw new HttpsError("unauthenticated", "Authentication required.");
+  const userPermissions = await getUserPermissions(uid);
+  if (userPermissions.role !== "superAdmin") throw new HttpsError("permission-denied", "Super admin role required.");
+
+  const {stateId, ...dataToUpdate} = request.data as {stateId: string} & Partial<Omit<StateData, "id">>;
+  if (!stateId) throw new HttpsError("invalid-argument", "State ID required.");
+  if (!dataToUpdate.name || !dataToUpdate.countryId) throw new HttpsError("invalid-argument", "Name and Country ID are required.");
+
+  try {
+    const stateRef = db.collection("states").doc(stateId);
+    if (!(await stateRef.get()).exists) throw new HttpsError("not-found", "State not found.");
+
+    const countryRef = db.collection("countries").doc(dataToUpdate.countryId);
+    if (!(await countryRef.get()).exists) throw new HttpsError("not-found", "Associated country not found.");
+
+    await stateRef.update({...dataToUpdate, updatedAt: admin.firestore.Timestamp.now(), updatedBy: uid});
+    return {success: true, id: stateId, message: "State updated."};
+  } catch (error: any) {
+    logger.error(`Error updating state ${stateId}:`, error);
+    if (error instanceof HttpsError) throw error;
+    throw new HttpsError("internal", "Failed to update state.");
+  }
+});
+
+export const deleteState = onCall({enforceAppCheck: false, consumeAppCheck: "lenient"}, async (request) => {
+  const uid = request.auth?.uid;
+  if (!uid) throw new HttpsError("unauthenticated", "Authentication required.");
+  const userPermissions = await getUserPermissions(uid);
+  if (userPermissions.role !== "superAdmin") throw new HttpsError("permission-denied", "Super admin role required.");
+
+  const {stateId} = request.data as {stateId: string};
+  if (!stateId) throw new HttpsError("invalid-argument", "State ID required.");
+
+  try {
+    const stateRef = db.collection("states").doc(stateId);
+    if (!(await stateRef.get()).exists) throw new HttpsError("not-found", "State not found.");
+
+    const citiesSnapshot = await db.collection("cities").where("stateId", "==", stateId).limit(1).get();
+    if (!citiesSnapshot.empty) {
+      throw new HttpsError("failed-precondition", `Cannot delete state. It has associated cities.`);
+    }
+
+    await stateRef.delete();
+    return {success: true, id: stateId, message: "State deleted."};
+  } catch (error: any) {
+    logger.error(`Error deleting state ${stateId}:`, error);
+    if (error instanceof HttpsError) throw error;
+    throw new HttpsError("internal", "Failed to delete state.");
+  }
+});
+
+
+// -- Cities --
+export const createCity = onCall({enforceAppCheck: false, consumeAppCheck: "lenient"}, async (request) => {
+  const uid = request.auth?.uid;
+  if (!uid) throw new HttpsError("unauthenticated", "Authentication required.");
+  const userPermissions = await getUserPermissions(uid);
+  if (userPermissions.role !== "superAdmin") throw new HttpsError("permission-denied", "Super admin role required.");
+
+  const data = request.data as Omit<CityData, "id">;
+  if (!data.name || !data.stateId) throw new HttpsError("invalid-argument", "City Name and State ID are required.");
+
+  try {
+    const stateRef = db.collection("states").doc(data.stateId);
+    if (!(await stateRef.get()).exists) throw new HttpsError("not-found", "Associated state not found.");
+
+    const newCityRef = await db.collection("cities").add({
+      ...data,
+      createdAt: admin.firestore.Timestamp.now(),
+      createdBy: uid,
+    });
+    return {success: true, id: newCityRef.id, message: "City created."};
+  } catch (error: any) {
+    logger.error("Error creating city:", error);
+    if (error instanceof HttpsError) throw error;
+    throw new HttpsError("internal", "Failed to create city.");
+  }
+});
+
+export const updateCity = onCall({enforceAppCheck: false, consumeAppCheck: "lenient"}, async (request) => {
+  const uid = request.auth?.uid;
+  if (!uid) throw new HttpsError("unauthenticated", "Authentication required.");
+  const userPermissions = await getUserPermissions(uid);
+  if (userPermissions.role !== "superAdmin") throw new HttpsError("permission-denied", "Super admin role required.");
+
+  const {cityId, ...dataToUpdate} = request.data as {cityId: string} & Partial<Omit<CityData, "id">>;
+  if (!cityId) throw new HttpsError("invalid-argument", "City ID required.");
+  if (!dataToUpdate.name || !dataToUpdate.stateId) throw new HttpsError("invalid-argument", "Name and State ID are required.");
+
+  try {
+    const cityRef = db.collection("cities").doc(cityId);
+    if (!(await cityRef.get()).exists) throw new HttpsError("not-found", "City not found.");
+
+    const stateRef = db.collection("states").doc(dataToUpdate.stateId);
+    if (!(await stateRef.get()).exists) throw new HttpsError("not-found", "Associated state not found.");
+
+    await cityRef.update({...dataToUpdate, updatedAt: admin.firestore.Timestamp.now(), updatedBy: uid});
+    return {success: true, id: cityId, message: "City updated."};
+  } catch (error: any) {
+    logger.error(`Error updating city ${cityId}:`, error);
+    if (error instanceof HttpsError) throw error;
+    throw new HttpsError("internal", "Failed to update city.");
+  }
+});
+
+export const deleteCity = onCall({enforceAppCheck: false, consumeAppCheck: "lenient"}, async (request) => {
+  const uid = request.auth?.uid;
+  if (!uid) throw new HttpsError("unauthenticated", "Authentication required.");
+  const userPermissions = await getUserPermissions(uid);
+  if (userPermissions.role !== "superAdmin") throw new HttpsError("permission-denied", "Super admin role required.");
+
+  const {cityId} = request.data as {cityId: string};
+  if (!cityId) throw new HttpsError("invalid-argument", "City ID required.");
+
+  try {
+    const cityRef = db.collection("cities").doc(cityId);
+    if (!(await cityRef.get()).exists) throw new HttpsError("not-found", "City not found.");
+    // TODO: Check if city is used in any other entities (e.g. Party addresses)
+    await cityRef.delete();
+    return {success: true, id: cityId, message: "City deleted."};
+  } catch (error: any) {
+    logger.error(`Error deleting city ${cityId}:`, error);
+    if (error instanceof HttpsError) throw error;
+    throw new HttpsError("internal", "Failed to delete city.");
+  }
+});
+
+
+// -- Units --
+export const createUnit = onCall({enforceAppCheck: false, consumeAppCheck: "lenient"}, async (request) => {
+  const uid = request.auth?.uid;
+  if (!uid) throw new HttpsError("unauthenticated", "Authentication required.");
+  const userPermissions = await getUserPermissions(uid);
+  if (userPermissions.role !== "superAdmin") throw new HttpsError("permission-denied", "Super admin role required.");
+
+  const data = request.data as Omit<UnitData, "id">;
+  if (!data.name || !data.symbol || !data.type) throw new HttpsError("invalid-argument", "Unit Name, Symbol, and Type are required.");
+
+  try {
+    const newUnitRef = await db.collection("units").add({
+      ...data,
+      createdAt: admin.firestore.Timestamp.now(),
+      createdBy: uid,
+    });
+    return {success: true, id: newUnitRef.id, message: "Unit created."};
+  } catch (error: any) {
+    logger.error("Error creating unit:", error);
+    throw new HttpsError("internal", "Failed to create unit.");
+  }
+});
+
+export const updateUnit = onCall({enforceAppCheck: false, consumeAppCheck: "lenient"}, async (request) => {
+  const uid = request.auth?.uid;
+  if (!uid) throw new HttpsError("unauthenticated", "Authentication required.");
+  const userPermissions = await getUserPermissions(uid);
+  if (userPermissions.role !== "superAdmin") throw new HttpsError("permission-denied", "Super admin role required.");
+
+  const {unitId, ...dataToUpdate} = request.data as {unitId: string} & Partial<Omit<UnitData, "id">>;
+  if (!unitId) throw new HttpsError("invalid-argument", "Unit ID required.");
+  if (!dataToUpdate.name || !dataToUpdate.symbol || !dataToUpdate.type) throw new HttpsError("invalid-argument", "Name, Symbol, and Type are required.");
+
+  try {
+    const unitRef = db.collection("units").doc(unitId);
+    if (!(await unitRef.get()).exists) throw new HttpsError("not-found", "Unit not found.");
+    await unitRef.update({...dataToUpdate, updatedAt: admin.firestore.Timestamp.now(), updatedBy: uid});
+    return {success: true, id: unitId, message: "Unit updated."};
+  } catch (error: any) {
+    logger.error(`Error updating unit ${unitId}:`, error);
+    if (error instanceof HttpsError) throw error;
+    throw new HttpsError("internal", "Failed to update unit.");
+  }
+});
+
+export const deleteUnit = onCall({enforceAppCheck: false, consumeAppCheck: "lenient"}, async (request) => {
+  const uid = request.auth?.uid;
+  if (!uid) throw new HttpsError("unauthenticated", "Authentication required.");
+  const userPermissions = await getUserPermissions(uid);
+  if (userPermissions.role !== "superAdmin") throw new HttpsError("permission-denied", "Super admin role required.");
+
+  const {unitId} = request.data as {unitId: string};
+  if (!unitId) throw new HttpsError("invalid-argument", "Unit ID required.");
+
+  try {
+    const unitRef = db.collection("units").doc(unitId);
+    if (!(await unitRef.get()).exists) throw new HttpsError("not-found", "Unit not found.");
+    // TODO: Check if unit is used in any other entities
+    await unitRef.delete();
+    return {success: true, id: unitId, message: "Unit deleted."};
+  } catch (error: any) {
+    logger.error(`Error deleting unit ${unitId}:`, error);
+    if (error instanceof HttpsError) throw error;
+    throw new HttpsError("internal", "Failed to delete unit.");
   }
 });

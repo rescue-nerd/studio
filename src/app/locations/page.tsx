@@ -32,11 +32,12 @@ import {
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { db } from "@/lib/firebase";
-import { collection, getDocs, addDoc, doc, updateDoc, deleteDoc, Timestamp, query, orderBy } from "firebase/firestore";
+import { getFunctions, httpsCallable, type HttpsCallableResult } from "firebase/functions";
+import { collection, getDocs, query, orderBy } from "firebase/firestore";
 import type { Country as FirestoreCountry, State as FirestoreState, City as FirestoreCity, Unit as FirestoreUnit } from "@/types/firestore";
 import { useToast } from "@/hooks/use-toast";
-import { useAuth } from "@/contexts/auth-context"; // Import useAuth
-import { useRouter } from "next/navigation"; // Import useRouter
+import { useAuth } from "@/contexts/auth-context";
+import { useRouter } from "next/navigation";
 
 interface Country extends FirestoreCountry {}
 interface State extends FirestoreState {}
@@ -46,17 +47,36 @@ interface Unit extends FirestoreUnit {}
 
 const unitTypes: FirestoreUnit["type"][] = ["Weight", "Distance", "Volume", "Other"];
 
-const defaultCountryFormData: Omit<Country, 'id' | keyof AuditableFields> = { name: "", code: "" };
-const defaultStateFormData: Omit<State, 'id' | keyof AuditableFields> = { name: "", countryId: "" };
-const defaultCityFormData: Omit<City, 'id' | keyof AuditableFields> = { name: "", stateId: "" };
-const defaultUnitFormData: Omit<Unit, 'id' | keyof AuditableFields> = { name: "", symbol: "", type: "Other" };
+// Form data types exclude server-set fields
+type CountryFormData = Omit<FirestoreCountry, 'id' | 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy'>;
+type StateFormData = Omit<FirestoreState, 'id' | 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy'>;
+type CityFormData = Omit<FirestoreCity, 'id' | 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy'>;
+type UnitFormData = Omit<FirestoreUnit, 'id' | 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy'>;
 
-interface AuditableFields {
-  createdAt: Timestamp;
-  createdBy: string;
-  updatedAt?: Timestamp;
-  updatedBy?: string;
-}
+
+const defaultCountryFormData: CountryFormData = { name: "", code: "" };
+const defaultStateFormData: StateFormData = { name: "", countryId: "" };
+const defaultCityFormData: CityFormData = { name: "", stateId: "" };
+const defaultUnitFormData: UnitFormData = { name: "", symbol: "", type: "Other" };
+
+// Firebase Functions setup
+const functionsInstance = getFunctions(db.app);
+// Countries
+const createCountryFn = httpsCallable<CountryFormData, {success: boolean, id: string, message: string}>(functionsInstance, 'createCountry');
+const updateCountryFn = httpsCallable<{countryId: string} & Partial<CountryFormData>, {success: boolean, id: string, message: string}>(functionsInstance, 'updateCountry');
+const deleteCountryFn = httpsCallable<{countryId: string}, {success: boolean, id: string, message: string}>(functionsInstance, 'deleteCountry');
+// States
+const createStateFn = httpsCallable<StateFormData, {success: boolean, id: string, message: string}>(functionsInstance, 'createState');
+const updateStateFn = httpsCallable<{stateId: string} & Partial<StateFormData>, {success: boolean, id: string, message: string}>(functionsInstance, 'updateState');
+const deleteStateFn = httpsCallable<{stateId: string}, {success: boolean, id: string, message: string}>(functionsInstance, 'deleteState');
+// Cities
+const createCityFn = httpsCallable<CityFormData, {success: boolean, id: string, message: string}>(functionsInstance, 'createCity');
+const updateCityFn = httpsCallable<{cityId: string} & Partial<CityFormData>, {success: boolean, id: string, message: string}>(functionsInstance, 'updateCity');
+const deleteCityFn = httpsCallable<{cityId: string}, {success: boolean, id: string, message: string}>(functionsInstance, 'deleteCity');
+// Units
+const createUnitFn = httpsCallable<UnitFormData, {success: boolean, id: string, message: string}>(functionsInstance, 'createUnit');
+const updateUnitFn = httpsCallable<{unitId: string} & Partial<UnitFormData>, {success: boolean, id: string, message: string}>(functionsInstance, 'updateUnit');
+const deleteUnitFn = httpsCallable<{unitId: string}, {success: boolean, id: string, message: string}>(functionsInstance, 'deleteUnit');
 
 
 export default function LocationsPage() {
@@ -155,7 +175,7 @@ export default function LocationsPage() {
   const [searchTermCountries, setSearchTermCountries] = useState("");
   const [isCountryFormOpen, setIsCountryFormOpen] = useState(false);
   const [editingCountry, setEditingCountry] = useState<Country | null>(null);
-  const [countryFormData, setCountryFormData] = useState<Omit<Country, 'id' | keyof AuditableFields>>(defaultCountryFormData);
+  const [countryFormData, setCountryFormData] = useState<CountryFormData>(defaultCountryFormData);
   const [isCountryDeleteOpen, setIsCountryDeleteOpen] = useState(false);
   const [countryToDelete, setCountryToDelete] = useState<Country | null>(null);
 
@@ -163,7 +183,7 @@ export default function LocationsPage() {
   const [searchTermStates, setSearchTermStates] = useState("");
   const [isStateFormOpen, setIsStateFormOpen] = useState(false);
   const [editingState, setEditingState] = useState<State | null>(null);
-  const [stateFormData, setStateFormData] = useState<Omit<State, 'id' | keyof AuditableFields>>(defaultStateFormData);
+  const [stateFormData, setStateFormData] = useState<StateFormData>(defaultStateFormData);
   const [isStateDeleteOpen, setIsStateDeleteOpen] = useState(false);
   const [stateToDelete, setStateToDelete] = useState<State | null>(null);
 
@@ -171,7 +191,7 @@ export default function LocationsPage() {
   const [searchTermCities, setSearchTermCities] = useState("");
   const [isCityFormOpen, setIsCityFormOpen] = useState(false);
   const [editingCity, setEditingCity] = useState<City | null>(null);
-  const [cityFormData, setCityFormData] = useState<Omit<City, 'id' | keyof AuditableFields>>(defaultCityFormData);
+  const [cityFormData, setCityFormData] = useState<CityFormData>(defaultCityFormData);
   const [isCityDeleteOpen, setIsCityDeleteOpen] = useState(false);
   const [cityToDelete, setCityToDelete] = useState<City | null>(null);
 
@@ -179,7 +199,7 @@ export default function LocationsPage() {
   const [searchTermUnits, setSearchTermUnits] = useState("");
   const [isUnitFormOpen, setIsUnitFormOpen] = useState(false);
   const [editingUnit, setEditingUnit] = useState<Unit | null>(null);
-  const [unitFormData, setUnitFormData] = useState<Omit<Unit, 'id' | keyof AuditableFields>>(defaultUnitFormData);
+  const [unitFormData, setUnitFormData] = useState<UnitFormData>(defaultUnitFormData);
   const [isUnitDeleteOpen, setIsUnitDeleteOpen] = useState(false);
   const [unitToDelete, setUnitToDelete] = useState<Unit | null>(null);
 
@@ -195,21 +215,28 @@ export default function LocationsPage() {
   const handleCountrySubmit = async (e: FormEvent) => {
     e.preventDefault();
     if (!authUser) return;
+    if (!countryFormData.name || !countryFormData.code) {
+      toast({ title: "Validation Error", description: "Country Name and Code are required.", variant: "destructive" });
+      return;
+    }
     setIsSubmitting(true);
     try {
+      let result: HttpsCallableResult<{success: boolean; id: string; message: string}>;
       if (editingCountry) {
-        const countryDocRef = doc(db, "countries", editingCountry.id);
-        await updateDoc(countryDocRef, { ...countryFormData, updatedAt: Timestamp.now(), updatedBy: authUser.uid });
-        toast({ title: "Success", description: "Country updated successfully." });
+        result = await updateCountryFn({ countryId: editingCountry.id, ...countryFormData });
       } else {
-        await addDoc(collection(db, "countries"), { ...countryFormData, createdAt: Timestamp.now(), createdBy: authUser.uid });
-        toast({ title: "Success", description: "Country added successfully." });
+        result = await createCountryFn(countryFormData);
       }
-      fetchCountries();
-      setIsCountryFormOpen(false);
-    } catch (error) {
+      if (result.data.success) {
+        toast({ title: "Success", description: result.data.message });
+        fetchCountries();
+        setIsCountryFormOpen(false);
+      } else {
+        toast({ title: "Error", description: result.data.message, variant: "destructive" });
+      }
+    } catch (error: any) {
       console.error("Error saving country: ", error);
-      toast({ title: "Error", description: "Failed to save country.", variant: "destructive" });
+      toast({ title: "Error", description: error.message || "Failed to save country.", variant: "destructive" });
     } finally {
       setIsSubmitting(false);
     }
@@ -219,12 +246,16 @@ export default function LocationsPage() {
     if (countryToDelete) {
       setIsSubmitting(true);
       try {
-        await deleteDoc(doc(db, "countries", countryToDelete.id));
-        toast({ title: "Success", description: "Country deleted." });
-        fetchCountries();
-      } catch (error) {
+        const result = await deleteCountryFn({ countryId: countryToDelete.id });
+        if (result.data.success) {
+          toast({ title: "Success", description: result.data.message });
+          fetchCountries();
+        } else {
+          toast({ title: "Error", description: result.data.message, variant: "destructive" });
+        }
+      } catch (error: any) {
         console.error("Error deleting country:", error);
-        toast({ title: "Error", description: "Failed to delete country.", variant: "destructive" });
+        toast({ title: "Error", description: error.message || "Failed to delete country.", variant: "destructive" });
       } finally {
         setIsSubmitting(false);
         setIsCountryDeleteOpen(false); 
@@ -237,7 +268,7 @@ export default function LocationsPage() {
   // --- States Handlers ---
   const handleStateFormChange = (e: ChangeEvent<HTMLInputElement>) => setStateFormData(prev => ({ ...prev, [e.target.name]: e.target.value }));
   const handleStateCountryChange = (value: string) => setStateFormData(prev => ({ ...prev, countryId: value }));
-  const openAddStateForm = () => { setEditingState(null); setStateFormData(defaultStateFormData); setIsStateFormOpen(true); };
+  const openAddStateForm = () => { setEditingState(null); setStateFormData({...defaultStateFormData, countryId: countries[0]?.id || ""}); setIsStateFormOpen(true); };
   const openEditStateForm = (state: State) => { 
     const { id, createdAt, createdBy, updatedAt, updatedBy, ...editableData } = state;
     setEditingState(state); 
@@ -247,20 +278,28 @@ export default function LocationsPage() {
   const handleStateSubmit = async (e: FormEvent) => {
     e.preventDefault();
     if (!authUser) return;
+    if (!stateFormData.name || !stateFormData.countryId) {
+      toast({ title: "Validation Error", description: "State Name and Country are required.", variant: "destructive" });
+      return;
+    }
     setIsSubmitting(true);
     try {
+      let result: HttpsCallableResult<{success: boolean; id: string; message: string}>;
       if (editingState) {
-        await updateDoc(doc(db, "states", editingState.id), { ...stateFormData, updatedAt: Timestamp.now(), updatedBy: authUser.uid });
-        toast({ title: "Success", description: "State updated." });
+        result = await updateStateFn({ stateId: editingState.id, ...stateFormData });
       } else {
-        await addDoc(collection(db, "states"), { ...stateFormData, createdAt: Timestamp.now(), createdBy: authUser.uid });
-        toast({ title: "Success", description: "State added." });
+        result = await createStateFn(stateFormData);
       }
-      fetchStates();
-      setIsStateFormOpen(false);
-    } catch (error) {
+       if (result.data.success) {
+        toast({ title: "Success", description: result.data.message });
+        fetchStates();
+        setIsStateFormOpen(false);
+      } else {
+        toast({ title: "Error", description: result.data.message, variant: "destructive" });
+      }
+    } catch (error: any) {
       console.error("Error saving state: ", error);
-      toast({ title: "Error", description: "Failed to save state.", variant: "destructive" });
+      toast({ title: "Error", description: error.message || "Failed to save state.", variant: "destructive" });
     } finally {
       setIsSubmitting(false);
     }
@@ -270,12 +309,16 @@ export default function LocationsPage() {
     if (stateToDelete) {
       setIsSubmitting(true);
       try {
-        await deleteDoc(doc(db, "states", stateToDelete.id));
-        toast({ title: "Success", description: "State deleted." });
-        fetchStates();
-      } catch (error) {
+        const result = await deleteStateFn({ stateId: stateToDelete.id });
+        if (result.data.success) {
+          toast({ title: "Success", description: result.data.message });
+          fetchStates();
+        } else {
+          toast({ title: "Error", description: result.data.message, variant: "destructive" });
+        }
+      } catch (error: any) {
         console.error("Error deleting state:", error);
-        toast({ title: "Error", description: "Failed to save state.", variant: "destructive" });
+        toast({ title: "Error", description: error.message || "Failed to delete state.", variant: "destructive" });
       } finally {
         setIsSubmitting(false);
         setIsStateDeleteOpen(false); setStateToDelete(null);
@@ -289,7 +332,7 @@ export default function LocationsPage() {
   // --- Cities Handlers ---
   const handleCityFormChange = (e: ChangeEvent<HTMLInputElement>) => setCityFormData(prev => ({ ...prev, [e.target.name]: e.target.value }));
   const handleCityStateChange = (value: string) => setCityFormData(prev => ({ ...prev, stateId: value }));
-  const openAddCityForm = () => { setEditingCity(null); setCityFormData(defaultCityFormData); setIsCityFormOpen(true); };
+  const openAddCityForm = () => { setEditingCity(null); setCityFormData({...defaultCityFormData, stateId: states[0]?.id || ""}); setIsCityFormOpen(true); };
   const openEditCityForm = (city: City) => { 
     const { id, createdAt, createdBy, updatedAt, updatedBy, ...editableData } = city;
     setEditingCity(city); 
@@ -299,20 +342,28 @@ export default function LocationsPage() {
   const handleCitySubmit = async (e: FormEvent) => {
     e.preventDefault();
     if (!authUser) return;
+    if (!cityFormData.name || !cityFormData.stateId) {
+      toast({ title: "Validation Error", description: "City Name and State are required.", variant: "destructive" });
+      return;
+    }
     setIsSubmitting(true);
     try {
+      let result: HttpsCallableResult<{success: boolean; id: string; message: string}>;
       if (editingCity) {
-        await updateDoc(doc(db, "cities", editingCity.id), { ...cityFormData, updatedAt: Timestamp.now(), updatedBy: authUser.uid });
-        toast({ title: "Success", description: "City updated." });
+        result = await updateCityFn({ cityId: editingCity.id, ...cityFormData });
       } else {
-        await addDoc(collection(db, "cities"), { ...cityFormData, createdAt: Timestamp.now(), createdBy: authUser.uid });
-        toast({ title: "Success", description: "City added." });
+        result = await createCityFn(cityFormData);
       }
-      fetchCities();
-      setIsCityFormOpen(false);
-    } catch (error) {
+      if (result.data.success) {
+        toast({ title: "Success", description: result.data.message });
+        fetchCities();
+        setIsCityFormOpen(false);
+      } else {
+        toast({ title: "Error", description: result.data.message, variant: "destructive" });
+      }
+    } catch (error: any) {
       console.error("Error saving city: ", error);
-      toast({ title: "Error", description: "Failed to save city.", variant: "destructive" });
+      toast({ title: "Error", description: error.message || "Failed to save city.", variant: "destructive" });
     } finally {
       setIsSubmitting(false);
     }
@@ -322,12 +373,16 @@ export default function LocationsPage() {
      if (cityToDelete) {
       setIsSubmitting(true);
       try {
-        await deleteDoc(doc(db, "cities", cityToDelete.id));
-        toast({ title: "Success", description: "City deleted." });
-        fetchCities();
-      } catch (error) {
+        const result = await deleteCityFn({ cityId: cityToDelete.id });
+        if (result.data.success) {
+          toast({ title: "Success", description: result.data.message });
+          fetchCities();
+        } else {
+          toast({ title: "Error", description: result.data.message, variant: "destructive" });
+        }
+      } catch (error: any) {
         console.error("Error deleting city:", error);
-        toast({ title: "Error", description: "Failed to save city.", variant: "destructive" });
+        toast({ title: "Error", description: error.message || "Failed to delete city.", variant: "destructive" });
       } finally {
         setIsSubmitting(false);
         setIsCityDeleteOpen(false); setCityToDelete(null);
@@ -350,20 +405,28 @@ export default function LocationsPage() {
   const handleUnitSubmit = async (e: FormEvent) => {
     e.preventDefault();
     if (!authUser) return;
+    if (!unitFormData.name || !unitFormData.symbol || !unitFormData.type) {
+      toast({ title: "Validation Error", description: "Unit Name, Symbol, and Type are required.", variant: "destructive" });
+      return;
+    }
     setIsSubmitting(true);
     try {
+      let result: HttpsCallableResult<{success: boolean; id: string; message: string}>;
       if (editingUnit) {
-        await updateDoc(doc(db, "units", editingUnit.id), { ...unitFormData, updatedAt: Timestamp.now(), updatedBy: authUser.uid });
-        toast({ title: "Success", description: "Unit updated." });
+        result = await updateUnitFn({ unitId: editingUnit.id, ...unitFormData });
       } else {
-        await addDoc(collection(db, "units"), { ...unitFormData, createdAt: Timestamp.now(), createdBy: authUser.uid });
-        toast({ title: "Success", description: "Unit added." });
+        result = await createUnitFn(unitFormData);
       }
-      fetchUnits();
-      setIsUnitFormOpen(false);
-    } catch (error) {
+      if (result.data.success) {
+        toast({ title: "Success", description: result.data.message });
+        fetchUnits();
+        setIsUnitFormOpen(false);
+      } else {
+        toast({ title: "Error", description: result.data.message, variant: "destructive" });
+      }
+    } catch (error: any) {
       console.error("Error saving unit: ", error);
-      toast({ title: "Error", description: "Failed to save unit.", variant: "destructive" });
+      toast({ title: "Error", description: error.message || "Failed to save unit.", variant: "destructive" });
     } finally {
       setIsSubmitting(false);
     }
@@ -373,12 +436,16 @@ export default function LocationsPage() {
     if (unitToDelete) {
       setIsSubmitting(true);
       try {
-        await deleteDoc(doc(db, "units", unitToDelete.id));
-        toast({ title: "Success", description: "Unit deleted." });
-        fetchUnits();
-      } catch (error) {
+        const result = await deleteUnitFn({ unitId: unitToDelete.id });
+        if (result.data.success) {
+          toast({ title: "Success", description: result.data.message });
+          fetchUnits();
+        } else {
+          toast({ title: "Error", description: result.data.message, variant: "destructive" });
+        }
+      } catch (error: any) {
         console.error("Error deleting unit:", error);
-        toast({ title: "Error", description: "Failed to save unit.", variant: "destructive" });
+        toast({ title: "Error", description: error.message || "Failed to delete unit.", variant: "destructive" });
       } finally {
         setIsSubmitting(false);
         setIsUnitDeleteOpen(false); setUnitToDelete(null);
@@ -484,13 +551,13 @@ export default function LocationsPage() {
                       <TableCell>{country.code}</TableCell>
                       <TableCell>
                         <div className="flex gap-2">
-                          <Button variant="outline" size="icon" aria-label="Edit Country" onClick={() => openEditCountryForm(country)}><Edit className="h-4 w-4" /></Button>
+                          <Button variant="outline" size="icon" aria-label="Edit Country" onClick={() => openEditCountryForm(country)} disabled={isSubmitting}><Edit className="h-4 w-4" /></Button>
                           <AlertDialog open={isCountryDeleteOpen && countryToDelete?.id === country.id} onOpenChange={(open) => { if(!open) setCountryToDelete(null); setIsCountryDeleteOpen(open);}}>
                             <AlertDialogTrigger asChild>
-                              <Button variant="destructive" size="icon" aria-label="Delete Country" onClick={() => handleDeleteCountryClick(country)}><Trash2 className="h-4 w-4" /></Button>
+                              <Button variant="destructive" size="icon" aria-label="Delete Country" onClick={() => handleDeleteCountryClick(country)} disabled={isSubmitting}><Trash2 className="h-4 w-4" /></Button>
                             </AlertDialogTrigger>
                             <AlertDialogContent>
-                              <AlertDialogHeader><AlertDialogTitle>Delete Country?</AlertDialogTitle><AlertDialogDescription>This will delete "{countryToDelete?.name}". This action cannot be undone.</AlertDialogDescription></AlertDialogHeader>
+                              <AlertDialogHeader><AlertDialogTitle>Delete Country?</AlertDialogTitle><AlertDialogDescription>This will delete "{countryToDelete?.name}". This action cannot be undone. Ensure no states are linked to this country.</AlertDialogDescription></AlertDialogHeader>
                               <AlertDialogFooter>
                                 <AlertDialogCancel onClick={() => setIsCountryDeleteOpen(false)} disabled={isSubmitting}>Cancel</AlertDialogCancel>
                                 <AlertDialogAction onClick={confirmDeleteCountry} disabled={isSubmitting}>
@@ -518,7 +585,7 @@ export default function LocationsPage() {
                 <CardTitle className="font-headline text-lg">States</CardTitle>
                 <Dialog open={isStateFormOpen} onOpenChange={setIsStateFormOpen}>
                   <DialogTrigger asChild>
-                    <Button variant="outline" size="sm" onClick={openAddStateForm} disabled={countries.length === 0}>
+                    <Button variant="outline" size="sm" onClick={openAddStateForm} disabled={countries.length === 0 || isLoadingCountries}>
                       <PlusCircle className="mr-2 h-4 w-4" /> Add New State
                     </Button>
                   </DialogTrigger>
@@ -533,8 +600,8 @@ export default function LocationsPage() {
                       </div>
                       <div>
                         <Label htmlFor="stateCountry">Country</Label>
-                        <Select value={stateFormData.countryId} onValueChange={handleStateCountryChange} required disabled={countries.length === 0}>
-                          <SelectTrigger id="stateCountry"><SelectValue placeholder="Select country" /></SelectTrigger>
+                        <Select value={stateFormData.countryId} onValueChange={handleStateCountryChange} required disabled={countries.length === 0 || isLoadingCountries}>
+                          <SelectTrigger id="stateCountry"><SelectValue placeholder={isLoadingCountries ? "Loading countries..." : (countries.length === 0 ? "No countries" : "Select country")} /></SelectTrigger>
                           <SelectContent>
                             {countries.map(country => <SelectItem key={country.id} value={country.id}>{country.name}</SelectItem>)}
                           </SelectContent>
@@ -574,13 +641,13 @@ export default function LocationsPage() {
                       <TableCell>{getCountryName(state.countryId)}</TableCell>
                       <TableCell>
                         <div className="flex gap-2">
-                          <Button variant="outline" size="icon" aria-label="Edit State" onClick={() => openEditStateForm(state)}><Edit className="h-4 w-4" /></Button>
+                          <Button variant="outline" size="icon" aria-label="Edit State" onClick={() => openEditStateForm(state)} disabled={isSubmitting}><Edit className="h-4 w-4" /></Button>
                           <AlertDialog open={isStateDeleteOpen && stateToDelete?.id === state.id} onOpenChange={(open) => { if(!open) setStateToDelete(null); setIsStateDeleteOpen(open);}}>
                             <AlertDialogTrigger asChild>
-                              <Button variant="destructive" size="icon" aria-label="Delete State" onClick={() => handleDeleteStateClick(state)}><Trash2 className="h-4 w-4" /></Button>
+                              <Button variant="destructive" size="icon" aria-label="Delete State" onClick={() => handleDeleteStateClick(state)} disabled={isSubmitting}><Trash2 className="h-4 w-4" /></Button>
                             </AlertDialogTrigger>
                              <AlertDialogContent>
-                              <AlertDialogHeader><AlertDialogTitle>Delete State?</AlertDialogTitle><AlertDialogDescription>This will delete "{stateToDelete?.name}". This action cannot be undone.</AlertDialogDescription></AlertDialogHeader>
+                              <AlertDialogHeader><AlertDialogTitle>Delete State?</AlertDialogTitle><AlertDialogDescription>This will delete "{stateToDelete?.name}". This action cannot be undone. Ensure no cities are linked to this state.</AlertDialogDescription></AlertDialogHeader>
                               <AlertDialogFooter>
                                 <AlertDialogCancel onClick={() => setIsStateDeleteOpen(false)} disabled={isSubmitting}>Cancel</AlertDialogCancel>
                                 <AlertDialogAction onClick={confirmDeleteState} disabled={isSubmitting}>
@@ -608,7 +675,7 @@ export default function LocationsPage() {
                 <CardTitle className="font-headline text-lg">Cities</CardTitle>
                 <Dialog open={isCityFormOpen} onOpenChange={setIsCityFormOpen}>
                   <DialogTrigger asChild>
-                    <Button variant="outline" size="sm" onClick={openAddCityForm} disabled={states.length === 0}>
+                    <Button variant="outline" size="sm" onClick={openAddCityForm} disabled={states.length === 0 || isLoadingStates}>
                       <PlusCircle className="mr-2 h-4 w-4" /> Add New City
                     </Button>
                   </DialogTrigger>
@@ -623,8 +690,8 @@ export default function LocationsPage() {
                       </div>
                       <div>
                         <Label htmlFor="cityState">State</Label>
-                        <Select value={cityFormData.stateId} onValueChange={handleCityStateChange} required disabled={states.length === 0}>
-                           <SelectTrigger id="cityState"><SelectValue placeholder="Select state" /></SelectTrigger>
+                        <Select value={cityFormData.stateId} onValueChange={handleCityStateChange} required disabled={states.length === 0 || isLoadingStates}>
+                           <SelectTrigger id="cityState"><SelectValue placeholder={isLoadingStates ? "Loading states..." : (states.length === 0 ? "No states" : "Select state")} /></SelectTrigger>
                            <SelectContent>
                             {states.map(state => <SelectItem key={state.id} value={state.id}>{state.name} ({getCountryName(state.countryId)})</SelectItem>)}
                            </SelectContent>
@@ -664,10 +731,10 @@ export default function LocationsPage() {
                       <TableCell>{getStateName(city.stateId)} ({getCountryName(states.find(s => s.id === city.stateId)?.countryId || '')})</TableCell>
                       <TableCell>
                         <div className="flex gap-2">
-                          <Button variant="outline" size="icon" aria-label="Edit City" onClick={() => openEditCityForm(city)}><Edit className="h-4 w-4" /></Button>
+                          <Button variant="outline" size="icon" aria-label="Edit City" onClick={() => openEditCityForm(city)} disabled={isSubmitting}><Edit className="h-4 w-4" /></Button>
                           <AlertDialog open={isCityDeleteOpen && cityToDelete?.id === city.id} onOpenChange={(open) => { if(!open) setCityToDelete(null); setIsCityDeleteOpen(open);}}>
                             <AlertDialogTrigger asChild>
-                              <Button variant="destructive" size="icon" aria-label="Delete City" onClick={() => handleDeleteCityClick(city)}><Trash2 className="h-4 w-4" /></Button>
+                              <Button variant="destructive" size="icon" aria-label="Delete City" onClick={() => handleDeleteCityClick(city)} disabled={isSubmitting}><Trash2 className="h-4 w-4" /></Button>
                             </AlertDialogTrigger>
                             <AlertDialogContent>
                               <AlertDialogHeader><AlertDialogTitle>Delete City?</AlertDialogTitle><AlertDialogDescription>This will delete "{cityToDelete?.name}". This action cannot be undone.</AlertDialogDescription></AlertDialogHeader>
@@ -760,10 +827,10 @@ export default function LocationsPage() {
                       <TableCell>{unit.type}</TableCell>
                       <TableCell>
                         <div className="flex gap-2">
-                          <Button variant="outline" size="icon" aria-label="Edit Unit" onClick={() => openEditUnitForm(unit)}><Edit className="h-4 w-4" /></Button>
+                          <Button variant="outline" size="icon" aria-label="Edit Unit" onClick={() => openEditUnitForm(unit)} disabled={isSubmitting}><Edit className="h-4 w-4" /></Button>
                            <AlertDialog open={isUnitDeleteOpen && unitToDelete?.id === unit.id} onOpenChange={(open) => { if(!open) setUnitToDelete(null); setIsUnitDeleteOpen(open);}}>
                             <AlertDialogTrigger asChild>
-                              <Button variant="destructive" size="icon" aria-label="Delete Unit" onClick={() => handleDeleteUnitClick(unit)}><Trash2 className="h-4 w-4" /></Button>
+                              <Button variant="destructive" size="icon" aria-label="Delete Unit" onClick={() => handleDeleteUnitClick(unit)} disabled={isSubmitting}><Trash2 className="h-4 w-4" /></Button>
                             </AlertDialogTrigger>
                             <AlertDialogContent>
                               <AlertDialogHeader><AlertDialogTitle>Delete Unit?</AlertDialogTitle><AlertDialogDescription>This will delete "{unitToDelete?.name}". This action cannot be undone.</AlertDialogDescription></AlertDialogHeader>

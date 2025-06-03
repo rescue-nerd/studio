@@ -140,3 +140,40 @@ export interface BranchData {
     updatedBy?: string;
     updatedAt?: Timestamp;
 }
+
+// ---- Locations & Units Types for Functions ----
+export interface CountryData {
+  id?: string;
+  name: string;
+  code: string;
+  // Auditable fields can be added if needed by functions beyond what's set by default
+}
+
+export interface StateData {
+  id?: string;
+  name: string;
+  countryId: string;
+}
+
+export interface CityData {
+  id?: string;
+  name: string;
+  stateId: string;
+}
+
+export type UnitType = "Weight" | "Distance" | "Volume" | "Other";
+
+export interface UnitData {
+  id?: string;
+  name: string;
+  symbol: string;
+  type: UnitType;
+}
+
+// Auditable fields are set by the functions themselves
+// export interface Auditable {
+//   createdBy?: string;
+//   createdAt?: Timestamp;
+//   updatedBy?: string;
+//   updatedAt?: Timestamp;
+// }
