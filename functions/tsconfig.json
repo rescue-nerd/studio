@@ -1,0 +1,24 @@
+{
+  "compilerOptions": {
+    "module": "commonjs", // Changed to commonjs for Firebase Functions
+    "esModuleInterop": true,
+    "target": "es2020", // Updated to ES2020
+    "strict": true,
+    "noImplicitReturns": true,
+    "noUnusedLocals": true, // Enable to catch unused locals
+    "noUnusedParameters": true, // Enable to catch unused parameters
+    "outDir": "lib",
+    "sourceMap": true,
+    "skipLibCheck": true, // Often useful in Firebase Functions projects
+    "resolveJsonModule": true, // Allow importing JSON files
+    "moduleResolution": "node" // Standard for Node.js projects
+  },
+  "compileOnSave": true,
+  "include": [
+    "src/**/*.ts" // Ensure only .ts files in src are included for compilation
+  ],
+  "exclude": [
+    "node_modules",
+    "lib" // Exclude the output directory
+  ]
+}
