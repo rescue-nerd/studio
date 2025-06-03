@@ -559,7 +559,8 @@ export const updateGoodsReceipt = onCall({enforceAppCheck: false}, async (reques
     }
 
     // Process dataToUpdateClient without type conflicts
-    const {miti: _, ...otherFields} = dataToUpdateClient;
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const {miti: unused1, ...otherFields} = dataToUpdateClient;
     const dataToUpdateFirestore: Partial<GoodsReceiptData> = {
       ...otherFields,
       updatedAt: admin.firestore.Timestamp.now(),
