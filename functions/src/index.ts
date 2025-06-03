@@ -2,6 +2,7 @@
 import * as admin from "firebase-admin";
 import * as functions from "firebase-functions/v2/firestore"; // Using v2 Firestore triggers
 import {logger} from "firebase-functions"; // Using v2 logger
+import {onCall, HttpsError} from "firebase-functions/v2/https"; // For HTTPS Callable Functions v2
 
 import type {
   UserData,
@@ -11,7 +12,7 @@ import type {
   PartyData,
   LedgerEntryData,
   LedgerTransactionType,
-} from "./types"; // Assuming you'll create a types.ts in functions/src
+} from "./types";
 
 admin.initializeApp();
 const db = admin.firestore();
@@ -200,7 +201,6 @@ export const postBiltiLedgerEntries = functions.onDocumentCreated(
 
     if (!consignorSnap.exists || !consigneeSnap.exists) {
       logger.error(`Bilti ${biltiId}: Consignor or Consignee party document not found. Skipping ledger entries.`);
-      // Optionally mark as processed with error or leave for retry
       return;
     }
     const consignor = consignorSnap.data() as PartyData;
@@ -211,22 +211,16 @@ export const postBiltiLedgerEntries = functions.onDocumentCreated(
       nepaliMiti: biltiData.nepaliMiti || "",
       referenceNo: `BLT-${biltiId}`,
       sourceModule: "Bilti",
-      status: "Approved", // Bilti entries are auto-approved
+      status: "Approved",
       createdAt: admin.firestore.Timestamp.now(),
       createdBy: biltiData.createdBy || "system-bilti-processor",
       transactionType: "Bilti",
-      branchId: biltiData.branchId || "UNKNOWN_BRANCH", // Assuming Bilti might have a branchId
+      branchId: biltiData.branchId || "UNKNOWN_BRANCH",
     };
 
     const freightAmount = biltiData.totalAmount;
 
     if (biltiData.payMode === "Paid") {
-      // Consignor Paid: Debit Consignor, Credit Freight Income
-      // This means cash was received or is due from consignor immediately.
-      // For simplicity, we directly assume freight income recognition.
-      // A more complex system might involve unearned revenue if services not fully rendered.
-
-      // Debit Consignor (Party who paid)
       batch.set(db.collection("ledgerEntries").doc(), {
         ...ledgerEntryBase,
         accountId: consignor.assignedLedgerId,
@@ -234,7 +228,6 @@ export const postBiltiLedgerEntries = functions.onDocumentCreated(
         debit: freightAmount,
         credit: 0,
       });
-      // Credit Freight Income
       batch.set(db.collection("ledgerEntries").doc(), {
         ...ledgerEntryBase,
         accountId: PLACEHOLDER_FREIGHT_INCOME_ACCOUNT_ID,
@@ -243,10 +236,6 @@ export const postBiltiLedgerEntries = functions.onDocumentCreated(
         credit: freightAmount,
       });
     } else if (biltiData.payMode === "To Pay" || biltiData.payMode === "Due") {
-      // Consignee to Pay/Due: Debit Consignee, Credit Freight Income
-      // This means cash is expected from the consignee upon delivery.
-
-      // Debit Consignee (Party who will pay)
       batch.set(db.collection("ledgerEntries").doc(), {
         ...ledgerEntryBase,
         accountId: consignee.assignedLedgerId,
@@ -254,7 +243,6 @@ export const postBiltiLedgerEntries = functions.onDocumentCreated(
         debit: freightAmount,
         credit: 0,
       });
-      // Credit Freight Income
       batch.set(db.collection("ledgerEntries").doc(), {
         ...ledgerEntryBase,
         accountId: PLACEHOLDER_FREIGHT_INCOME_ACCOUNT_ID,
@@ -314,11 +302,6 @@ export const postGoodsDeliveryLedgerEntries = functions.onDocumentCreated(
       }
       const bilti = biltiSnap.data() as BiltiData;
 
-      // Rebates and discounts are typically credited to the party who was supposed to pay,
-      // which is usually the consignee if "To Pay" or "Due".
-      // If "Paid" by consignor, then credit consignor.
-      // For simplicity, let's assume the consignee's ledger is affected for now.
-      // A more robust system would check bilti.payMode and determine the debtor.
       const partyToCreditSnap = await db.collection("parties").doc(bilti.consigneeId).get();
       if (!partyToCreditSnap.exists) {
         logger.error(`GoodsDelivery ${deliveryId}: Consignee ${bilti.consigneeId} for Bilti ${item.biltiId} not found. Skipping ledger for this item.`);
@@ -334,11 +317,10 @@ export const postGoodsDeliveryLedgerEntries = functions.onDocumentCreated(
         status: "Approved",
         createdAt: admin.firestore.Timestamp.now(),
         createdBy: deliveryData.createdBy || "system-gd-processor",
-        branchId: bilti.branchId || "UNKNOWN_BRANCH", // Assuming Bilti might have a branchId or GoodsDelivery has one
+        branchId: bilti.branchId || "UNKNOWN_BRANCH",
       };
 
       if (item.rebateAmount > 0) {
-        // Debit Rebate Expense, Credit Party
         batch.set(db.collection("ledgerEntries").doc(), {
           ...ledgerEntryBase,
           accountId: PLACEHOLDER_REBATE_EXPENSE_ACCOUNT_ID,
@@ -358,7 +340,6 @@ export const postGoodsDeliveryLedgerEntries = functions.onDocumentCreated(
       }
 
       if (item.discountAmount > 0) {
-        // Debit Discount Expense, Credit Party
         batch.set(db.collection("ledgerEntries").doc(), {
           ...ledgerEntryBase,
           accountId: PLACEHOLDER_DISCOUNT_EXPENSE_ACCOUNT_ID,
@@ -389,119 +370,163 @@ export const postGoodsDeliveryLedgerEntries = functions.onDocumentCreated(
     }
   });
 
-// It's good practice to define types for function data to ensure consistency
-// Create a types.ts file in functions/src
-// e.g., functions/src/types.ts
-/*
-import type { Timestamp } from "firebase-admin/firestore";
-
-export interface UserData {
-  status?: "active" | "disabled";
-  role?: string;
-  email?: string;
-  displayName?: string;
+// Helper to get user role
+async function getUserRole(uid: string): Promise<string | null> {
+  if (!uid) return null;
+  try {
+    const userDoc = await db.collection("users").doc(uid).get();
+    if (userDoc.exists) {
+      return (userDoc.data() as UserData)?.role || null;
+    }
+    logger.warn(`User document for UID ${uid} not found.`);
+    return null;
+  } catch (error) {
+    logger.error(`Error fetching role for user ${uid}:`, error);
+    return null;
+  }
 }
 
-export interface DaybookTransaction {
-  id: string;
-  transactionType: string;
-  amount: number;
-  description: string;
-  ledgerAccountId?: string;
-  partyId?: string;
-  referenceId?: string;
-  nepaliMiti?: string;
-  createdAt: Timestamp;
-}
+// --- HTTPS Callable Functions for Daybook Workflow ---
 
-export interface DaybookData {
-  status?: "Draft" | "Pending Approval" | "Approved" | "Rejected";
-  nepaliMiti: string;
-  englishMiti: Timestamp;
-  branchId: string;
-  transactions: DaybookTransaction[];
-  openingBalance: number;
-  totalCashIn: number;
-  totalCashOut: number;
-  closingBalance: number;
-  processedByFunction?: boolean;
-  approvedBy?: string;
-  // Auditable fields
-  createdBy?: string;
-  createdAt?: Timestamp;
-  updatedBy?: string;
-  updatedAt?: Timestamp;
-}
+export const submitDaybook = onCall({enforceAppCheck: false, consumeAppCheck: "lenient"}, async (request) => {
+  const {daybookId} = request.data as {daybookId: string};
+  const uid = request.auth?.uid;
 
-export interface BiltiData {
-  id: string;
-  miti: Timestamp;
-  nepaliMiti?: string;
-  consignorId: string;
-  consigneeId: string;
-  totalAmount: number;
-  payMode: "Paid" | "To Pay" | "Due";
-  ledgerProcessed?: boolean;
-  createdBy?: string;
-  branchId?: string; // Assuming bilti can be associated with a branch
-}
+  if (!uid) {
+    logger.error("submitDaybook: Unauthenticated access attempt.");
+    throw new HttpsError("unauthenticated", "The function must be called while authenticated.");
+  }
+  if (!daybookId) {
+    logger.error("submitDaybook: Missing daybookId.");
+    throw new HttpsError("invalid-argument", "The function must be called with a 'daybookId'.");
+  }
 
-export interface DeliveredBiltiItemData {
-  biltiId: string;
-  rebateAmount: number;
-  rebateReason?: string;
-  discountAmount: number;
-  discountReason?: string;
-}
+  const daybookRef = db.collection("daybooks").doc(daybookId);
+  try {
+    const daybookDoc = await daybookRef.get();
+    if (!daybookDoc.exists) {
+      logger.error(`submitDaybook: Daybook ${daybookId} not found for user ${uid}.`);
+      throw new HttpsError("not-found", `Daybook with ID ${daybookId} not found.`);
+    }
+    const daybookData = daybookDoc.data() as DaybookData;
 
-export interface GoodsDeliveryData {
-  id: string;
-  miti: Timestamp;
-  nepaliMiti?: string;
-  deliveredBiltis: DeliveredBiltiItemData[];
-  ledgerProcessed?: boolean;
-  createdBy?: string;
-}
+    if (daybookData.status !== "Draft" && daybookData.status !== "Rejected") {
+      logger.warn(`submitDaybook: Attempt to submit daybook ${daybookId} with invalid status ${daybookData.status} by user ${uid}.`);
+      throw new HttpsError("failed-precondition", `Daybook cannot be submitted. Current status: ${daybookData.status}.`);
+    }
+    // TODO: Add more specific permission checks if needed (e.g., user created it, or is branch manager)
 
-export interface PartyData {
-  id: string;
-  name: string;
-  assignedLedgerId: string;
-}
+    await daybookRef.update({
+      status: "Pending Approval",
+      submittedAt: admin.firestore.Timestamp.now(),
+      submittedBy: uid,
+      updatedAt: admin.firestore.Timestamp.now(),
+      updatedBy: uid,
+    });
+    logger.info(`Daybook ${daybookId} submitted by ${uid}`);
+    return {success: true, message: "Daybook submitted successfully."};
+  } catch (error: any) {
+    logger.error(`Error submitting daybook ${daybookId} by user ${uid}:`, error);
+    if (error instanceof HttpsError) throw error;
+    throw new HttpsError("internal", error.message || "Failed to submit daybook.");
+  }
+});
 
-export type LedgerTransactionType =
-  | "Bilti"
-  | "Delivery"
-  | "Rebate"
-  | "Discount"
-  | "Manual Credit"
-  | "Manual Debit"
-  | "Opening Balance"
-  | "Payment"
-  | "Receipt"
-  | "Expense"
-  | "Fuel"
-  | "Maintenance"
-  | "DaybookCashIn"
-  | "DaybookCashOut"
-  | string;
+export const approveDaybook = onCall({enforceAppCheck: false, consumeAppCheck: "lenient"}, async (request) => {
+  const {daybookId} = request.data as {daybookId: string};
+  const uid = request.auth?.uid;
 
-export interface LedgerEntryData {
-  id: string;
-  accountId: string;
-  miti: Timestamp;
-  nepaliMiti?: string;
-  description: string;
-  debit: number;
-  credit: number;
-  referenceNo?: string;
-  transactionType: LedgerTransactionType;
-  status: "Pending" | "Approved" | "Rejected";
-  sourceModule?: string;
-  branchId?: string;
-  createdAt: Timestamp;
-  createdBy?: string;
-}
+  if (!uid) {
+    logger.error("approveDaybook: Unauthenticated access attempt.");
+    throw new HttpsError("unauthenticated", "The function must be called while authenticated.");
+  }
+  if (!daybookId) {
+    logger.error("approveDaybook: Missing daybookId.");
+    throw new HttpsError("invalid-argument", "The function must be called with a 'daybookId'.");
+  }
 
-*/
+  const userRole = await getUserRole(uid);
+  if (userRole !== "superAdmin") { // TODO: Add "manager" with branch checks
+    logger.warn(`approveDaybook: Permission denied for user ${uid} (Role: ${userRole}) to approve ${daybookId}.`);
+    throw new HttpsError("permission-denied", "You do not have permission to approve daybooks.");
+  }
 
+  const daybookRef = db.collection("daybooks").doc(daybookId);
+  try {
+    const daybookDoc = await daybookRef.get();
+    if (!daybookDoc.exists) {
+      logger.error(`approveDaybook: Daybook ${daybookId} not found for approval by ${uid}.`);
+      throw new HttpsError("not-found", `Daybook with ID ${daybookId} not found.`);
+    }
+    const daybookData = daybookDoc.data() as DaybookData;
+
+    if (daybookData.status !== "Pending Approval") {
+      logger.warn(`approveDaybook: Attempt to approve daybook ${daybookId} with invalid status ${daybookData.status} by user ${uid}.`);
+      throw new HttpsError("failed-precondition", `Daybook cannot be approved. Current status: ${daybookData.status}.`);
+    }
+
+    await daybookRef.update({
+      status: "Approved",
+      approvedAt: admin.firestore.Timestamp.now(),
+      approvedBy: uid,
+      updatedAt: admin.firestore.Timestamp.now(),
+      updatedBy: uid,
+    });
+    logger.info(`Daybook ${daybookId} approved by ${uid} (Role: ${userRole})`);
+    return {success: true, message: "Daybook approved successfully."};
+  } catch (error: any) {
+    logger.error(`Error approving daybook ${daybookId} by user ${uid}:`, error);
+    if (error instanceof HttpsError) throw error;
+    throw new HttpsError("internal", error.message || "Failed to approve daybook.");
+  }
+});
+
+export const rejectDaybook = onCall({enforceAppCheck: false, consumeAppCheck: "lenient"}, async (request) => {
+  const {daybookId, remarks} = request.data as {daybookId: string, remarks?: string};
+  const uid = request.auth?.uid;
+
+  if (!uid) {
+    logger.error("rejectDaybook: Unauthenticated access attempt.");
+    throw new HttpsError("unauthenticated", "The function must be called while authenticated.");
+  }
+  if (!daybookId) {
+    logger.error("rejectDaybook: Missing daybookId.");
+    throw new HttpsError("invalid-argument", "The function must be called with a 'daybookId'.");
+  }
+
+  const userRole = await getUserRole(uid);
+  if (userRole !== "superAdmin") { // TODO: Add "manager" with branch checks
+    logger.warn(`rejectDaybook: Permission denied for user ${uid} (Role: ${userRole}) to reject ${daybookId}.`);
+    throw new HttpsError("permission-denied", "You do not have permission to reject daybooks.");
+  }
+
+  const daybookRef = db.collection("daybooks").doc(daybookId);
+  try {
+    const daybookDoc = await daybookRef.get();
+    if (!daybookDoc.exists) {
+      logger.error(`rejectDaybook: Daybook ${daybookId} not found for rejection by ${uid}.`);
+      throw new HttpsError("not-found", `Daybook with ID ${daybookId} not found.`);
+    }
+    const daybookData = daybookDoc.data() as DaybookData;
+
+    if (daybookData.status !== "Pending Approval") {
+      logger.warn(`rejectDaybook: Attempt to reject daybook ${daybookId} with invalid status ${daybookData.status} by user ${uid}.`);
+      throw new HttpsError("failed-precondition", `Daybook cannot be rejected. Current status: ${daybookData.status}.`);
+    }
+
+    await daybookRef.update({
+      status: "Rejected",
+      approvedAt: admin.firestore.Timestamp.now(), // Using approvedAt for rejection timestamp too
+      approvedBy: uid, // User who rejected
+      approvalRemarks: remarks || "Rejected without specific remarks.",
+      updatedAt: admin.firestore.Timestamp.now(),
+      updatedBy: uid,
+    });
+    logger.info(`Daybook ${daybookId} rejected by ${uid} (Role: ${userRole}) with remarks: "${remarks || "N/A"}"`);
+    return {success: true, message: "Daybook rejected successfully."};
+  } catch (error: any) {
+    logger.error(`Error rejecting daybook ${daybookId} by user ${uid}:`, error);
+    if (error instanceof HttpsError) throw error;
+    throw new HttpsError("internal", error.message || "Failed to reject daybook.");
+  }
+});

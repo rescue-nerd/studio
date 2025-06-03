@@ -41,6 +41,7 @@ import { format, parse, isValid, addDays, subDays } from "date-fns";
 import { enUS } from "date-fns/locale";
 
 import { db } from "@/lib/firebase";
+import { getFunctions, httpsCallable, type HttpsCallableResult } from "firebase/functions";
 import {
   collection,
   query,
@@ -66,8 +67,8 @@ import type {
 } from "@/types/firestore";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
-import { useAuth } from "@/contexts/auth-context"; // Import useAuth
-import { useRouter } from "next/navigation"; // Import useRouter
+import { useAuth } from "@/contexts/auth-context";
+import { useRouter } from "next/navigation";
 
 
 interface Daybook extends Omit<FirestoreDaybook, 'englishMiti' | 'createdAt' | 'updatedAt' | 'submittedAt' | 'approvedAt' | 'transactions' | 'processingTimestamp' | 'createdBy'> {
@@ -121,6 +122,14 @@ const transactionTypes: DaybookTransactionType[] = [
   "Cash Out (to Driver/Staff, Petty Expense)",
   "Adjustment/Correction",
 ];
+
+// Initialize Firebase Functions
+const functionsInstance = getFunctions(db.app);
+
+// Create callable function references
+const submitDaybookFn = httpsCallable<{daybookId: string}, {success: boolean, message: string}>(functionsInstance, 'submitDaybook');
+const approveDaybookFn = httpsCallable<{daybookId: string}, {success: boolean, message: string}>(functionsInstance, 'approveDaybook');
+const rejectDaybookFn = httpsCallable<{daybookId: string, remarks: string}, {success: boolean, message: string}>(functionsInstance, 'rejectDaybook');
 
 
 export default function DaybookPage() {
@@ -180,15 +189,26 @@ export default function DaybookPage() {
   }, [authUser, authLoading, router]);
 
   useEffect(() => {
-    if (authUser?.uid) {
-        // Simulate super admin role for testing. Replace with actual role check from user profile.
-        // Example: if (authUser.claims.role === 'superAdmin') setIsSuperAdmin(true);
-        // For now, using a placeholder logic or assuming a specific UID for testing
-        const superAdminTestUID = "SUPER_ADMIN_UID_PLACEHOLDER"; // Replace with a test UID if needed
-        if (authUser.uid === superAdminTestUID || authUser.email?.includes('superadmin@')) {
-            setIsSuperAdmin(true);
+    const checkUserRole = async () => {
+        if (authUser?.uid) {
+            try {
+                const userDocRef = doc(db, "users", authUser.uid);
+                const userDocSnap = await getDoc(userDocRef);
+                if (userDocSnap.exists()) {
+                    const userData = userDocSnap.data() as FirestoreUser;
+                    setIsSuperAdmin(userData.role === 'superAdmin');
+                } else {
+                    setIsSuperAdmin(false);
+                }
+            } catch (error) {
+                console.error("Error fetching user role:", error);
+                setIsSuperAdmin(false);
+            }
+        } else {
+            setIsSuperAdmin(false);
         }
-    }
+    };
+    checkUserRole();
   }, [authUser]);
 
 
@@ -578,19 +598,18 @@ export default function DaybookPage() {
     }
     setIsSubmittingDaybook(true);
     try {
-        const daybookDocRef = doc(db, "daybooks", activeDaybookFromState.id);
-        await updateDoc(daybookDocRef, {
-            status: "Pending Approval",
-            submittedAt: Timestamp.now(),
-            submittedBy: authUser.uid, 
-        });
-        const updatedDaybook = { ...activeDaybookFromState, status: "Pending Approval" as const, submittedAt: new Date(), submittedBy: authUser.uid };
-        setActiveDaybook(updatedDaybook);
-        setActiveDaybookFromState(updatedDaybook);
-        toast({ title: "Daybook Submitted", description: "Daybook has been submitted for approval."});
-    } catch (error) {
-        console.error("Error submitting daybook:", error);
-        toast({ title: "Error", description: "Failed to submit daybook.", variant: "destructive"});
+        const result = await submitDaybookFn({ daybookId: activeDaybookFromState.id });
+        if (result.data.success) {
+            const updatedDaybookState = { ...activeDaybookFromState, status: "Pending Approval" as const, submittedAt: new Date(), submittedBy: authUser.uid };
+            setActiveDaybook(updatedDaybookState);
+            setActiveDaybookFromState(updatedDaybookState);
+            toast({ title: "Daybook Submitted", description: result.data.message });
+        } else {
+             toast({ title: "Submission Failed", description: result.data.message || "An unknown error occurred.", variant: "destructive"});
+        }
+    } catch (error: any) {
+        console.error("Error submitting daybook via function:", error);
+        toast({ title: "Error Submitting Daybook", description: error.message || "Failed to submit daybook.", variant: "destructive"});
     } finally {
         setIsSubmittingDaybook(false);
     }
@@ -600,29 +619,23 @@ export default function DaybookPage() {
     if (!activeDaybookFromState || !authUser) return;
     setIsApprovingDaybook(true);
     try {
-      const daybookDocRef = doc(db, "daybooks", activeDaybookFromState.id);
-      await updateDoc(daybookDocRef, {
-        status: "Approved",
-        approvedAt: Timestamp.now(), 
-        approvedBy: authUser.uid, 
-      });
-
-      const updatedDaybook = {
-        ...activeDaybookFromState,
-        status: "Approved" as const,
-        approvedAt: new Date(),
-        approvedBy: authUser.uid
-      };
-      setActiveDaybook(updatedDaybook);
-      setActiveDaybookFromState(updatedDaybook);
-
-      toast({
-        title: "Daybook Approved",
-        description: "Approval submitted. Backend function will process linked records and ledger entries.",
-      });
-    } catch (error) {
-      console.error("Error approving daybook:", error);
-      toast({ title: "Error", description: "Failed to submit daybook approval.", variant: "destructive" });
+        const result = await approveDaybookFn({ daybookId: activeDaybookFromState.id });
+        if (result.data.success) {
+            const updatedDaybookState = {
+                ...activeDaybookFromState,
+                status: "Approved" as const,
+                approvedAt: new Date(),
+                approvedBy: authUser.uid
+            };
+            setActiveDaybook(updatedDaybookState);
+            setActiveDaybookFromState(updatedDaybookState);
+            toast({ title: "Daybook Approved", description: result.data.message });
+        } else {
+            toast({ title: "Approval Failed", description: result.data.message || "An unknown error occurred.", variant: "destructive"});
+        }
+    } catch (error: any) {
+      console.error("Error approving daybook via function:", error);
+      toast({ title: "Error Approving Daybook", description: error.message || "Failed to approve daybook.", variant: "destructive" });
     } finally {
       setIsApprovingDaybook(false);
     }
@@ -631,22 +644,28 @@ export default function DaybookPage() {
   const handleRejectDaybook = async () => {
     if (!activeDaybookFromState || !authUser) return;
     const remarks = prompt("Enter rejection remarks (optional):");
+    if (remarks === null) return; // User cancelled prompt
+
     setIsApprovingDaybook(true); 
     try {
-        const daybookDocRef = doc(db, "daybooks", activeDaybookFromState.id);
-        await updateDoc(daybookDocRef, {
-            status: "Rejected",
-            approvedAt: Timestamp.now(), 
-            approvedBy: authUser.uid,
-            approvalRemarks: remarks || "Rejected without specific remarks.",
-        });
-         const updatedDaybook = { ...activeDaybookFromState, status: "Rejected" as const, approvedAt: new Date(), approvedBy: authUser.uid, approvalRemarks: remarks || "Rejected" };
-        setActiveDaybook(updatedDaybook);
-        setActiveDaybookFromState(updatedDaybook);
-        toast({ title: "Daybook Rejected", description: remarks ? `Reason: ${remarks}` : "Daybook has been rejected."});
-    } catch (error) {
-        console.error("Error rejecting daybook:", error);
-        toast({ title: "Error", description: "Failed to reject daybook.", variant: "destructive"});
+        const result = await rejectDaybookFn({ daybookId: activeDaybookFromState.id, remarks: remarks || "" });
+        if (result.data.success) {
+            const updatedDaybookState = {
+                ...activeDaybookFromState,
+                status: "Rejected" as const,
+                approvedAt: new Date(), // rejection timestamp
+                approvedBy: authUser.uid,
+                approvalRemarks: remarks || "Rejected"
+            };
+            setActiveDaybook(updatedDaybookState);
+            setActiveDaybookFromState(updatedDaybookState);
+            toast({ title: "Daybook Rejected", description: result.data.message });
+        } else {
+            toast({ title: "Rejection Failed", description: result.data.message || "An unknown error occurred.", variant: "destructive"});
+        }
+    } catch (error: any) {
+        console.error("Error rejecting daybook via function:", error);
+        toast({ title: "Error Rejecting Daybook", description: error.message || "Failed to reject daybook.", variant: "destructive"});
     } finally {
         setIsApprovingDaybook(false);
     }
@@ -1080,3 +1099,4 @@ export default function DaybookPage() {
     </div>
   );
 }
+
