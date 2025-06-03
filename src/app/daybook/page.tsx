@@ -1,5 +1,4 @@
 
-
 "use client";
 
 import { useState, useEffect, useMemo, type ChangeEvent, type FormEvent } from "react";
@@ -104,12 +103,14 @@ interface LedgerAccount extends Omit<FirestoreLedgerAccount, 'createdAt' | 'upda
 }
 
 
-const PLACEHOLDER_USER_ID = "system_user_placeholder";
-const SIMULATED_SUPER_ADMIN_ID = "super_admin_placeholder";
+const PLACEHOLDER_USER_ID = "system_user_placeholder"; // Replace with actual authenticated user ID
+const SIMULATED_SUPER_ADMIN_ID = "super_admin_placeholder"; // Replace with actual super admin check logic
 
 const getTodayNepaliMiti = () => {
+  // This is a placeholder. In a real app, use a reliable Nepali date conversion library.
+  // For demo, this will just use the Gregorian date formatted.
   const today = new Date();
-  return format(today, "yyyy-MM-dd", { locale: enUS }); // Using enUS for consistency, actual BS conversion needs a library
+  return format(today, "yyyy-MM-dd", { locale: enUS });
 };
 
 const transactionTypes: DaybookTransactionType[] = [
@@ -596,55 +597,36 @@ export default function DaybookPage() {
   const handleApproveDaybook = async () => {
     if (!activeDaybookFromState) return;
     setIsApprovingDaybook(true);
-    const batch = writeBatch(db);
     try {
-        const daybookDocRef = doc(db, "daybooks", activeDaybookFromState.id);
-        batch.update(daybookDocRef, {
-            status: "Approved",
-            approvedAt: Timestamp.now(),
-            approvedBy: SIMULATED_SUPER_ADMIN_ID, // Replace with actual admin user
-        });
+      const daybookDocRef = doc(db, "daybooks", activeDaybookFromState.id);
+      // The client only updates the status and who approved it.
+      // The Cloud Function `onDaybookApproval` will handle linked Bilti updates and LedgerEntry creation.
+      await updateDoc(daybookDocRef, {
+        status: "Approved",
+        approvedAt: Timestamp.now(), // Client can set its perceived approval time
+        approvedBy: SIMULATED_SUPER_ADMIN_ID, // Replace with actual admin user ID
+      });
 
-        // Client-side updates for linked Biltis (production should use Cloud Functions for atomicity)
-        activeDaybookFromState.transactions.forEach(tx => {
-            if (tx.transactionType === "Cash In (from Delivery/Receipt)" && tx.referenceId) {
-                const biltiDocRef = doc(db, "biltis", tx.referenceId);
-                batch.update(biltiDocRef, {
-                    status: "Paid", // Mark Bilti as "Paid"
-                    cashCollectionStatus: "Collected", // Update cash collection status
-                    daybookCashInRef: tx.id // Store reference to this daybook transaction
-                });
-            } else if (tx.transactionType === "Delivery Expense (Cash Out)" && tx.referenceId) {
-                const bilti = allBiltisMaster.find(b => b.id === tx.referenceId);
-                if (bilti) {
-                    const biltiDocRef = doc(db, "biltis", tx.referenceId);
-                    const newExpense = {
-                        daybookTransactionId: tx.id, // Link back to daybook transaction
-                        amount: tx.amount,
-                        description: tx.description,
-                        miti: Timestamp.fromDate(activeDaybookFromState.englishMiti) // Or tx.createdAt.toDate()
-                    };
-                    const updatedExpenses = [...(bilti.deliveryExpenses || []), newExpense];
-                    batch.update(biltiDocRef, { deliveryExpenses: updatedExpenses });
-                }
-            }
-            // TODO: Add logic here to post entries to ledgerAccounts for *all* transaction types
-            // This part is complex and ideally server-side. For now, it's a placeholder comment.
-            // e.g., create new documents in 'ledgerEntries' collection.
-        });
-        await batch.commit();
+      // UI will update based on the Firestore listener or by re-fetching.
+      // For immediate UI feedback (optimistic update):
+      const updatedDaybook = {
+        ...activeDaybookFromState,
+        status: "Approved" as const,
+        approvedAt: new Date(),
+        approvedBy: SIMULATED_SUPER_ADMIN_ID
+      };
+      setActiveDaybook(updatedDaybook);
+      setActiveDaybookFromState(updatedDaybook);
 
-        const updatedDaybook = { ...activeDaybookFromState, status: "Approved" as const, approvedAt: new Date(), approvedBy: SIMULATED_SUPER_ADMIN_ID };
-        setActiveDaybook(updatedDaybook);
-        setActiveDaybookFromState(updatedDaybook);
-        // Refresh master data if bilti statuses changed affect selections
-        fetchMasterData();
-        toast({ title: "Daybook Approved", description: "Daybook has been approved and linked records updated (simulated). Ledger posting not yet implemented."});
+      toast({
+        title: "Daybook Approved",
+        description: "Approval submitted. Backend function will process linked records and ledger entries.",
+      });
     } catch (error) {
-        console.error("Error approving daybook:", error);
-        toast({ title: "Error", description: "Failed to approve daybook.", variant: "destructive"});
+      console.error("Error approving daybook:", error);
+      toast({ title: "Error", description: "Failed to submit daybook approval.", variant: "destructive" });
     } finally {
-        setIsApprovingDaybook(false);
+      setIsApprovingDaybook(false);
     }
   };
 
