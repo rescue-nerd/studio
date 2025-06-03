@@ -5,10 +5,13 @@ import type { Timestamp } from "firebase-admin/firestore"; // Use admin SDK Time
 // Ensure consistency or share types if possible in a monorepo setup.
 
 export interface UserData {
+  id?: string; // Firestore document ID
+  uid?: string; // Firebase Auth UID
   status?: "active" | "disabled";
   role?: string;
   email?: string;
   displayName?: string;
+  assignedBranchIds?: string[];
   // Add other fields from your main User type if needed by functions
 }
 
@@ -25,6 +28,7 @@ export interface DaybookTransaction {
 }
 
 export interface DaybookData {
+  id?: string; // Firestore document ID
   status?: "Draft" | "Pending Approval" | "Approved" | "Rejected";
   nepaliMiti: string;
   englishMiti: Timestamp; // Firestore Timestamp
@@ -41,10 +45,13 @@ export interface DaybookData {
   createdAt?: Timestamp;
   updatedBy?: string;
   updatedAt?: Timestamp;
+  submittedBy?: string;
+  submittedAt?: Timestamp;
+  approvalRemarks?: string;
 }
 
 export interface BiltiData {
-  // id: string; // Document ID is implicit
+  id?: string; // Document ID is implicit
   miti: Timestamp; // Firestore Timestamp
   nepaliMiti?: string;
   consignorId: string;
@@ -67,7 +74,7 @@ export interface DeliveredBiltiItemData {
 }
 
 export interface GoodsDeliveryData {
-  // id: string; // Document ID is implicit
+  id?: string; // Document ID is implicit
   miti: Timestamp; // Firestore Timestamp
   nepaliMiti?: string;
   deliveredBiltis: DeliveredBiltiItemData[];
@@ -77,7 +84,7 @@ export interface GoodsDeliveryData {
 }
 
 export interface PartyData {
-  // id: string; // Document ID is implicit
+  id?: string; // Document ID is implicit
   name: string;
   assignedLedgerId: string; // Crucial for ledger posting
   // Add other fields from your main Party type if needed
@@ -101,7 +108,7 @@ export type LedgerTransactionType =
   | string;
 
 export interface LedgerEntryData {
-  // id: string; // Document ID is implicit
+  id?: string; // Document ID is implicit
   accountId: string;
   miti: Timestamp; // Firestore Timestamp
   nepaliMiti?: string;
@@ -116,4 +123,20 @@ export interface LedgerEntryData {
   createdAt: Timestamp; // Firestore Timestamp
   createdBy?: string;
   // Add other fields from your main LedgerEntry type if needed
+}
+
+export interface BranchData {
+    id?: string; // Document ID, optional for creation
+    name: string;
+    location: string;
+    managerName?: string | null;
+    managerUserId?: string;
+    contactEmail?: string;
+    contactPhone?: string;
+    status?: "Active" | "Inactive";
+    // Auditable fields, optional for client input, set by server
+    createdBy?: string;
+    createdAt?: Timestamp;
+    updatedBy?: string;
+    updatedAt?: Timestamp;
 }

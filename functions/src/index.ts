@@ -12,6 +12,7 @@ import type {
   PartyData,
   LedgerEntryData,
   LedgerTransactionType,
+  BranchData, // Added BranchData
 } from "./types";
 
 admin.initializeApp();
@@ -547,5 +548,115 @@ export const rejectDaybook = onCall({enforceAppCheck: false, consumeAppCheck: "l
     logger.error(`Error rejecting daybook ${daybookId} by user ${uid}:`, error);
     if (error instanceof HttpsError) throw error;
     throw new HttpsError("internal", error.message || "Failed to reject daybook.");
+  }
+});
+
+// --- Branch Management CRUD Functions ---
+export const createBranch = onCall({enforceAppCheck: false, consumeAppCheck: "lenient"}, async (request) => {
+  const uid = request.auth?.uid;
+  if (!uid) {
+    throw new HttpsError("unauthenticated", "The function must be called while authenticated.");
+  }
+
+  const userPermissions = await getUserPermissions(uid);
+  if (userPermissions.role !== "superAdmin") {
+    throw new HttpsError("permission-denied", "You do not have permission to create branches.");
+  }
+
+  const data = request.data as Omit<BranchData, "id" | "createdAt" | "createdBy" | "updatedAt" | "updatedBy">;
+
+  if (!data.name || !data.location) {
+    throw new HttpsError("invalid-argument", "Branch Name and Location are required.");
+  }
+
+  try {
+    const newBranchRef = await db.collection("branches").add({
+      ...data,
+      createdAt: admin.firestore.Timestamp.now(),
+      createdBy: uid,
+    });
+    logger.info(`Branch ${newBranchRef.id} created by ${uid}`);
+    return {success: true, id: newBranchRef.id, message: "Branch created successfully."};
+  } catch (error: any) {
+    logger.error("Error creating branch:", error);
+    throw new HttpsError("internal", error.message || "Failed to create branch.");
+  }
+});
+
+export const updateBranch = onCall({enforceAppCheck: false, consumeAppCheck: "lenient"}, async (request) => {
+  const uid = request.auth?.uid;
+  if (!uid) {
+    throw new HttpsError("unauthenticated", "The function must be called while authenticated.");
+  }
+
+  const userPermissions = await getUserPermissions(uid);
+  if (userPermissions.role !== "superAdmin") {
+    throw new HttpsError("permission-denied", "You do not have permission to update branches.");
+  }
+
+  const {branchId, ...dataToUpdate} = request.data as {branchId: string} & Partial<Omit<BranchData, "id" | "createdAt" | "createdBy" | "updatedAt" | "updatedBy">>;
+
+  if (!branchId) {
+    throw new HttpsError("invalid-argument", "Branch ID is required for updates.");
+  }
+  if (!dataToUpdate.name || !dataToUpdate.location) {
+    throw new HttpsError("invalid-argument", "Branch Name and Location are required.");
+  }
+
+  try {
+    const branchRef = db.collection("branches").doc(branchId);
+    const branchDoc = await branchRef.get();
+    if (!branchDoc.exists) {
+      throw new HttpsError("not-found", `Branch with ID ${branchId} not found.`);
+    }
+
+    await branchRef.update({
+      ...dataToUpdate,
+      updatedAt: admin.firestore.Timestamp.now(),
+      updatedBy: uid,
+    });
+    logger.info(`Branch ${branchId} updated by ${uid}`);
+    return {success: true, id: branchId, message: "Branch updated successfully."};
+  } catch (error: any) {
+    logger.error(`Error updating branch ${branchId}:`, error);
+    if (error instanceof HttpsError) throw error;
+    throw new HttpsError("internal", error.message || "Failed to update branch.");
+  }
+});
+
+export const deleteBranch = onCall({enforceAppCheck: false, consumeAppCheck: "lenient"}, async (request) => {
+  const uid = request.auth?.uid;
+  if (!uid) {
+    throw new HttpsError("unauthenticated", "The function must be called while authenticated.");
+  }
+
+  const userPermissions = await getUserPermissions(uid);
+  if (userPermissions.role !== "superAdmin") {
+    throw new HttpsError("permission-denied", "You do not have permission to delete branches.");
+  }
+
+  const {branchId} = request.data as {branchId: string};
+  if (!branchId) {
+    throw new HttpsError("invalid-argument", "Branch ID is required for deletion.");
+  }
+
+  try {
+    const branchRef = db.collection("branches").doc(branchId);
+    const branchDoc = await branchRef.get();
+    if (!branchDoc.exists) {
+      throw new HttpsError("not-found", `Branch with ID ${branchId} not found.`);
+    }
+    // Add dependency checks here if needed before deletion
+    // For example, check if any users, daybooks, biltis, etc., are linked to this branch.
+    // If dependencies exist, you might want to prevent deletion or handle it accordingly.
+    // For now, direct deletion is implemented.
+
+    await branchRef.delete();
+    logger.info(`Branch ${branchId} deleted by ${uid}`);
+    return {success: true, id: branchId, message: "Branch deleted successfully."};
+  } catch (error: any) {
+    logger.error(`Error deleting branch ${branchId}:`, error);
+    if (error instanceof HttpsError) throw error;
+    throw new HttpsError("internal", error.message || "Failed to delete branch.");
   }
 });

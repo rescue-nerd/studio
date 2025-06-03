@@ -32,21 +32,18 @@ import {
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { db } from "@/lib/firebase"; 
+import { getFunctions, httpsCallable, type HttpsCallableResult } from "firebase/functions";
 import { 
   collection, 
   getDocs, 
-  addDoc, 
-  doc, 
-  updateDoc, 
-  deleteDoc, 
-  Timestamp,
+  Timestamp, // Timestamp can still be used for client-side display if needed
   query,
   orderBy
 } from "firebase/firestore";
 import type { Branch as FirestoreBranch } from "@/types/firestore"; 
 import { useToast } from "@/hooks/use-toast";
-import { useAuth } from "@/contexts/auth-context"; // Import useAuth
-import { useRouter } from "next/navigation"; // Import useRouter
+import { useAuth } from "@/contexts/auth-context";
+import { useRouter } from "next/navigation";
 
 interface Branch extends Omit<FirestoreBranch, 'createdAt' | 'updatedAt' | 'createdBy' | 'updatedBy'> {
   id: string; 
@@ -56,12 +53,22 @@ interface Branch extends Omit<FirestoreBranch, 'createdAt' | 'updatedAt' | 'crea
   updatedBy?: string;
 }
 
+// Type for data passed to createBranch/updateBranch Cloud Functions
+type BranchCallableData = Omit<FirestoreBranch, 'id' | 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy'>;
+type UpdateBranchCallableData = Partial<BranchCallableData> & { branchId: string };
+
+
 const defaultBranchFormData: Omit<Branch, 'id' | 'createdAt' | 'updatedAt' | 'createdBy' | 'updatedBy'> = {
   name: "",
   location: "",
   managerName: "", 
   status: "Active",
 };
+
+const functionsInstance = getFunctions(db.app);
+const createBranchFn = httpsCallable<BranchCallableData, {success: boolean, id: string, message: string}>(functionsInstance, 'createBranch');
+const updateBranchFn = httpsCallable<UpdateBranchCallableData, {success: boolean, id: string, message: string}>(functionsInstance, 'updateBranch');
+const deleteBranchFn = httpsCallable<{branchId: string}, {success: boolean, id: string, message: string}>(functionsInstance, 'deleteBranch');
 
 
 export default function BranchManagementPage() {
@@ -72,9 +79,12 @@ export default function BranchManagementPage() {
   const [formData, setFormData] = useState<Omit<Branch, 'id' | 'createdAt' | 'updatedAt' | 'createdBy' | 'updatedBy'>>(defaultBranchFormData);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [branchToDelete, setBranchToDelete] = useState<Branch | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(true); // Combined loading state
+  const [isSubmittingForm, setIsSubmittingForm] = useState(false); // For form submission spinner
+  const [isDeleting, setIsDeleting] = useState(false); // For delete action spinner
+
   const { toast } = useToast();
-  const { user: authUser, loading: authLoading } = useAuth(); // Get authenticated user
+  const { user: authUser, loading: authLoading } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
@@ -84,17 +94,19 @@ export default function BranchManagementPage() {
   }, [authUser, authLoading, router]);
 
   const fetchBranches = async () => {
-    if (!authUser) return; // Don't fetch if no authenticated user
+    if (!authUser) return;
     setIsLoading(true);
     try {
       const branchesCollectionRef = collection(db, "branches");
-      const q = query(branchesCollectionRef, orderBy("createdAt", "desc"));
+      const q = query(branchesCollectionRef, orderBy("createdAt", "desc")); // Or "name" if preferred
       const querySnapshot = await getDocs(q);
       const fetchedBranches: Branch[] = querySnapshot.docs.map(doc => {
         const data = doc.data() as FirestoreBranch; 
         return {
           ...data,
           id: doc.id,
+          createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate() : data.createdAt, // Convert if needed
+          updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toDate() : data.updatedAt,
         };
       });
       setBranches(fetchedBranches);
@@ -159,9 +171,9 @@ export default function BranchManagementPage() {
       return;
     }
     
-    setIsLoading(true); 
+    setIsSubmittingForm(true);
 
-    const branchDataPayload: Omit<FirestoreBranch, 'id' | 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy'> & { updatedAt?: Timestamp, createdAt?: Timestamp, createdBy?: string, updatedBy?: string } = {
+    const branchDataPayload: BranchCallableData = {
       name: formData.name,
       location: formData.location,
       managerName: formData.managerName || null, 
@@ -171,36 +183,33 @@ export default function BranchManagementPage() {
       managerUserId: formData.managerUserId || "",
     };
 
-
-    if (editingBranch) {
-      try {
-        const branchDocRef = doc(db, "branches", editingBranch.id);
-        await updateDoc(branchDocRef, {
-            ...branchDataPayload,
-            updatedAt: Timestamp.now(),
-            updatedBy: authUser.uid, 
-        });
-        toast({ title: "Success", description: "Branch updated successfully." });
-      } catch (error) {
-        console.error("Error updating branch: ", error);
-        toast({ title: "Error", description: "Failed to update branch.", variant: "destructive" });
+    try {
+      if (editingBranch) {
+        const updatePayload: UpdateBranchCallableData = { ...branchDataPayload, branchId: editingBranch.id };
+        const result = await updateBranchFn(updatePayload);
+        if (result.data.success) {
+            toast({ title: "Success", description: result.data.message });
+        } else {
+            toast({ title: "Update Failed", description: result.data.message || "Could not update branch.", variant: "destructive" });
+        }
+      } else {
+        const result = await createBranchFn(branchDataPayload);
+         if (result.data.success) {
+            toast({ title: "Success", description: result.data.message });
+        } else {
+            toast({ title: "Creation Failed", description: result.data.message || "Could not create branch.", variant: "destructive" });
+        }
       }
-    } else {
-      try {
-        await addDoc(collection(db, "branches"), {
-            ...branchDataPayload,
-            createdAt: Timestamp.now(),
-            createdBy: authUser.uid, 
-        });
-        toast({ title: "Success", description: "Branch added successfully." });
-      } catch (error) {
-        console.error("Error adding branch: ", error);
-        toast({ title: "Error", description: "Failed to add branch.", variant: "destructive" });
-      }
+      setIsFormDialogOpen(false);
+      setEditingBranch(null);
+      fetchBranches(); 
+    } catch (error: any) {
+        console.error("Error saving branch: ", error);
+        const message = error.message || (editingBranch ? "Failed to update branch." : "Failed to add branch.");
+        toast({ title: "Error", description: message, variant: "destructive" });
+    } finally {
+        setIsSubmittingForm(false);
     }
-    setIsFormDialogOpen(false);
-    setEditingBranch(null);
-    fetchBranches(); 
   };
 
   const handleDeleteClick = (branch: Branch) => {
@@ -210,16 +219,20 @@ export default function BranchManagementPage() {
 
   const confirmDelete = async () => {
     if (branchToDelete) {
-      setIsLoading(true);
+      setIsDeleting(true);
       try {
-        const branchDocRef = doc(db, "branches", branchToDelete.id);
-        await deleteDoc(branchDocRef);
-        toast({ title: "Success", description: `Branch "${branchToDelete.name}" deleted.` });
-        fetchBranches(); 
-      } catch (error) {
+        const result = await deleteBranchFn({ branchId: branchToDelete.id });
+        if (result.data.success) {
+            toast({ title: "Success", description: result.data.message });
+            fetchBranches(); 
+        } else {
+            toast({ title: "Deletion Failed", description: result.data.message || "Could not delete branch.", variant: "destructive" });
+        }
+      } catch (error: any) {
         console.error("Error deleting branch: ", error);
-        toast({ title: "Error", description: "Failed to delete branch.", variant: "destructive" });
-        setIsLoading(false);
+        toast({ title: "Error", description: error.message || "Failed to delete branch.", variant: "destructive" });
+      } finally {
+        setIsDeleting(false);
       }
     }
     setIsDeleteDialogOpen(false);
@@ -240,6 +253,13 @@ export default function BranchManagementPage() {
       </div>
     );
   }
+  
+  const formatDate = (dateInput: Date | Timestamp | undefined): string => {
+    if (!dateInput) return 'N/A';
+    const date = dateInput instanceof Timestamp ? dateInput.toDate() : dateInput;
+    return date.toLocaleDateString();
+  };
+
 
   return (
     <div className="space-y-6">
@@ -250,7 +270,7 @@ export default function BranchManagementPage() {
         </div>
         <Dialog open={isFormDialogOpen} onOpenChange={setIsFormDialogOpen}>
           <DialogTrigger asChild>
-            <Button onClick={openAddForm}>
+            <Button onClick={openAddForm} disabled={isSubmittingForm || isLoading}>
               <PlusCircle className="mr-2 h-4 w-4" /> Add New Branch
             </Button>
           </DialogTrigger>
@@ -308,10 +328,10 @@ export default function BranchManagementPage() {
               </div>
               <DialogFooter>
                 <DialogClose asChild>
-                   <Button type="button" variant="outline">Cancel</Button>
+                   <Button type="button" variant="outline" disabled={isSubmittingForm}>Cancel</Button>
                 </DialogClose>
-                <Button type="submit" disabled={isLoading && (isFormDialogOpen || isDeleteDialogOpen)}>
-                  {(isLoading && isFormDialogOpen) && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                <Button type="submit" disabled={isSubmittingForm}>
+                  {isSubmittingForm && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                   Save Branch
                 </Button>
               </DialogFooter>
@@ -335,7 +355,7 @@ export default function BranchManagementPage() {
           </div>
         </CardHeader>
         <CardContent>
-          {isLoading && branches.length === 0 ? (
+          {isLoading ? (
             <div className="flex justify-center items-center h-24">
               <Loader2 className="h-8 w-8 animate-spin text-primary" />
               <p className="ml-2 text-muted-foreground">Loading branches...</p>
@@ -370,18 +390,15 @@ export default function BranchManagementPage() {
                         {branch.status}
                       </Badge>
                     </TableCell>
-                    <TableCell>
-                      {branch.createdAt instanceof Timestamp ? branch.createdAt.toDate().toLocaleDateString() : 
-                       branch.createdAt ? new Date(branch.createdAt as any).toLocaleDateString() : 'N/A'}
-                    </TableCell>
+                    <TableCell>{formatDate(branch.createdAt)}</TableCell>
                     <TableCell>
                       <div className="flex gap-2">
-                        <Button variant="outline" size="icon" aria-label="Edit Branch" onClick={() => openEditForm(branch)} disabled={isLoading && isFormDialogOpen}>
+                        <Button variant="outline" size="icon" aria-label="Edit Branch" onClick={() => openEditForm(branch)} disabled={isSubmittingForm || isDeleting}>
                           <Edit className="h-4 w-4" />
                         </Button>
                         <AlertDialog open={isDeleteDialogOpen && branchToDelete?.id === branch.id} onOpenChange={(open) => { if(!open) setBranchToDelete(null); setIsDeleteDialogOpen(open);}}>
                           <AlertDialogTrigger asChild>
-                            <Button variant="destructive" size="icon" aria-label="Delete Branch" onClick={() => handleDeleteClick(branch)} disabled={isLoading && (isFormDialogOpen || isDeleteDialogOpen)}>
+                            <Button variant="destructive" size="icon" aria-label="Delete Branch" onClick={() => handleDeleteClick(branch)} disabled={isSubmittingForm || isDeleting}>
                               <Trash2 className="h-4 w-4" />
                             </Button>
                           </AlertDialogTrigger>
@@ -394,9 +411,9 @@ export default function BranchManagementPage() {
                               </AlertDialogDescription>
                             </AlertDialogHeader>
                             <AlertDialogFooter>
-                              <AlertDialogCancel onClick={() => {setBranchToDelete(null); setIsDeleteDialogOpen(false);}}>Cancel</AlertDialogCancel>
-                              <AlertDialogAction onClick={confirmDelete} disabled={isLoading && isDeleteDialogOpen}>
-                                {isLoading && isDeleteDialogOpen && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                              <AlertDialogCancel onClick={() => {setBranchToDelete(null); setIsDeleteDialogOpen(false);}} disabled={isDeleting}>Cancel</AlertDialogCancel>
+                              <AlertDialogAction onClick={confirmDelete} disabled={isDeleting}>
+                                {isDeleting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                                 Delete
                               </AlertDialogAction>
                             </AlertDialogFooter>
@@ -414,3 +431,4 @@ export default function BranchManagementPage() {
     </div>
   );
 }
+
