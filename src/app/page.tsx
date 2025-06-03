@@ -164,7 +164,7 @@ export default function DashboardPage() {
               width={1200} 
               height={300} 
               className="object-cover w-full h-48 md:h-60" 
-              data-ai-hint="modern abstract logistics"
+              data-ai-hint="logistics abstract"
               priority
             />
             <div className="absolute inset-0 bg-gradient-to-t from-background/80 via-background/30 to-transparent" />
