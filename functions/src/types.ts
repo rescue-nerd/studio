@@ -1,0 +1,119 @@
+
+import type { Timestamp } from "firebase-admin/firestore"; // Use admin SDK Timestamp for functions
+
+// This file mirrors relevant parts of src/types/firestore.ts but for backend functions.
+// Ensure consistency or share types if possible in a monorepo setup.
+
+export interface UserData {
+  status?: "active" | "disabled";
+  role?: string;
+  email?: string;
+  displayName?: string;
+  // Add other fields from your main User type if needed by functions
+}
+
+export interface DaybookTransaction {
+  id: string;
+  transactionType: string; // Consider using your DaybookTransactionType union type
+  amount: number;
+  description: string;
+  ledgerAccountId?: string;
+  partyId?: string;
+  referenceId?: string;
+  nepaliMiti?: string;
+  createdAt: Timestamp; // Firestore Timestamp
+}
+
+export interface DaybookData {
+  status?: "Draft" | "Pending Approval" | "Approved" | "Rejected";
+  nepaliMiti: string;
+  englishMiti: Timestamp; // Firestore Timestamp
+  branchId: string;
+  transactions: DaybookTransaction[];
+  openingBalance: number;
+  totalCashIn: number;
+  totalCashOut: number;
+  closingBalance: number;
+  processedByFunction?: boolean;
+  approvedBy?: string;
+  // Auditable fields
+  createdBy?: string;
+  createdAt?: Timestamp;
+  updatedBy?: string;
+  updatedAt?: Timestamp;
+}
+
+export interface BiltiData {
+  // id: string; // Document ID is implicit
+  miti: Timestamp; // Firestore Timestamp
+  nepaliMiti?: string;
+  consignorId: string;
+  consigneeId: string;
+  totalAmount: number;
+  payMode: "Paid" | "To Pay" | "Due";
+  ledgerProcessed?: boolean;
+  createdBy?: string;
+  branchId?: string; // Assuming bilti can be associated with a branch for context
+  // Add other fields from your main Bilti type if needed
+}
+
+export interface DeliveredBiltiItemData {
+  biltiId: string;
+  rebateAmount: number;
+  rebateReason?: string;
+  discountAmount: number;
+  discountReason?: string;
+  // Add other fields from your main DeliveredBiltiItem type if needed
+}
+
+export interface GoodsDeliveryData {
+  // id: string; // Document ID is implicit
+  miti: Timestamp; // Firestore Timestamp
+  nepaliMiti?: string;
+  deliveredBiltis: DeliveredBiltiItemData[];
+  ledgerProcessed?: boolean;
+  createdBy?: string;
+  // Add other fields from your main GoodsDelivery type if needed
+}
+
+export interface PartyData {
+  // id: string; // Document ID is implicit
+  name: string;
+  assignedLedgerId: string; // Crucial for ledger posting
+  // Add other fields from your main Party type if needed
+}
+
+export type LedgerTransactionType =
+  | "Bilti"
+  | "Delivery"
+  | "Rebate"
+  | "Discount"
+  | "Manual Credit"
+  | "Manual Debit"
+  | "Opening Balance"
+  | "Payment"
+  | "Receipt"
+  | "Expense"
+  | "Fuel"
+  | "Maintenance"
+  | "DaybookCashIn"
+  | "DaybookCashOut"
+  | string;
+
+export interface LedgerEntryData {
+  // id: string; // Document ID is implicit
+  accountId: string;
+  miti: Timestamp; // Firestore Timestamp
+  nepaliMiti?: string;
+  description: string;
+  debit: number;
+  credit: number;
+  referenceNo?: string;
+  transactionType: LedgerTransactionType;
+  status: "Pending" | "Approved" | "Rejected"; // Status of the ledger entry itself
+  sourceModule?: string;
+  branchId?: string;
+  createdAt: Timestamp; // Firestore Timestamp
+  createdBy?: string;
+  // Add other fields from your main LedgerEntry type if needed
+}
