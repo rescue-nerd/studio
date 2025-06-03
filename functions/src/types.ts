@@ -50,7 +50,7 @@ export interface DaybookData {
   approvalRemarks?: string;
 }
 
-export interface BiltiData {
+export interface FunctionsBiltiData { // Renamed to avoid conflict
   id?: string; // Document ID is implicit
   miti: Timestamp; // Firestore Timestamp
   nepaliMiti?: string;
@@ -75,8 +75,7 @@ export interface BiltiData {
   createdAt?: Timestamp;
   updatedBy?: string;
   updatedAt?: Timestamp;
-  branchId?: string; // Assuming bilti can be associated with a branch for context
-  // Add other fields from your main Bilti type if needed
+  branchId?: string;
 }
 
 export interface DeliveredBiltiItemData {
@@ -85,23 +84,21 @@ export interface DeliveredBiltiItemData {
   rebateReason?: string;
   discountAmount: number;
   discountReason?: string;
-  // Add other fields from your main DeliveredBiltiItem type if needed
 }
 
 export interface GoodsDeliveryData {
-  id?: string; // Document ID is implicit
-  miti: Timestamp; // Firestore Timestamp
+  id?: string;
+  miti: Timestamp;
   nepaliMiti?: string;
   deliveredBiltis: DeliveredBiltiItemData[];
   ledgerProcessed?: boolean;
   createdBy?: string;
-  // Add other fields from your main GoodsDelivery type if needed
 }
 
 export interface PartyData {
-  id?: string; // Document ID is implicit
+  id?: string;
   name: string;
-  assignedLedgerId: string; // Crucial for ledger posting
+  assignedLedgerId: string;
   type?: "Consignor" | "Consignee" | "Both";
   contactNo?: string;
   panNo?: string;
@@ -110,7 +107,11 @@ export interface PartyData {
   state?: string;
   country?: string;
   status?: "Active" | "Inactive";
-  // Add other fields from your main Party type if needed
+  // Auditable fields added if passed from client for creation, otherwise set by server
+  createdBy?: string;
+  createdAt?: Timestamp;
+  updatedBy?: string;
+  updatedAt?: Timestamp;
 }
 
 export type LedgerTransactionType =
@@ -131,25 +132,24 @@ export type LedgerTransactionType =
   | string;
 
 export interface LedgerEntryData {
-  id?: string; // Document ID is implicit
+  id?: string;
   accountId: string;
-  miti: Timestamp; // Firestore Timestamp
+  miti: Timestamp;
   nepaliMiti?: string;
   description: string;
   debit: number;
   credit: number;
   referenceNo?: string;
   transactionType: LedgerTransactionType;
-  status: "Pending" | "Approved" | "Rejected"; // Status of the ledger entry itself
+  status: "Pending" | "Approved" | "Rejected";
   sourceModule?: string;
   branchId?: string;
-  createdAt: Timestamp; // Firestore Timestamp
+  createdAt: Timestamp;
   createdBy?: string;
-  // Add other fields from your main LedgerEntry type if needed
 }
 
 export interface BranchData {
-    id?: string; // Document ID, optional for creation
+    id?: string;
     name: string;
     location: string;
     managerName?: string | null;
@@ -157,19 +157,16 @@ export interface BranchData {
     contactEmail?: string;
     contactPhone?: string;
     status?: "Active" | "Inactive";
-    // Auditable fields, optional for client input, set by server
     createdBy?: string;
     createdAt?: Timestamp;
     updatedBy?: string;
     updatedAt?: Timestamp;
 }
 
-// ---- Locations & Units Types for Functions ----
 export interface CountryData {
   id?: string;
   name: string;
   code: string;
-  // Auditable fields can be added if needed by functions beyond what's set by default
 }
 
 export interface StateData {
@@ -193,17 +190,15 @@ export interface UnitData {
   type: UnitType;
 }
 
-// ---- Truck and Driver Types for Functions ----
 export interface TruckData {
   id?: string;
   truckNo: string;
-  type: string; // e.g., "6-Wheeler", "10-Wheeler"
+  type: string;
   capacity?: string;
   ownerName: string;
   ownerPAN?: string;
   status: "Active" | "Inactive" | "Maintenance";
   assignedLedgerId: string;
-  // createdAt, createdBy, etc. are handled by the function
 }
 
 export interface DriverData {
@@ -212,10 +207,9 @@ export interface DriverData {
   licenseNo: string;
   contactNo: string;
   address?: string;
-  joiningDate?: Timestamp | string; // Client might send string, function converts to Timestamp
+  joiningDate?: Timestamp | string;
   status: "Active" | "Inactive" | "On Leave";
   assignedLedgerId: string;
-  // createdAt, createdBy, etc. are handled by the function
 }
 
 export interface GodownData {
@@ -224,15 +218,22 @@ export interface GodownData {
   branchId: string;
   location: string;
   status: "Active" | "Inactive" | "Operational";
-  // createdAt, createdBy, etc. are handled by the function
 }
 
-
-// Auditable fields are set by the functions themselves
-// export interface Auditable {
-//   createdBy?: string;
-//   createdAt?: Timestamp;
-//   updatedBy?: string;
-//   updatedAt?: Timestamp;
-// }
-
+export interface ManifestData {
+  id?: string;
+  miti: Timestamp | string; // Client might send string, function converts
+  nepaliMiti?: string;
+  truckId: string;
+  driverId: string;
+  fromBranchId: string;
+  toBranchId: string;
+  attachedBiltiIds: string[];
+  remarks?: string;
+  status: "Open" | "In Transit" | "Received" | "Completed" | "Cancelled";
+  // Auditable fields
+  createdBy?: string;
+  createdAt?: Timestamp;
+  updatedBy?: string;
+  updatedAt?: Timestamp;
+}

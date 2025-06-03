@@ -27,7 +27,7 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger, // Added AlertDialogTrigger
+  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -39,19 +39,20 @@ import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { db } from "@/lib/firebase";
+import { getFunctions, httpsCallable, type HttpsCallableResult } from "firebase/functions";
 import { 
   collection, 
   getDocs, 
-  addDoc, 
-  doc, 
-  updateDoc, 
-  deleteDoc, 
+  // addDoc, // Replaced by callable
+  // doc, // Replaced by callable
+  // updateDoc, // Replaced by callable
+  // deleteDoc, // Replaced by callable
+  // writeBatch, // Logic moved to backend
   Timestamp,
   query,
   orderBy,
-  writeBatch,
-  where,
-  documentId
+  // where,
+  // documentId
 } from "firebase/firestore";
 import type { 
   Manifest as FirestoreManifest, 
@@ -63,7 +64,6 @@ import type {
 } from "@/types/firestore";
 import { useAuth } from "@/contexts/auth-context"; 
 import { useRouter } from "next/navigation";
-
 
 // Local Interfaces
 interface Manifest extends Omit<FirestoreManifest, 'miti' | 'createdAt' | 'updatedAt'> {
@@ -83,7 +83,6 @@ interface Driver extends FirestoreDriver {}
 interface Branch extends FirestoreBranch {}
 interface Party extends FirestoreParty {}
 
-
 const defaultManifestFormData: Omit<Manifest, 'id' | 'status' | 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy'> = {
   miti: new Date(),
   nepaliMiti: "",
@@ -95,11 +94,17 @@ const defaultManifestFormData: Omit<Manifest, 'id' | 'status' | 'createdAt' | 'c
   remarks: "",
 };
 
+// Initialize Firebase Functions
+const functionsInstance = getFunctions(db.app);
+const createManifestFn = httpsCallable<any, {success: boolean, id: string, message: string}>(functionsInstance, 'createManifest');
+const updateManifestFn = httpsCallable<any, {success: boolean, id: string, message: string}>(functionsInstance, 'updateManifest');
+const deleteManifestFn = httpsCallable<{manifestId: string}, {success: boolean, id: string, message: string}>(functionsInstance, 'deleteManifest');
+
 
 export default function ManifestsPage() {
   const [manifests, setManifests] = useState<Manifest[]>([]);
-  const [availableBiltis, setAvailableBiltis] = useState<Bilti[]>([]); // For form selection
-  const [allBiltisMaster, setAllBiltisMaster] = useState<Bilti[]>([]); // Master list for context
+  const [availableBiltis, setAvailableBiltis] = useState<Bilti[]>([]); 
+  const [allBiltisMaster, setAllBiltisMaster] = useState<Bilti[]>([]); 
   
   const [trucks, setTrucks] = useState<Truck[]>([]);
   const [drivers, setDrivers] = useState<Driver[]>([]);
@@ -127,17 +132,15 @@ export default function ManifestsPage() {
     }
   }, [authUser, authLoading, router]);
 
-
   const fetchMasterData = async () => {
     if (!authUser) return;
-    // setIsLoading(true); // Handled by overall load
     try {
       const [trucksSnap, driversSnap, branchesSnap, partiesSnap, biltisSnap] = await Promise.all([
         getDocs(query(collection(db, "trucks"), orderBy("truckNo"))),
         getDocs(query(collection(db, "drivers"), orderBy("name"))),
         getDocs(query(collection(db, "branches"), orderBy("name"))),
         getDocs(query(collection(db, "parties"), orderBy("name"))),
-        getDocs(query(collection(db, "biltis"))), // Fetch all biltis for context and selection
+        getDocs(query(collection(db, "biltis"))),
       ]);
 
       setTrucks(trucksSnap.docs.map(d => ({ ...d.data(), id: d.id } as Truck)));
@@ -150,7 +153,6 @@ export default function ManifestsPage() {
         return { ...data, id: d.id, miti: data.miti.toDate() } as Bilti;
       });
       setAllBiltisMaster(allFetchedBiltis);
-      // Filter biltis available for manifesting (status "Pending")
       setAvailableBiltis(allFetchedBiltis.filter(b => b.status === "Pending"));
 
     } catch (error) {
@@ -161,18 +163,13 @@ export default function ManifestsPage() {
 
   const fetchManifests = async () => {
     if (!authUser) return;
-    // setIsLoading(true); // Handled by overall load
     try {
       const manifestsCollectionRef = collection(db, "manifests");
       const q = query(manifestsCollectionRef, orderBy("createdAt", "desc"));
       const querySnapshot = await getDocs(q);
       const fetchedManifests: Manifest[] = querySnapshot.docs.map(docSnap => {
         const data = docSnap.data() as FirestoreManifest;
-        return {
-          ...data,
-          id: docSnap.id,
-          miti: data.miti.toDate(),
-        };
+        return { ...data, id: docSnap.id, miti: data.miti.toDate() };
       });
       setManifests(fetchedManifests);
     } catch (error) {
@@ -185,7 +182,7 @@ export default function ManifestsPage() {
     if(authUser){
       const loadAllData = async () => {
           setIsLoading(true);
-          await fetchMasterData(); // Fetches biltis too
+          await fetchMasterData();
           await fetchManifests();
           setIsLoading(false);
       }
@@ -213,32 +210,23 @@ export default function ManifestsPage() {
   const handleBiltiSelectionChange = (biltiId: string, checked: boolean) => {
     setSelectedBiltiIdsInForm(prev => {
       const newSet = new Set(prev);
-      if (checked) {
-        newSet.add(biltiId);
-      } else {
-        newSet.delete(biltiId);
-      }
+      if (checked) newSet.add(biltiId);
+      else newSet.delete(biltiId);
       return newSet;
     });
   };
 
   const openAddForm = () => {
     setEditingManifest(null);
-    const defaultTruckId = trucks.length > 0 ? trucks[0].id : "";
-    const defaultDriverId = drivers.length > 0 ? drivers[0].id : "";
-    const defaultFromBranchId = branches.length > 0 ? branches[0].id : "";
-    const defaultToBranchId = branches.length > 1 ? branches[1].id : (branches.length > 0 ? branches[0].id : "");
-
     setFormData({
         ...defaultManifestFormData, 
         miti: new Date(), 
-        truckId: defaultTruckId,
-        driverId: defaultDriverId,
-        fromBranchId: defaultFromBranchId,
-        toBranchId: defaultToBranchId,
+        truckId: trucks[0]?.id || "",
+        driverId: drivers[0]?.id || "",
+        fromBranchId: branches[0]?.id || "",
+        toBranchId: branches.length > 1 ? branches[1].id : (branches[0]?.id || ""),
     });
     setSelectedBiltiIdsInForm(new Set());
-    // Update available biltis for selection (only pending ones)
     setAvailableBiltis(allBiltisMaster.filter(b => b.status === "Pending"));
     setIsFormDialogOpen(true);
   };
@@ -248,7 +236,6 @@ export default function ManifestsPage() {
     const { id, status, createdAt, createdBy, updatedAt, updatedBy, ...editableData } = manifest;
     setFormData({...editableData, nepaliMiti: manifest.nepaliMiti || ""});
     setSelectedBiltiIdsInForm(new Set(manifest.attachedBiltiIds));
-    // Biltis available for selection: pending ones + those already in this manifest
     setAvailableBiltis(allBiltisMaster.filter(b => b.status === "Pending" || manifest.attachedBiltiIds.includes(b.id)));
     setIsFormDialogOpen(true);
   };
@@ -257,7 +244,6 @@ export default function ManifestsPage() {
   const getTruckNo = (truckId: string) => trucks.find(t => t.id === truckId)?.truckNo || "N/A";
   const getDriverName = (driverId: string) => drivers.find(d => d.id === driverId)?.name || "N/A";
   const getBranchName = (branchId: string) => branches.find(b => b.id === branchId)?.name || "N/A";
-
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -270,76 +256,39 @@ export default function ManifestsPage() {
         return;
     }
     if (selectedBiltiIdsInForm.size === 0) {
-        toast({ title: "No Biltis Selected", description: "Please select at least one Bilti to attach to the manifest.", variant: "destructive" });
+        toast({ title: "No Biltis Selected", description: "Please select at least one Bilti.", variant: "destructive" });
         return;
     }
     setIsSubmitting(true);
 
-    const manifestDataPayload: Omit<FirestoreManifest, 'id' | 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy' | 'status'> & Partial<Pick<FirestoreManifest, 'status' | 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy'>> = {
+    const payload = {
       ...formData,
-      miti: Timestamp.fromDate(formData.miti),
+      miti: formData.miti.toISOString(),
       attachedBiltiIds: Array.from(selectedBiltiIdsInForm),
     };
-
-    const batch = writeBatch(db);
-
-    if (editingManifest) {
-      try {
-        const manifestDocRef = doc(db, "manifests", editingManifest.id);
-        batch.update(manifestDocRef, {
-            ...manifestDataPayload,
-            updatedAt: Timestamp.now(),
-            updatedBy: authUser.uid,
-        });
-
-        // Logic to update Bilti statuses:
-        // Biltis removed from this manifest should become "Pending"
-        const biltisToRemoveFromManifest = editingManifest.attachedBiltiIds.filter(id => !selectedBiltiIdsInForm.has(id));
-        biltisToRemoveFromManifest.forEach(biltiId => {
-            const biltiDocRef = doc(db, "biltis", biltiId);
-            batch.update(biltiDocRef, { status: "Pending", manifestId: null });
-        });
-        // Biltis added or kept in this manifest should be "Manifested"
-        selectedBiltiIdsInForm.forEach(biltiId => {
-            const biltiDocRef = doc(db, "biltis", biltiId);
-            batch.update(biltiDocRef, { status: "Manifested", manifestId: editingManifest.id });
-        });
-        
-        await batch.commit();
-        toast({ title: "Manifest Updated", description: `Manifest ${editingManifest.id} updated successfully.` });
-      } catch (error) {
-        console.error("Error updating manifest: ", error);
-        toast({ title: "Error", description: "Failed to update manifest.", variant: "destructive" });
+    
+    try {
+      let result: HttpsCallableResult<{success: boolean; id: string; message: string}>;
+      if (editingManifest) {
+        result = await updateManifestFn({ manifestId: editingManifest.id, ...payload });
+      } else {
+        result = await createManifestFn(payload);
       }
-    } else { // Adding new manifest
-      try {
-        const manifestCollectionRef = collection(db, "manifests");
-        // For add, Firestore generates ID, so we create ref then set, or just add.
-        // Let's use addDoc and then get the ID for bilti updates.
-        const newManifestDocRef = await addDoc(manifestCollectionRef, {
-            ...manifestDataPayload,
-            status: "Open" as FirestoreManifest["status"],
-            createdAt: Timestamp.now(),
-            createdBy: authUser.uid,
-        });
 
-        const newBatch = writeBatch(db); // New batch for bilti updates with new manifest ID
-        selectedBiltiIdsInForm.forEach(biltiId => {
-            const biltiDocRef = doc(db, "biltis", biltiId);
-            newBatch.update(biltiDocRef, { status: "Manifested", manifestId: newManifestDocRef.id });
-        });
-        await newBatch.commit();
-        toast({ title: "Manifest Created", description: `New manifest created successfully.` });
-      } catch (error) {
-        console.error("Error adding manifest: ", error);
-        toast({ title: "Error", description: "Failed to create manifest.", variant: "destructive" });
+      if (result.data.success) {
+        toast({ title: "Success", description: result.data.message });
+        fetchManifests();
+        fetchMasterData(); // Re-fetch to update bilti statuses for selection
+        setIsFormDialogOpen(false);
+      } else {
+        toast({ title: "Error", description: result.data.message, variant: "destructive" });
       }
+    } catch (error: any) {
+        console.error("Error saving manifest:", error);
+        toast({ title: "Error", description: error.message || "Failed to save manifest.", variant: "destructive" });
+    } finally {
+        setIsSubmitting(false);
     }
-    setIsSubmitting(false);
-    setIsFormDialogOpen(false);
-    setEditingManifest(null);
-    fetchManifests(); // Refresh manifests list
-    fetchMasterData(); // Refresh biltis list (to update their statuses for selection)
   };
 
   const handleDeleteClick = (manifest: Manifest) => {
@@ -348,33 +297,25 @@ export default function ManifestsPage() {
   };
 
   const confirmDelete = async () => {
-    if (manifestToDelete) {
-      setIsSubmitting(true);
-      const batch = writeBatch(db);
-      try {
-        // Delete the manifest
-        const manifestDocRef = doc(db, "manifests", manifestToDelete.id);
-        batch.delete(manifestDocRef);
-
-        // Revert status of attached Biltis to "Pending"
-        manifestToDelete.attachedBiltiIds.forEach(biltiId => {
-          const biltiDocRef = doc(db, "biltis", biltiId);
-          batch.update(biltiDocRef, { status: "Pending", manifestId: null });
-        });
-        
-        await batch.commit();
-        toast({ title: "Manifest Deleted", description: `Manifest "${manifestToDelete.id}" deleted and Biltis reverted.` });
+    if (!manifestToDelete || !authUser) return;
+    setIsSubmitting(true);
+    try {
+      const result = await deleteManifestFn({ manifestId: manifestToDelete.id });
+      if (result.data.success) {
+        toast({ title: "Success", description: result.data.message });
         fetchManifests();
-        fetchMasterData(); // Refresh biltis for selection
-      } catch (error) {
-        console.error("Error deleting manifest: ", error);
-        toast({ title: "Error", description: "Failed to delete manifest.", variant: "destructive" });
-      } finally {
-        setIsSubmitting(false);
+        fetchMasterData(); // Re-fetch biltis
+      } else {
+        toast({ title: "Error", description: result.data.message, variant: "destructive" });
       }
+    } catch (error: any) {
+      console.error("Error deleting manifest: ", error);
+      toast({ title: "Error", description: error.message || "Failed to delete manifest.", variant: "destructive" });
+    } finally {
+      setIsSubmitting(false);
+      setIsDeleteDialogOpen(false);
+      setManifestToDelete(null);
     }
-    setIsDeleteDialogOpen(false);
-    setManifestToDelete(null);
   };
 
   const filteredManifests = manifests.filter(manifest => 
@@ -385,11 +326,9 @@ export default function ManifestsPage() {
     (manifest.nepaliMiti && manifest.nepaliMiti.toLowerCase().includes(searchTerm.toLowerCase()))
   );
   
-  // Biltis to show in the selection table inside the form dialog
   const biltisForFormSelection = editingManifest 
     ? allBiltisMaster.filter(b => b.status === "Pending" || editingManifest.attachedBiltiIds.includes(b.id))
     : allBiltisMaster.filter(b => b.status === "Pending");
-
 
   return (
     <div className="space-y-6">
@@ -416,6 +355,7 @@ export default function ManifestsPage() {
             </DialogHeader>
             <form onSubmit={handleSubmit}>
               <div className="grid gap-4 py-4 max-h-[75vh] overflow-y-auto p-1">
+                {/* Form fields as before */}
                 <div className="grid md:grid-cols-4 items-start gap-4">
                   <div className="md:col-span-1">
                     <Label htmlFor="manifestNo">Manifest No.</Label>
@@ -437,7 +377,6 @@ export default function ManifestsPage() {
                     <Label htmlFor="nepaliMiti">Nepali Miti (BS)</Label>
                     <Input id="nepaliMiti" name="nepaliMiti" value={formData.nepaliMiti || ""} onChange={handleInputChange} placeholder="e.g., 2081-04-01" />
                   </div>
-                  <div className="md:col-span-1"></div>
                 </div>
 
                 <div className="grid md:grid-cols-2 gap-4">
@@ -502,7 +441,7 @@ export default function ManifestsPage() {
                                 checked={selectedBiltiIdsInForm.has(bilti.id)}
                                 onCheckedChange={(checked) => handleBiltiSelectionChange(bilti.id, !!checked)}
                                 id={`bilti-${bilti.id}`}
-                                disabled={editingManifest && bilti.status === "Manifested" && !editingManifest.attachedBiltiIds.includes(bilti.id)} // Disable if manifested elsewhere
+                                disabled={editingManifest && bilti.status === "Manifested" && !editingManifest.attachedBiltiIds.includes(bilti.id)}
                               />
                             </TableCell>
                             <TableCell>{bilti.id}</TableCell>
@@ -585,12 +524,12 @@ export default function ManifestsPage() {
                   </TableCell>
                   <TableCell>
                     <div className="flex gap-1">
-                      <Button variant="outline" size="icon" aria-label="Edit Manifest" onClick={() => openEditForm(manifest)} disabled={isSubmitting}>
+                      <Button variant="outline" size="icon" aria-label="Edit Manifest" onClick={() => openEditForm(manifest)} disabled={isSubmitting || manifest.status !== "Open"}>
                         <Edit className="h-4 w-4" />
                       </Button>
                        <AlertDialog open={isDeleteDialogOpen && manifestToDelete?.id === manifest.id} onOpenChange={(open) => { if(!open) setManifestToDelete(null); setIsDeleteDialogOpen(open);}}>
                          <AlertDialogTrigger asChild>
-                           <Button variant="destructive" size="icon" aria-label="Delete Manifest" onClick={() => handleDeleteClick(manifest)} disabled={isSubmitting}>
+                           <Button variant="destructive" size="icon" aria-label="Delete Manifest" onClick={() => handleDeleteClick(manifest)} disabled={isSubmitting || manifest.status !== "Open"}>
                             <Trash2 className="h-4 w-4" />
                           </Button>
                          </AlertDialogTrigger>
