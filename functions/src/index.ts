@@ -13,10 +13,12 @@ import type {
   LedgerEntryData,
   LedgerTransactionType,
   BranchData,
-  CountryData, // Added
-  StateData,   // Added
-  CityData,    // Added
-  UnitData,    // Added
+  CountryData,
+  StateData,
+  CityData,
+  UnitData,
+  TruckData, // Added
+  DriverData, // Added
 } from "./types";
 
 admin.initializeApp();
@@ -603,9 +605,13 @@ export const updateBranch = onCall({enforceAppCheck: false, consumeAppCheck: "le
   if (!branchId) {
     throw new HttpsError("invalid-argument", "Branch ID is required for updates.");
   }
-  if (!dataToUpdate.name || !dataToUpdate.location) { // Ensure name and location are still present if being updated
-    throw new HttpsError("invalid-argument", "Branch Name and Location are required if being updated.");
+  if (Object.keys(dataToUpdate).length === 0) {
+    throw new HttpsError("invalid-argument", "No data provided for update.");
   }
+  if (dataToUpdate.name === "" || dataToUpdate.location === "") { // Ensure name and location are not emptied if being updated
+    throw new HttpsError("invalid-argument", "Branch Name and Location cannot be empty.");
+  }
+
 
   try {
     const branchRef = db.collection("branches").doc(branchId);
@@ -695,7 +701,9 @@ export const updateCountry = onCall({enforceAppCheck: false, consumeAppCheck: "l
 
   const {countryId, ...dataToUpdate} = request.data as {countryId: string} & Partial<Omit<CountryData, "id">>;
   if (!countryId) throw new HttpsError("invalid-argument", "Country ID required.");
-  if (!dataToUpdate.name || !dataToUpdate.code) throw new HttpsError("invalid-argument", "Name and Code are required.");
+  if (Object.keys(dataToUpdate).length === 0) throw new HttpsError("invalid-argument", "No data provided for update.");
+  if (dataToUpdate.name === "" || dataToUpdate.code === "") throw new HttpsError("invalid-argument", "Name and Code cannot be empty if being updated.");
+
 
   try {
     const countryRef = db.collection("countries").doc(countryId);
@@ -771,14 +779,18 @@ export const updateState = onCall({enforceAppCheck: false, consumeAppCheck: "len
 
   const {stateId, ...dataToUpdate} = request.data as {stateId: string} & Partial<Omit<StateData, "id">>;
   if (!stateId) throw new HttpsError("invalid-argument", "State ID required.");
-  if (!dataToUpdate.name || !dataToUpdate.countryId) throw new HttpsError("invalid-argument", "Name and Country ID are required.");
+  if (Object.keys(dataToUpdate).length === 0) throw new HttpsError("invalid-argument", "No data provided for update.");
+  if (dataToUpdate.name === "" || dataToUpdate.countryId === "") throw new HttpsError("invalid-argument", "Name and Country ID cannot be empty if being updated.");
+
 
   try {
     const stateRef = db.collection("states").doc(stateId);
     if (!(await stateRef.get()).exists) throw new HttpsError("not-found", "State not found.");
 
-    const countryRef = db.collection("countries").doc(dataToUpdate.countryId);
-    if (!(await countryRef.get()).exists) throw new HttpsError("not-found", "Associated country not found.");
+    if (dataToUpdate.countryId) {
+        const countryRef = db.collection("countries").doc(dataToUpdate.countryId);
+        if (!(await countryRef.get()).exists) throw new HttpsError("not-found", "Associated country not found.");
+    }
 
     await stateRef.update({...dataToUpdate, updatedAt: admin.firestore.Timestamp.now(), updatedBy: uid});
     return {success: true, id: stateId, message: "State updated."};
@@ -852,14 +864,18 @@ export const updateCity = onCall({enforceAppCheck: false, consumeAppCheck: "leni
 
   const {cityId, ...dataToUpdate} = request.data as {cityId: string} & Partial<Omit<CityData, "id">>;
   if (!cityId) throw new HttpsError("invalid-argument", "City ID required.");
-  if (!dataToUpdate.name || !dataToUpdate.stateId) throw new HttpsError("invalid-argument", "Name and State ID are required.");
+  if (Object.keys(dataToUpdate).length === 0) throw new HttpsError("invalid-argument", "No data provided for update.");
+  if (dataToUpdate.name === "" || dataToUpdate.stateId === "") throw new HttpsError("invalid-argument", "Name and State ID cannot be empty if being updated.");
+
 
   try {
     const cityRef = db.collection("cities").doc(cityId);
     if (!(await cityRef.get()).exists) throw new HttpsError("not-found", "City not found.");
 
-    const stateRef = db.collection("states").doc(dataToUpdate.stateId);
-    if (!(await stateRef.get()).exists) throw new HttpsError("not-found", "Associated state not found.");
+    if (dataToUpdate.stateId) {
+        const stateRef = db.collection("states").doc(dataToUpdate.stateId);
+        if (!(await stateRef.get()).exists) throw new HttpsError("not-found", "Associated state not found.");
+    }
 
     await cityRef.update({...dataToUpdate, updatedAt: admin.firestore.Timestamp.now(), updatedBy: uid});
     return {success: true, id: cityId, message: "City updated."};
@@ -924,7 +940,9 @@ export const updateUnit = onCall({enforceAppCheck: false, consumeAppCheck: "leni
 
   const {unitId, ...dataToUpdate} = request.data as {unitId: string} & Partial<Omit<UnitData, "id">>;
   if (!unitId) throw new HttpsError("invalid-argument", "Unit ID required.");
-  if (!dataToUpdate.name || !dataToUpdate.symbol || !dataToUpdate.type) throw new HttpsError("invalid-argument", "Name, Symbol, and Type are required.");
+  if (Object.keys(dataToUpdate).length === 0) throw new HttpsError("invalid-argument", "No data provided for update.");
+  if (dataToUpdate.name === "" || dataToUpdate.symbol === "" || dataToUpdate.type === "") throw new HttpsError("invalid-argument", "Name, Symbol, and Type cannot be empty if being updated.");
+
 
   try {
     const unitRef = db.collection("units").doc(unitId);
@@ -957,5 +975,164 @@ export const deleteUnit = onCall({enforceAppCheck: false, consumeAppCheck: "leni
     logger.error(`Error deleting unit ${unitId}:`, error);
     if (error instanceof HttpsError) throw error;
     throw new HttpsError("internal", "Failed to delete unit.");
+  }
+});
+
+// --- Truck Management CRUD Functions ---
+export const createTruck = onCall({enforceAppCheck: false, consumeAppCheck: "lenient"}, async (request) => {
+  const uid = request.auth?.uid;
+  if (!uid) throw new HttpsError("unauthenticated", "Authentication required.");
+  const userPermissions = await getUserPermissions(uid);
+  if (userPermissions.role !== "superAdmin") throw new HttpsError("permission-denied", "Super admin role required.");
+
+  const data = request.data as TruckData;
+  if (!data.truckNo || !data.type || !data.ownerName || !data.assignedLedgerId) {
+    throw new HttpsError("invalid-argument", "Truck No, Type, Owner Name, and Ledger ID are required.");
+  }
+
+  try {
+    const newTruckRef = await db.collection("trucks").add({
+      ...data,
+      createdAt: admin.firestore.Timestamp.now(),
+      createdBy: uid,
+    });
+    return {success: true, id: newTruckRef.id, message: "Truck created successfully."};
+  } catch (error: any) {
+    logger.error("Error creating truck:", error);
+    throw new HttpsError("internal", "Failed to create truck.");
+  }
+});
+
+export const updateTruck = onCall({enforceAppCheck: false, consumeAppCheck: "lenient"}, async (request) => {
+  const uid = request.auth?.uid;
+  if (!uid) throw new HttpsError("unauthenticated", "Authentication required.");
+  const userPermissions = await getUserPermissions(uid);
+  if (userPermissions.role !== "superAdmin") throw new HttpsError("permission-denied", "Super admin role required.");
+
+  const {truckId, ...dataToUpdate} = request.data as {truckId: string} & Partial<TruckData>;
+  if (!truckId) throw new HttpsError("invalid-argument", "Truck ID required for updates.");
+  if (Object.keys(dataToUpdate).length === 0) throw new HttpsError("invalid-argument", "No data provided for update.");
+
+  try {
+    const truckRef = db.collection("trucks").doc(truckId);
+    if (!(await truckRef.get()).exists) throw new HttpsError("not-found", "Truck not found.");
+    await truckRef.update({...dataToUpdate, updatedAt: admin.firestore.Timestamp.now(), updatedBy: uid});
+    return {success: true, id: truckId, message: "Truck updated successfully."};
+  } catch (error: any) {
+    logger.error(`Error updating truck ${truckId}:`, error);
+    if (error instanceof HttpsError) throw error;
+    throw new HttpsError("internal", "Failed to update truck.");
+  }
+});
+
+export const deleteTruck = onCall({enforceAppCheck: false, consumeAppCheck: "lenient"}, async (request) => {
+  const uid = request.auth?.uid;
+  if (!uid) throw new HttpsError("unauthenticated", "Authentication required.");
+  const userPermissions = await getUserPermissions(uid);
+  if (userPermissions.role !== "superAdmin") throw new HttpsError("permission-denied", "Super admin role required.");
+
+  const {truckId} = request.data as {truckId: string};
+  if (!truckId) throw new HttpsError("invalid-argument", "Truck ID required for deletion.");
+
+  try {
+    const truckRef = db.collection("trucks").doc(truckId);
+    if (!(await truckRef.get()).exists) throw new HttpsError("not-found", "Truck not found.");
+    // TODO: Check for dependencies (e.g., active biltis, manifests)
+    await truckRef.delete();
+    return {success: true, id: truckId, message: "Truck deleted successfully."};
+  } catch (error: any) {
+    logger.error(`Error deleting truck ${truckId}:`, error);
+    if (error instanceof HttpsError) throw error;
+    throw new HttpsError("internal", "Failed to delete truck.");
+  }
+});
+
+// --- Driver Management CRUD Functions ---
+export const createDriver = onCall({enforceAppCheck: false, consumeAppCheck: "lenient"}, async (request) => {
+  const uid = request.auth?.uid;
+  if (!uid) throw new HttpsError("unauthenticated", "Authentication required.");
+  const userPermissions = await getUserPermissions(uid);
+  if (userPermissions.role !== "superAdmin") throw new HttpsError("permission-denied", "Super admin role required.");
+
+  const data = request.data as DriverData;
+  if (!data.name || !data.licenseNo || !data.contactNo || !data.assignedLedgerId) {
+    throw new HttpsError("invalid-argument", "Name, License No, Contact No, and Ledger ID are required.");
+  }
+
+  try {
+    const driverPayload: any = {
+      ...data,
+      createdAt: admin.firestore.Timestamp.now(),
+      createdBy: uid,
+    };
+    if (data.joiningDate && typeof data.joiningDate === "string") {
+      driverPayload.joiningDate = admin.firestore.Timestamp.fromDate(new Date(data.joiningDate));
+    } else if (data.joiningDate instanceof admin.firestore.Timestamp) {
+      driverPayload.joiningDate = data.joiningDate;
+    }
+
+
+    const newDriverRef = await db.collection("drivers").add(driverPayload);
+    return {success: true, id: newDriverRef.id, message: "Driver created successfully."};
+  } catch (error: any) {
+    logger.error("Error creating driver:", error);
+    throw new HttpsError("internal", "Failed to create driver.");
+  }
+});
+
+export const updateDriver = onCall({enforceAppCheck: false, consumeAppCheck: "lenient"}, async (request) => {
+  const uid = request.auth?.uid;
+  if (!uid) throw new HttpsError("unauthenticated", "Authentication required.");
+  const userPermissions = await getUserPermissions(uid);
+  if (userPermissions.role !== "superAdmin") throw new HttpsError("permission-denied", "Super admin role required.");
+
+  const {driverId, ...dataToUpdate} = request.data as {driverId: string} & Partial<DriverData>;
+  if (!driverId) throw new HttpsError("invalid-argument", "Driver ID required for updates.");
+  if (Object.keys(dataToUpdate).length === 0) throw new HttpsError("invalid-argument", "No data provided for update.");
+
+  try {
+    const driverRef = db.collection("drivers").doc(driverId);
+    if (!(await driverRef.get()).exists) throw new HttpsError("not-found", "Driver not found.");
+
+    const updatePayload: any = {
+      ...dataToUpdate,
+      updatedAt: admin.firestore.Timestamp.now(),
+      updatedBy: uid,
+    };
+    if (dataToUpdate.joiningDate && typeof dataToUpdate.joiningDate === "string") {
+      updatePayload.joiningDate = admin.firestore.Timestamp.fromDate(new Date(dataToUpdate.joiningDate));
+    } else if (dataToUpdate.joiningDate instanceof admin.firestore.Timestamp) {
+       updatePayload.joiningDate = dataToUpdate.joiningDate;
+    }
+
+
+    await driverRef.update(updatePayload);
+    return {success: true, id: driverId, message: "Driver updated successfully."};
+  } catch (error: any) {
+    logger.error(`Error updating driver ${driverId}:`, error);
+    if (error instanceof HttpsError) throw error;
+    throw new HttpsError("internal", "Failed to update driver.");
+  }
+});
+
+export const deleteDriver = onCall({enforceAppCheck: false, consumeAppCheck: "lenient"}, async (request) => {
+  const uid = request.auth?.uid;
+  if (!uid) throw new HttpsError("unauthenticated", "Authentication required.");
+  const userPermissions = await getUserPermissions(uid);
+  if (userPermissions.role !== "superAdmin") throw new HttpsError("permission-denied", "Super admin role required.");
+
+  const {driverId} = request.data as {driverId: string};
+  if (!driverId) throw new HttpsError("invalid-argument", "Driver ID required for deletion.");
+
+  try {
+    const driverRef = db.collection("drivers").doc(driverId);
+    if (!(await driverRef.get()).exists) throw new HttpsError("not-found", "Driver not found.");
+    // TODO: Check for dependencies
+    await driverRef.delete();
+    return {success: true, id: driverId, message: "Driver deleted successfully."};
+  } catch (error: any) {
+    logger.error(`Error deleting driver ${driverId}:`, error);
+    if (error instanceof HttpsError) throw error;
+    throw new HttpsError("internal", "Failed to delete driver.");
   }
 });

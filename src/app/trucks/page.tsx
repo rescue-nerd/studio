@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, type ChangeEvent, type FormEvent, useEffect } from "react";
@@ -31,12 +32,18 @@ import {
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { db } from "@/lib/firebase";
-import { collection, getDocs, addDoc, doc, updateDoc, deleteDoc, Timestamp, query, orderBy } from "firebase/firestore";
+import { getFunctions, httpsCallable, type HttpsCallableResult } from "firebase/functions";
+import { collection, getDocs, query, orderBy } from "firebase/firestore";
 import type { Truck as FirestoreTruck } from "@/types/firestore";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/auth-context";
+import { useRouter } from "next/navigation";
 
-// Local interface for UI state, id is part of it
+
 interface Truck extends FirestoreTruck {}
+type TruckFormDataCallable = Omit<FirestoreTruck, 'id' | 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy'>;
+type UpdateTruckFormDataCallable = Partial<TruckFormDataCallable> & { truckId: string };
+
 
 const truckTypes = ["6-Wheeler", "10-Wheeler", "12-Wheeler", "Trailer", "Container Truck", "Tanker", "Tipper"];
 const truckStatuses: FirestoreTruck["status"][] = ["Active", "Inactive", "Maintenance"];
@@ -51,7 +58,11 @@ const defaultTruckFormData: Omit<Truck, 'id' | 'createdAt' | 'createdBy' | 'upda
   assignedLedgerId: "",
 };
 
-const PLACEHOLDER_USER_ID = "system_user_placeholder";
+const functionsInstance = getFunctions(db.app);
+const createTruckFn = httpsCallable<TruckFormDataCallable, {success: boolean, id: string, message: string}>(functionsInstance, 'createTruck');
+const updateTruckFn = httpsCallable<UpdateTruckFormDataCallable, {success: boolean, id: string, message: string}>(functionsInstance, 'updateTruck');
+const deleteTruckFn = httpsCallable<{truckId: string}, {success: boolean, id: string, message: string}>(functionsInstance, 'deleteTruck');
+
 
 export default function TrucksPage() {
   const [trucks, setTrucks] = useState<Truck[]>([]);
@@ -64,8 +75,18 @@ export default function TrucksPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { toast } = useToast();
+  const { user: authUser, loading: authLoading } = useAuth();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (!authLoading && !authUser) {
+      router.push('/login');
+    }
+  }, [authUser, authLoading, router]);
+
 
   const fetchTrucks = async () => {
+    if (!authUser) return;
     setIsLoading(true);
     try {
       const trucksCollectionRef = collection(db, "trucks");
@@ -85,9 +106,11 @@ export default function TrucksPage() {
   };
 
   useEffect(() => {
-    fetchTrucks();
+    if (authUser) {
+     fetchTrucks();
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [authUser]);
 
   const handleInputChange = (e: ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
@@ -117,46 +140,42 @@ export default function TrucksPage() {
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
+    if (!authUser) {
+        toast({ title: "Authentication Error", description: "You must be logged in.", variant: "destructive"});
+        return;
+    }
     if (!formData.truckNo || !formData.ownerName || !formData.assignedLedgerId) {
         toast({ title: "Validation Error", description: "Truck No., Owner Name, and Ledger A/C are required.", variant: "destructive"});
         return;
     }
     setIsSubmitting(true);
 
-    const truckDataPayload: Omit<FirestoreTruck, 'id' | 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy'> & Partial<Pick<FirestoreTruck, 'updatedAt' | 'updatedBy' | 'createdAt' | 'createdBy'>> = {
+    const truckDataPayload: TruckFormDataCallable = {
         ...formData,
     };
 
-    if (editingTruck) {
-      try {
-        const truckDocRef = doc(db, "trucks", editingTruck.id);
-        await updateDoc(truckDocRef, {
-            ...truckDataPayload,
-            updatedAt: Timestamp.now(),
-            updatedBy: PLACEHOLDER_USER_ID,
-        });
-        toast({ title: "Success", description: "Truck updated successfully." });
-      } catch (error) {
-        console.error("Error updating truck: ", error);
-        toast({ title: "Error", description: "Failed to update truck.", variant: "destructive" });
+    try {
+      let result: HttpsCallableResult<{success: boolean; id: string; message: string}>;
+      if (editingTruck) {
+        result = await updateTruckFn({ truckId: editingTruck.id, ...truckDataPayload });
+      } else {
+        result = await createTruckFn(truckDataPayload);
       }
-    } else {
-      try {
-        await addDoc(collection(db, "trucks"), {
-            ...truckDataPayload,
-            createdAt: Timestamp.now(),
-            createdBy: PLACEHOLDER_USER_ID,
-        });
-        toast({ title: "Success", description: "Truck added successfully." });
-      } catch (error) {
-        console.error("Error adding truck: ", error);
-        toast({ title: "Error", description: "Failed to add truck.", variant: "destructive" });
+
+      if (result.data.success) {
+        toast({ title: "Success", description: result.data.message });
+        fetchTrucks();
+        setIsFormDialogOpen(false);
+        setEditingTruck(null);
+      } else {
+        toast({ title: "Error", description: result.data.message, variant: "destructive" });
       }
+    } catch (error: any) {
+        console.error("Error saving truck:", error);
+        toast({ title: "Error", description: error.message || "Failed to save truck.", variant: "destructive" });
+    } finally {
+        setIsSubmitting(false);
     }
-    setIsSubmitting(false);
-    setIsFormDialogOpen(false);
-    setEditingTruck(null);
-    fetchTrucks();
   };
 
   const handleDeleteClick = (truck: Truck) => {
@@ -168,19 +187,22 @@ export default function TrucksPage() {
     if (truckToDelete) {
       setIsSubmitting(true);
       try {
-        const truckDocRef = doc(db, "trucks", truckToDelete.id);
-        await deleteDoc(truckDocRef);
-        toast({ title: "Success", description: `Truck "${truckToDelete.truckNo}" deleted.` });
-        fetchTrucks();
-      } catch (error) {
+        const result = await deleteTruckFn({ truckId: truckToDelete.id });
+        if (result.data.success) {
+            toast({ title: "Success", description: result.data.message });
+            fetchTrucks();
+        } else {
+            toast({ title: "Error", description: result.data.message, variant: "destructive" });
+        }
+      } catch (error: any) {
         console.error("Error deleting truck: ", error);
-        toast({ title: "Error", description: "Failed to delete truck.", variant: "destructive" });
+        toast({ title: "Error", description: error.message || "Failed to delete truck.", variant: "destructive" });
       } finally {
         setIsSubmitting(false);
+        setIsDeleteDialogOpen(false);
+        setTruckToDelete(null);
       }
     }
-    setIsDeleteDialogOpen(false);
-    setTruckToDelete(null);
   };
 
   const filteredTrucks = trucks.filter(truck =>
@@ -198,6 +220,15 @@ export default function TrucksPage() {
     }
   };
 
+  if (authLoading || (!authUser && !authLoading)) {
+    return (
+      <div className="flex justify-center items-center h-64">
+        <Loader2 className="h-12 w-12 animate-spin text-primary" />
+        <p className="ml-3 text-muted-foreground">{authLoading ? "Authenticating..." : "Redirecting to login..."}</p>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row justify-between items-center gap-4">
@@ -207,7 +238,7 @@ export default function TrucksPage() {
         </div>
         <Dialog open={isFormDialogOpen} onOpenChange={setIsFormDialogOpen}>
           <DialogTrigger asChild>
-            <Button onClick={openAddForm} disabled={isSubmitting}>
+            <Button onClick={openAddForm} disabled={isSubmitting || isLoading}>
               <PlusCircle className="mr-2 h-4 w-4" /> Add New Truck
             </Button>
           </DialogTrigger>

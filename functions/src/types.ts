@@ -170,6 +170,30 @@ export interface UnitData {
   type: UnitType;
 }
 
+// ---- Truck and Driver Types for Functions ----
+export interface TruckData {
+  truckNo: string;
+  type: string; // e.g., "6-Wheeler", "10-Wheeler"
+  capacity?: string;
+  ownerName: string;
+  ownerPAN?: string;
+  status: "Active" | "Inactive" | "Maintenance";
+  assignedLedgerId: string;
+  // id, createdAt, createdBy, etc. are handled by the function
+}
+
+export interface DriverData {
+  name: string;
+  licenseNo: string;
+  contactNo: string;
+  address?: string;
+  joiningDate?: Timestamp | string; // Client might send string, function converts to Timestamp
+  status: "Active" | "Inactive" | "On Leave";
+  assignedLedgerId: string;
+  // id, createdAt, createdBy, etc. are handled by the function
+}
+
+
 // Auditable fields are set by the functions themselves
 // export interface Auditable {
 //   createdBy?: string;
@@ -177,3 +201,4 @@ export interface UnitData {
 //   updatedBy?: string;
 //   updatedAt?: Timestamp;
 // }
+

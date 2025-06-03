@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, type ChangeEvent, type FormEvent, useEffect } from "react";
@@ -36,17 +37,23 @@ import { Calendar } from "@/components/ui/calendar";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { db } from "@/lib/firebase";
-import { collection, getDocs, addDoc, doc, updateDoc, deleteDoc, Timestamp, query, orderBy } from "firebase/firestore";
+import { getFunctions, httpsCallable, type HttpsCallableResult } from "firebase/functions";
+import { collection, getDocs, query, orderBy, Timestamp } from "firebase/firestore";
 import type { Driver as FirestoreDriver } from "@/types/firestore";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/auth-context";
+import { useRouter } from "next/navigation";
 
-// Local interface for UI state
+
 interface Driver extends Omit<FirestoreDriver, 'joiningDate' | 'createdAt' | 'updatedAt'> {
   id: string;
-  joiningDate?: Date; // Use Date for form, convert to Timestamp for Firestore
-  createdAt?: Date | Timestamp; // Allow both for local state vs. Firestore
-  updatedAt?: Date | Timestamp;
+  joiningDate?: Date; 
+  createdAt?: Date;
+  updatedAt?: Date;
 }
+type DriverFormDataCallable = Omit<FirestoreDriver, 'id' | 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy' | 'joiningDate'> & { joiningDate?: string };
+type UpdateDriverFormDataCallable = Partial<DriverFormDataCallable> & { driverId: string };
+
 
 const driverStatuses: FirestoreDriver["status"][] = ["Active", "Inactive", "On Leave"];
 
@@ -60,7 +67,11 @@ const defaultDriverFormData: Omit<Driver, 'id' | 'createdAt' | 'createdBy' | 'up
   address: "",
 };
 
-const PLACEHOLDER_USER_ID = "system_user_placeholder";
+const functionsInstance = getFunctions(db.app);
+const createDriverFn = httpsCallable<DriverFormDataCallable, {success: boolean, id: string, message: string}>(functionsInstance, 'createDriver');
+const updateDriverFn = httpsCallable<UpdateDriverFormDataCallable, {success: boolean, id: string, message: string}>(functionsInstance, 'updateDriver');
+const deleteDriverFn = httpsCallable<{driverId: string}, {success: boolean, id: string, message: string}>(functionsInstance, 'deleteDriver');
+
 
 export default function DriversPage() {
   const [drivers, setDrivers] = useState<Driver[]>([]);
@@ -73,8 +84,18 @@ export default function DriversPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { toast } = useToast();
+  const { user: authUser, loading: authLoading } = useAuth();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (!authLoading && !authUser) {
+      router.push('/login');
+    }
+  }, [authUser, authLoading, router]);
+
 
   const fetchDrivers = async () => {
+    if (!authUser) return;
     setIsLoading(true);
     try {
       const driversCollectionRef = collection(db, "drivers");
@@ -98,9 +119,11 @@ export default function DriversPage() {
   };
 
   useEffect(() => {
-    fetchDrivers();
+    if(authUser){
+      fetchDrivers();
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [authUser]);
 
 
   const handleInputChange = (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -137,47 +160,42 @@ export default function DriversPage() {
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
+    if (!authUser) {
+        toast({ title: "Authentication Error", description: "You must be logged in.", variant: "destructive"});
+        return;
+    }
     if (!formData.name || !formData.licenseNo || !formData.contactNo || !formData.assignedLedgerId) {
         toast({ title: "Validation Error", description: "Name, License No., Contact No., and Ledger A/C ID are required.", variant: "destructive"});
         return;
     }
     setIsSubmitting(true);
 
-    const driverDataPayload: Omit<FirestoreDriver, 'id' | 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy'> & Partial<Pick<FirestoreDriver, 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy'>> = {
+    const driverDataPayload: DriverFormDataCallable = {
         ...formData,
-        joiningDate: formData.joiningDate ? Timestamp.fromDate(formData.joiningDate) : undefined,
+        joiningDate: formData.joiningDate ? formData.joiningDate.toISOString() : undefined,
     };
 
-    if (editingDriver) {
-      try {
-        const driverDocRef = doc(db, "drivers", editingDriver.id);
-        await updateDoc(driverDocRef, {
-            ...driverDataPayload,
-            updatedAt: Timestamp.now(),
-            updatedBy: PLACEHOLDER_USER_ID,
-        });
-        toast({ title: "Success", description: "Driver updated successfully." });
-      } catch (error) {
-        console.error("Error updating driver: ", error);
-        toast({ title: "Error", description: "Failed to update driver.", variant: "destructive" });
+    try {
+      let result: HttpsCallableResult<{success: boolean; id: string; message: string}>;
+      if (editingDriver) {
+        result = await updateDriverFn({ driverId: editingDriver.id, ...driverDataPayload });
+      } else {
+        result = await createDriverFn(driverDataPayload);
       }
-    } else {
-      try {
-        await addDoc(collection(db, "drivers"), {
-            ...driverDataPayload,
-            createdAt: Timestamp.now(),
-            createdBy: PLACEHOLDER_USER_ID,
-        });
-        toast({ title: "Success", description: "Driver added successfully." });
-      } catch (error) {
-        console.error("Error adding driver: ", error);
-        toast({ title: "Error", description: "Failed to add driver.", variant: "destructive" });
+      if (result.data.success) {
+        toast({ title: "Success", description: result.data.message });
+        fetchDrivers();
+        setIsFormDialogOpen(false);
+        setEditingDriver(null);
+      } else {
+        toast({ title: "Error", description: result.data.message, variant: "destructive" });
       }
+    } catch (error: any) {
+      console.error("Error saving driver:", error);
+      toast({ title: "Error", description: error.message || "Failed to save driver.", variant: "destructive" });
+    } finally {
+      setIsSubmitting(false);
     }
-    setIsSubmitting(false);
-    setIsFormDialogOpen(false);
-    setEditingDriver(null);
-    fetchDrivers();
   };
 
   const handleDeleteClick = (driver: Driver) => {
@@ -189,18 +207,22 @@ export default function DriversPage() {
     if (driverToDelete) {
       setIsSubmitting(true);
       try {
-        await deleteDoc(doc(db, "drivers", driverToDelete.id));
-        toast({ title: "Success", description: `Driver "${driverToDelete.name}" deleted.`});
-        fetchDrivers();
-      } catch (error) {
+        const result = await deleteDriverFn({ driverId: driverToDelete.id });
+        if (result.data.success) {
+            toast({ title: "Success", description: result.data.message});
+            fetchDrivers();
+        } else {
+            toast({ title: "Error", description: result.data.message, variant: "destructive" });
+        }
+      } catch (error: any) {
         console.error("Error deleting driver: ", error);
-        toast({ title: "Error", description: "Failed to delete driver.", variant: "destructive" });
+        toast({ title: "Error", description: error.message || "Failed to delete driver.", variant: "destructive" });
       } finally {
         setIsSubmitting(false);
+        setIsDeleteDialogOpen(false);
+        setDriverToDelete(null);
       }
     }
-    setIsDeleteDialogOpen(false);
-    setDriverToDelete(null);
   };
 
   const filteredDrivers = drivers.filter(driver =>
@@ -218,6 +240,15 @@ export default function DriversPage() {
     }
   };
 
+  if (authLoading || (!authUser && !authLoading)) {
+    return (
+      <div className="flex justify-center items-center h-64">
+        <Loader2 className="h-12 w-12 animate-spin text-primary" />
+        <p className="ml-3 text-muted-foreground">{authLoading ? "Authenticating..." : "Redirecting to login..."}</p>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row justify-between items-center gap-4">
@@ -227,7 +258,7 @@ export default function DriversPage() {
         </div>
         <Dialog open={isFormDialogOpen} onOpenChange={setIsFormDialogOpen}>
           <DialogTrigger asChild>
-            <Button onClick={openAddForm} disabled={isSubmitting}>
+            <Button onClick={openAddForm} disabled={isSubmitting || isLoading}>
               <PlusCircle className="mr-2 h-4 w-4" /> Add New Driver
             </Button>
           </DialogTrigger>
