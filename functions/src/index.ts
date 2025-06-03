@@ -308,11 +308,11 @@ export const submitDaybook = onCall({enforceAppCheck: false}, async (request) =>
     let totalCashIn = 0;
     let totalCashOut = 0;
 
-    transactions.forEach(tx => {
-      if (tx.transactionType.toLowerCase().includes("cash in") || 
+    transactions.forEach((tx) => {
+      if (tx.transactionType.toLowerCase().includes("cash in") ||
           (tx.transactionType === "Adjustment/Correction" && tx.amount >= 0)) {
         totalCashIn += Math.abs(tx.amount);
-      } else if (tx.transactionType.toLowerCase().includes("cash out") || 
+      } else if (tx.transactionType.toLowerCase().includes("cash out") ||
                 (tx.transactionType === "Adjustment/Correction" && tx.amount < 0)) {
         totalCashOut += Math.abs(tx.amount);
       }
@@ -334,10 +334,10 @@ export const submitDaybook = onCall({enforceAppCheck: false}, async (request) =>
 
     logger.info(`Daybook ${daybookId} submitted for approval by ${uid}`);
     return {success: true, message: "Daybook submitted for approval."};
-  } catch (error: any) {
+  } catch (error) {
     logger.error(`Error submitting daybook ${daybookId}:`, error);
     if (error instanceof HttpsError) throw error;
-    throw new HttpsError("internal", error.message || "Failed to submit daybook.");
+    throw new HttpsError("internal", (error as Error).message || "Failed to submit daybook.");
   }
 });
 
@@ -393,10 +393,10 @@ export const approveDaybook = onCall({enforceAppCheck: false}, async (request) =
 
     logger.info(`Daybook ${daybookId} approved by ${uid}`);
     return {success: true, message: "Daybook approved successfully."};
-  } catch (error: any) {
+  } catch (error) {
     logger.error(`Error approving daybook ${daybookId}:`, error);
     if (error instanceof HttpsError) throw error;
-    throw new HttpsError("internal", error.message || "Failed to approve daybook.");
+    throw new HttpsError("internal", (error as Error).message || "Failed to approve daybook.");
   }
 });
 
@@ -450,10 +450,10 @@ export const rejectDaybook = onCall({enforceAppCheck: false}, async (request) =>
 
     logger.info(`Daybook ${daybookId} rejected by ${uid}`);
     return {success: true, message: "Daybook rejected."};
-  } catch (error: any) {
+  } catch (error) {
     logger.error(`Error rejecting daybook ${daybookId}:`, error);
     if (error instanceof HttpsError) throw error;
-    throw new HttpsError("internal", error.message || "Failed to reject daybook.");
+    throw new HttpsError("internal", (error as Error).message || "Failed to reject daybook.");
   }
 });
 
