@@ -3,7 +3,7 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation'; // Added useRouter
-import React from 'react';
+import React, { useEffect } from 'react';
 import {
   SidebarHeader,
   SidebarContent,
@@ -113,6 +113,13 @@ export default function AppSidebarContent() {
       toast({ title: "Logout Failed", description: "Could not log out. Please try again.", variant: "destructive" });
     }
   };
+
+  // Handle navigation in useEffect to avoid setState during render
+  useEffect(() => {
+    if (!loading && !user && pathname !== '/login' && pathname !== '/signup') {
+      router.push('/login');
+    }
+  }, [loading, user, pathname, router]);
   
   if (loading && !user && (pathname !== '/login' && pathname !== '/signup')) {
     // Optionally, render a loading skeleton for the sidebar or nothing
@@ -125,9 +132,6 @@ export default function AppSidebarContent() {
     // If not loading, and no user, and not on an auth page, don't render the sidebar.
     // This assumes main content area will handle redirect or show a "please login" message.
     // A more robust solution for protected routes is usually middleware or a HOC.
-    if (typeof window !== 'undefined') { // Ensure this runs client-side
-        router.push('/login');
-    }
     return null; 
   }
 
