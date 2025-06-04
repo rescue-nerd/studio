@@ -1,7 +1,7 @@
 import * as admin from "firebase-admin";
 import { logger } from "firebase-functions";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
-import type { TruckData, UserData } from "./types";
+import type { DriverData, TruckData, UserData } from "./types";
 
 admin.initializeApp();
 const db = admin.firestore();
@@ -183,6 +183,139 @@ export const deleteTruck = onCall(
       logger.error(`Error deleting truck:`, error);
       if (error instanceof HttpsError) throw error;
       throw new HttpsError("internal", error.message || "Failed to delete truck.");
+    }
+  }
+);
+
+// Driver Management CRUD Functions
+export const createDriver = onCall(
+  { enforceAppCheck: false },
+  async (request) => {
+    const uid = request.auth?.uid;
+    if (!uid) throw new HttpsError("unauthenticated", "Authentication required.");
+
+    const data = request.data as Omit<DriverData, "id" | "createdAt" | "createdBy" | "updatedAt" | "updatedBy">;
+    if (!data.name || !data.licenseNo || !data.contactNo || !data.assignedLedgerId) {
+      throw new HttpsError("invalid-argument", "Driver name, license number, contact number, and assigned ledger ID are required.");
+    }
+
+    const userPermissions = await getUserPermissions(uid);
+    if (!userPermissions || (userPermissions.role !== "superAdmin" && userPermissions.role !== "admin")) {
+      throw new HttpsError("permission-denied", "Only administrators can create drivers.");
+    }
+
+    try {
+      const existingDriverQuery = await db.collection("drivers")
+        .where("licenseNo", "==", data.licenseNo)
+        .limit(1)
+        .get();
+      
+      if (!existingDriverQuery.empty) {
+        throw new HttpsError("already-exists", "A driver with this license number already exists.");
+      }
+
+      const driverRef = db.collection("drivers").doc();
+      await driverRef.set({
+        ...data,
+        createdAt: admin.firestore.Timestamp.now(),
+        createdBy: uid,
+      });
+
+      logger.info(`Driver created: ${driverRef.id} by ${uid}`);
+      return {success: true, id: driverRef.id, message: "Driver created successfully."};
+    } catch (error: any) {
+      logger.error(`Error creating driver:`, error);
+      if (error instanceof HttpsError) throw error;
+      throw new HttpsError("internal", error.message || "Failed to create driver.");
+    }
+  }
+);
+
+export const updateDriver = onCall(
+  { enforceAppCheck: false },
+  async (request) => {
+    const uid = request.auth?.uid;
+    if (!uid) throw new HttpsError("unauthenticated", "Authentication required.");
+
+    const data = request.data as { driverId: string } & Partial<Omit<DriverData, "id" | "createdAt" | "createdBy" | "updatedAt" | "updatedBy">>;
+    if (!data.driverId) throw new HttpsError("invalid-argument", "Driver ID is required.");
+
+    const userPermissions = await getUserPermissions(uid);
+    if (!userPermissions || (userPermissions.role !== "superAdmin" && userPermissions.role !== "admin")) {
+      throw new HttpsError("permission-denied", "Only administrators can update drivers.");
+    }
+
+    try {
+      const driverRef = db.collection("drivers").doc(data.driverId);
+      const driverDoc = await driverRef.get();
+      
+      if (!driverDoc.exists) throw new HttpsError("not-found", "Driver not found.");
+      
+      const updateData: Record<string, any> = {
+        updatedAt: admin.firestore.Timestamp.now(),
+        updatedBy: uid,
+      };
+
+      if (data.name !== undefined) updateData.name = data.name;
+      if (data.licenseNo !== undefined) updateData.licenseNo = data.licenseNo;
+      if (data.contactNo !== undefined) updateData.contactNo = data.contactNo;
+      if (data.address !== undefined) updateData.address = data.address;
+      if (data.joiningDate !== undefined) updateData.joiningDate = data.joiningDate;
+      if (data.status !== undefined) updateData.status = data.status;
+      if (data.assignedLedgerId !== undefined) updateData.assignedLedgerId = data.assignedLedgerId;
+
+      await driverRef.update(updateData);
+
+      logger.info(`Driver updated: ${data.driverId} by ${uid}`);
+      return {success: true, id: data.driverId, message: "Driver updated successfully."};
+    } catch (error: any) {
+      logger.error(`Error updating driver:`, error);
+      if (error instanceof HttpsError) throw error;
+      throw new HttpsError("internal", error.message || "Failed to update driver.");
+    }
+  }
+);
+
+export const deleteDriver = onCall(
+  { enforceAppCheck: false },
+  async (request) => {
+    const uid = request.auth?.uid;
+    if (!uid) throw new HttpsError("unauthenticated", "Authentication required.");
+
+    const { driverId } = request.data as { driverId: string };
+    if (!driverId) throw new HttpsError("invalid-argument", "Driver ID is required.");
+
+    const userPermissions = await getUserPermissions(uid);
+    if (!userPermissions || (userPermissions.role !== "superAdmin" && userPermissions.role !== "admin")) {
+      throw new HttpsError("permission-denied", "Only administrators can delete drivers.");
+    }
+
+    try {
+      const driverRef = db.collection("drivers").doc(driverId);
+      const driverDoc = await driverRef.get();
+      
+      if (!driverDoc.exists) throw new HttpsError("not-found", "Driver not found.");
+      
+      const manifestsWithDriver = await db.collection("manifests")
+        .where("driverId", "==", driverId)
+        .limit(1)
+        .get();
+      
+      if (!manifestsWithDriver.empty) {
+        throw new HttpsError(
+          "failed-precondition",
+          "Cannot delete driver because they are referenced in manifests."
+        );
+      }
+
+      await driverRef.delete();
+
+      logger.info(`Driver deleted: ${driverId} by ${uid}`);
+      return {success: true, id: driverId, message: "Driver deleted successfully."};
+    } catch (error: any) {
+      logger.error(`Error deleting driver:`, error);
+      if (error instanceof HttpsError) throw error;
+      throw new HttpsError("internal", error.message || "Failed to delete driver.");
     }
   }
 );

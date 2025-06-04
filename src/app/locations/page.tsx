@@ -31,8 +31,8 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { db } from "@/lib/firebase";
-import { getFunctions, httpsCallable, type HttpsCallableResult } from "firebase/functions";
+import { db, functions } from "@/lib/firebase";
+import { httpsCallable, type HttpsCallableResult } from "firebase/functions";
 import { collection, getDocs, query, orderBy } from "firebase/firestore";
 import type { Country as FirestoreCountry, State as FirestoreState, City as FirestoreCity, Unit as FirestoreUnit } from "@/types/firestore";
 import { useToast } from "@/hooks/use-toast";
@@ -59,24 +59,22 @@ const defaultStateFormData: StateFormData = { name: "", countryId: "" };
 const defaultCityFormData: CityFormData = { name: "", stateId: "" };
 const defaultUnitFormData: UnitFormData = { name: "", symbol: "", type: "Other" };
 
-// Firebase Functions setup
-const functionsInstance = getFunctions(db.app);
 // Countries
-const createCountryFn = httpsCallable<CountryFormData, {success: boolean, id: string, message: string}>(functionsInstance, 'createCountry');
-const updateCountryFn = httpsCallable<{countryId: string} & Partial<CountryFormData>, {success: boolean, id: string, message: string}>(functionsInstance, 'updateCountry');
-const deleteCountryFn = httpsCallable<{countryId: string}, {success: boolean, id: string, message: string}>(functionsInstance, 'deleteCountry');
+const createCountryFn = httpsCallable<CountryFormData, {success: boolean, id: string, message: string}>(functions, 'createCountry');
+const updateCountryFn = httpsCallable<{countryId: string} & Partial<CountryFormData>, {success: boolean, id: string, message: string}>(functions, 'updateCountry');
+const deleteCountryFn = httpsCallable<{countryId: string}, {success: boolean, id: string, message: string}>(functions, 'deleteCountry');
 // States
-const createStateFn = httpsCallable<StateFormData, {success: boolean, id: string, message: string}>(functionsInstance, 'createState');
-const updateStateFn = httpsCallable<{stateId: string} & Partial<StateFormData>, {success: boolean, id: string, message: string}>(functionsInstance, 'updateState');
-const deleteStateFn = httpsCallable<{stateId: string}, {success: boolean, id: string, message: string}>(functionsInstance, 'deleteState');
+const createStateFn = httpsCallable<StateFormData, {success: boolean, id: string, message: string}>(functions, 'createState');
+const updateStateFn = httpsCallable<{stateId: string} & Partial<StateFormData>, {success: boolean, id: string, message: string}>(functions, 'updateState');
+const deleteStateFn = httpsCallable<{stateId: string}, {success: boolean, id: string, message: string}>(functions, 'deleteState');
 // Cities
-const createCityFn = httpsCallable<CityFormData, {success: boolean, id: string, message: string}>(functionsInstance, 'createCity');
-const updateCityFn = httpsCallable<{cityId: string} & Partial<CityFormData>, {success: boolean, id: string, message: string}>(functionsInstance, 'updateCity');
-const deleteCityFn = httpsCallable<{cityId: string}, {success: boolean, id: string, message: string}>(functionsInstance, 'deleteCity');
+const createCityFn = httpsCallable<CityFormData, {success: boolean, id: string, message: string}>(functions, 'createCity');
+const updateCityFn = httpsCallable<{cityId: string} & Partial<CityFormData>, {success: boolean, id: string, message: string}>(functions, 'updateCity');
+const deleteCityFn = httpsCallable<{cityId: string}, {success: boolean, id: string, message: string}>(functions, 'deleteCity');
 // Units
-const createUnitFn = httpsCallable<UnitFormData, {success: boolean, id: string, message: string}>(functionsInstance, 'createUnit');
-const updateUnitFn = httpsCallable<{unitId: string} & Partial<UnitFormData>, {success: boolean, id: string, message: string}>(functionsInstance, 'updateUnit');
-const deleteUnitFn = httpsCallable<{unitId: string}, {success: boolean, id: string, message: string}>(functionsInstance, 'deleteUnit');
+const createUnitFn = httpsCallable<UnitFormData, {success: boolean, id: string, message: string}>(functions, 'createUnit');
+const updateUnitFn = httpsCallable<{unitId: string} & Partial<UnitFormData>, {success: boolean, id: string, message: string}>(functions, 'updateUnit');
+const deleteUnitFn = httpsCallable<{unitId: string}, {success: boolean, id: string, message: string}>(functions, 'deleteUnit');
 
 
 export default function LocationsPage() {

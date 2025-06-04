@@ -43,6 +43,7 @@ import { collection, getDocs, query, orderBy, Timestamp } from "firebase/firesto
 import type { Driver as FirestoreDriver } from "@/types/firestore";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/auth-context";
+import { getIdToken } from "firebase/auth";
 import { useRouter } from "next/navigation";
 
 
@@ -107,6 +108,8 @@ export default function DriversPage() {
           ...data,
           id: docSnap.id,
           joiningDate: data.joiningDate ? data.joiningDate.toDate() : undefined,
+          createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate() : data.createdAt,
+          updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toDate() : data.updatedAt,
         };
       });
       setDrivers(fetchedDrivers);
@@ -176,6 +179,11 @@ export default function DriversPage() {
     };
 
     try {
+      // Ensure we have a fresh auth token before making the request
+      if (authUser) {
+        await getIdToken(authUser, true); // Force refresh the token
+      }
+      
       let result: HttpsCallableResult<{success: boolean; id: string; message: string}>;
       if (editingDriver) {
         result = await updateDriverFn({ driverId: editingDriver.id, ...driverDataPayload });
@@ -207,6 +215,11 @@ export default function DriversPage() {
     if (driverToDelete) {
       setIsSubmitting(true);
       try {
+        // Ensure we have a fresh auth token before making the request
+        if (authUser) {
+          await getIdToken(authUser, true); // Force refresh the token
+        }
+        
         const result = await deleteDriverFn({ driverId: driverToDelete.id });
         if (result.data.success) {
             toast({ title: "Success", description: result.data.message});

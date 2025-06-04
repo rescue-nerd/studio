@@ -399,3 +399,18 @@ export interface UpdateUserBranchAssignmentsPayload {
   userId: string;
   assignedBranchIds: string[];
 }
+
+export interface DriverData {
+  id?: string; // Firestore document ID
+  name: string;
+  licenseNo: string;
+  contactNo: string;
+  address?: string;
+  joiningDate?: Timestamp;
+  status: "Active" | "Inactive" | "On Leave";
+  assignedLedgerId: string; // Link to LedgerAccount.id
+  createdBy?: string;
+  createdAt?: Timestamp;
+  updatedBy?: string;
+  updatedAt?: Timestamp;
+}
