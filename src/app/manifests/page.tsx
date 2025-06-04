@@ -95,11 +95,10 @@ const defaultManifestFormData: Omit<Manifest, 'id' | 'status' | 'createdAt' | 'c
   remarks: "",
 };
 
-// Initialize Firebase Functions
-const functionsInstance = getFunctions(db.app);
-const createManifestFn = httpsCallable<any, {success: boolean, id: string, message: string}>(functionsInstance, 'createManifest');
-const updateManifestFn = httpsCallable<any, {success: boolean, id: string, message: string}>(functionsInstance, 'updateManifest');
-const deleteManifestFn = httpsCallable<{manifestId: string}, {success: boolean, id: string, message: string}>(functionsInstance, 'deleteManifest');
+// Use the functions instance from the central firebase.ts file
+const createManifestFn = httpsCallable<any, {success: boolean, id: string, message: string}>(functions, 'createManifest');
+const updateManifestFn = httpsCallable<any, {success: boolean, id: string, message: string}>(functions, 'updateManifest');
+const deleteManifestFn = httpsCallable<{manifestId: string}, {success: boolean, id: string, message: string}>(functions, 'deleteManifest');
 
 
 export default function ManifestsPage() {

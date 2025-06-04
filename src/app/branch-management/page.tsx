@@ -1,50 +1,50 @@
+
 "use client";
 
-import SmartBranchSelectDialog from "@/components/shared/smart-branch-select-dialog";
-import {
-    AlertDialog,
-    AlertDialogAction,
-    AlertDialogCancel,
-    AlertDialogContent,
-    AlertDialogDescription,
-    AlertDialogFooter,
-    AlertDialogHeader,
-    AlertDialogTitle,
-    AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
-import { Badge } from "@/components/ui/badge";
+import { useState, useEffect, type ChangeEvent, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-    Dialog,
-    DialogClose,
-    DialogContent,
-    DialogDescription,
-    DialogFooter,
-    DialogHeader,
-    DialogTitle,
-    DialogTrigger,
-} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
+import { PlusCircle, Search, Edit, Trash2, Loader2 } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+  DialogClose,
+} from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger, 
+} from "@/components/ui/alert-dialog";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { useAuth } from "@/contexts/auth-context";
-import { useToast } from "@/hooks/use-toast";
-import { db, functions } from "@/lib/firebase";
-import { handleFirebaseError, logError } from "@/lib/firebase-error-handler";
-import type { Branch as FirestoreBranch } from "@/types/firestore";
-import {
-    collection,
-    getDocs,
-    orderBy, // Timestamp can still be used for client-side display if needed
-    query,
-    Timestamp
+import { db, functions } from "@/lib/firebase"; 
+import { httpsCallable, type HttpsCallableResult } from "firebase/functions";
+import { 
+  collection, 
+  getDocs, 
+  Timestamp, // Timestamp can still be used for client-side display if needed
+  query,
+  orderBy
 } from "firebase/firestore";
-import { httpsCallable } from "firebase/functions";
-import { Edit, Loader2, PlusCircle, Search, Trash2 } from "lucide-react";
+import type { Branch as FirestoreBranch } from "@/types/firestore"; 
+import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/auth-context";
 import { useRouter } from "next/navigation";
-import { useEffect, useState, type ChangeEvent, type FormEvent } from "react";
+import { handleFirebaseError, logError } from "@/lib/firebase-error-handler";
 
 interface Branch extends Omit<FirestoreBranch, 'createdAt' | 'updatedAt' | 'createdBy' | 'updatedBy'> {
   id: string; 
@@ -82,7 +82,6 @@ export default function BranchManagementPage() {
   const [isLoading, setIsLoading] = useState(true); // Combined loading state
   const [isSubmittingForm, setIsSubmittingForm] = useState(false); // For form submission spinner
   const [isDeleting, setIsDeleting] = useState(false); // For delete action spinner
-  const [isBranchSelectOpen, setIsBranchSelectOpen] = useState(false); // For SmartBranchSelectDialog
 
   const { toast } = useToast();
   const { user: authUser, loading: authLoading } = useAuth();
@@ -136,41 +135,6 @@ export default function BranchManagementPage() {
     setFormData((prev) => ({ ...prev, status: value as FirestoreBranch['status'] }));
   };
 
-  const handleBranchAdd = async (newBranchData: Omit<Branch, 'id' | 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy'>) => {
-    setIsSubmittingForm(true);
-    try {
-      const branchDataPayload: BranchCallableData = {
-        name: newBranchData.name,
-        location: newBranchData.location || "",
-        status: "Active", // Default status for new branches
-        managerName: "",
-        contactEmail: "",
-        contactPhone: "",
-        managerUserId: "",
-      };
-
-      const result = await createBranchFn(branchDataPayload);
-      
-      if (result.data && result.data.success) {
-        toast({ title: "Success", description: result.data.message || "Branch created successfully" });
-        await fetchBranches();
-      } else {
-        toast({ 
-          title: "Creation Failed", 
-          description: result.data?.message || "Could not create branch.", 
-          variant: "destructive" 
-        });
-      }
-    } catch (error: any) {
-      console.error("Error adding branch: ", error);
-      handleFirebaseError(error, toast, {
-        "permission-denied": "You don't have permission to add branches."
-      });
-    } finally {
-      setIsSubmittingForm(false);
-    }
-  };
-
   const openAddForm = () => {
     setEditingBranch(null);
     setFormData(defaultBranchFormData);
@@ -219,25 +183,17 @@ export default function BranchManagementPage() {
       if (editingBranch) {
         const updatePayload: UpdateBranchCallableData = { ...branchDataPayload, branchId: editingBranch.id };
         const result = await updateBranchFn(updatePayload);
-        if (result.data && result.data.success) {
+        if (result.data.success) {
             toast({ title: "Success", description: result.data.message });
         } else {
-            toast({ 
-              title: "Update Failed", 
-              description: result.data?.message || "Could not update branch.", 
-              variant: "destructive" 
-            });
+            toast({ title: "Update Failed", description: result.data.message || "Could not update branch.", variant: "destructive" });
         }
       } else {
         const result = await createBranchFn(branchDataPayload);
-         if (result.data && result.data.success) {
+         if (result.data.success) {
             toast({ title: "Success", description: result.data.message });
         } else {
-            toast({ 
-              title: "Creation Failed", 
-              description: result.data?.message || "Could not create branch.", 
-              variant: "destructive" 
-            });
+            toast({ title: "Creation Failed", description: result.data.message || "Could not create branch.", variant: "destructive" });
         }
       }
       setIsFormDialogOpen(false);
@@ -262,15 +218,11 @@ export default function BranchManagementPage() {
       setIsDeleting(true);
       try {
         const result = await deleteBranchFn({ branchId: branchToDelete.id });
-        if (result.data && result.data.success) {
+        if (result.data.success) {
             toast({ title: "Success", description: result.data.message });
             fetchBranches(); 
         } else {
-            toast({ 
-              title: "Deletion Failed", 
-              description: result.data?.message || "Could not delete branch.", 
-              variant: "destructive" 
-            });
+            toast({ title: "Deletion Failed", description: result.data.message || "Could not delete branch.", variant: "destructive" });
         }
       } catch (error: any) {
         console.error("Error deleting branch: ", error);
@@ -307,104 +259,84 @@ export default function BranchManagementPage() {
 
   return (
     <div className="space-y-6">
-      <SmartBranchSelectDialog
-        isOpen={isBranchSelectOpen}
-        onOpenChange={setIsBranchSelectOpen}
-        branches={branches}
-        onBranchSelect={() => {}} // No-op, we just need this for add
-        onBranchAdd={handleBranchAdd}
-        dialogTitle="Add New Branch"
-      />
-
       <div className="flex flex-col md:flex-row justify-between items-center gap-4">
         <div>
           <h1 className="text-3xl font-headline font-bold text-foreground">Branch Management</h1>
           <p className="text-muted-foreground">Manage your company's branches and their details.</p>
         </div>
-        <div className="flex gap-2">
-          <Button 
-            onClick={() => setIsBranchSelectOpen(true)} 
-            variant="outline" 
-            disabled={isSubmittingForm || isLoading}
-          >
-            <PlusCircle className="mr-2 h-4 w-4" /> Quick Add
-          </Button>
-          <Dialog open={isFormDialogOpen} onOpenChange={setIsFormDialogOpen}>
-            <DialogTrigger asChild>
-              <Button onClick={openAddForm} disabled={isSubmittingForm || isLoading}>
-                <PlusCircle className="mr-2 h-4 w-4" /> Add Branch
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="sm:max-w-[425px]">
-              <DialogHeader>
-                <DialogTitle>{editingBranch ? "Edit Branch" : "Add New Branch"}</DialogTitle>
-                <DialogDescription>
-                  {editingBranch ? "Update the details of the branch." : "Enter the details for the new branch."}
-                </DialogDescription>
-              </DialogHeader>
-              <form onSubmit={handleSubmit} className="grid gap-4 py-4">
-                <div className="grid grid-cols-4 items-center gap-4">
-                  <Label htmlFor="name" className="text-right">
-                    Name
-                  </Label>
-                  <Input id="name" name="name" value={formData.name} onChange={handleInputChange} className="col-span-3" required />
-                </div>
-                <div className="grid grid-cols-4 items-center gap-4">
-                  <Label htmlFor="location" className="text-right">
-                    Location
-                  </Label>
-                  <Input id="location" name="location" value={formData.location} onChange={handleInputChange} className="col-span-3" required />
-                </div>
-                <div className="grid grid-cols-4 items-center gap-4">
-                  <Label htmlFor="managerName" className="text-right">
-                    Manager
-                  </Label>
-                  <Input id="managerName" name="managerName" value={formData.managerName || ''} onChange={handleInputChange} className="col-span-3" placeholder="Optional" />
-                </div>
-                <div className="grid grid-cols-4 items-center gap-4">
-                  <Label htmlFor="status" className="text-right">
-                    Status
-                  </Label>
-                  <Select value={formData.status} onValueChange={handleStatusChange}>
-                    <SelectTrigger id="status" className="col-span-3">
-                      <SelectValue placeholder="Branch Status" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Active">Active</SelectItem>
-                      <SelectItem value="Inactive">Inactive</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="grid grid-cols-4 items-center gap-4">
-                  <Label htmlFor="contactEmail" className="text-right">
-                    Email
-                  </Label>
-                  <Input id="contactEmail" name="contactEmail" value={formData.contactEmail || ''} onChange={handleInputChange} className="col-span-3" placeholder="Optional" type="email" />
-                </div>
-                <div className="grid grid-cols-4 items-center gap-4">
-                  <Label htmlFor="contactPhone" className="text-right">
-                    Phone
-                  </Label>
-                  <Input id="contactPhone" name="contactPhone" value={formData.contactPhone || ''} onChange={handleInputChange} className="col-span-3" placeholder="Optional" />
-                </div>
-                <DialogFooter>
-                  <DialogClose asChild>
-                    <Button type="button" variant="outline" disabled={isSubmittingForm}>
-                      Cancel
-                    </Button>
-                  </DialogClose>
-                  <Button type="submit" disabled={isSubmittingForm}>
-                    {isSubmittingForm && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                    {editingBranch ? "Update Branch" : "Add Branch"}
-                  </Button>
-                </DialogFooter>
-              </form>
-            </DialogContent>
-          </Dialog>
-        </div>
+        <Dialog open={isFormDialogOpen} onOpenChange={setIsFormDialogOpen}>
+          <DialogTrigger asChild>
+            <Button onClick={openAddForm} disabled={isSubmittingForm || isLoading}>
+              <PlusCircle className="mr-2 h-4 w-4" /> Add New Branch
+            </Button>
+          </DialogTrigger>
+          <DialogContent className="sm:max-w-[425px]">
+            <DialogHeader>
+              <DialogTitle>{editingBranch ? "Edit Branch" : "Add New Branch"}</DialogTitle>
+              <DialogDescription>
+                {editingBranch ? "Update the details of the branch." : "Enter the details for the new branch."}
+              </DialogDescription>
+            </DialogHeader>
+            <form onSubmit={handleSubmit} className="grid gap-4 py-4">
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="name" className="text-right">
+                  Name
+                </Label>
+                <Input id="name" name="name" value={formData.name} onChange={handleInputChange} className="col-span-3" required />
+              </div>
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="location" className="text-right">
+                  Location
+                </Label>
+                <Input id="location" name="location" value={formData.location} onChange={handleInputChange} className="col-span-3" required />
+              </div>
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="managerName" className="text-right">
+                  Manager
+                </Label>
+                <Input id="managerName" name="managerName" value={formData.managerName || ""} onChange={handleInputChange} className="col-span-3" placeholder="Manager's Name (Optional)"/>
+              </div>
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="contactEmail" className="text-right">
+                  Email
+                </Label>
+                <Input id="contactEmail" name="contactEmail" type="email" value={formData.contactEmail || ""} onChange={handleInputChange} className="col-span-3" placeholder="Contact Email (Optional)"/>
+              </div>
+               <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="contactPhone" className="text-right">
+                  Phone
+                </Label>
+                <Input id="contactPhone" name="contactPhone" value={formData.contactPhone || ""} onChange={handleInputChange} className="col-span-3" placeholder="Contact Phone (Optional)"/>
+              </div>
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="status" className="text-right">
+                  Status
+                </Label>
+                <Select value={formData.status} onValueChange={handleStatusChange} >
+                  <SelectTrigger className="col-span-3">
+                    <SelectValue placeholder="Select status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Active">Active</SelectItem>
+                    <SelectItem value="Inactive">Inactive</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <DialogFooter>
+                <DialogClose asChild>
+                   <Button type="button" variant="outline" disabled={isSubmittingForm}>Cancel</Button>
+                </DialogClose>
+                <Button type="submit" disabled={isSubmittingForm}>
+                  {isSubmittingForm && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  Save Branch
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
       </div>
 
-      <Card className="shadow-lg w-full overflow-hidden">
+      <Card className="shadow-lg">
         <CardHeader>
           <CardTitle className="font-headline text-xl">Branch List</CardTitle>
           <CardDescription>View, edit, or add new branches.</CardDescription>
@@ -495,3 +427,4 @@ export default function BranchManagementPage() {
     </div>
   );
 }
+

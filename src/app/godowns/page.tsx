@@ -32,8 +32,8 @@ import {
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { db } from "@/lib/firebase";
-import { getFunctions, httpsCallable, type HttpsCallableResult } from "firebase/functions";
+import { db, functions } from "@/lib/firebase";
+import { httpsCallable, type HttpsCallableResult } from "firebase/functions";
 import { collection, getDocs, query, orderBy } from "firebase/firestore";
 import type { Godown as FirestoreGodown, Branch as FirestoreBranch } from "@/types/firestore";
 import { useToast } from "@/hooks/use-toast";
@@ -55,10 +55,9 @@ const defaultGodownFormData: Omit<Godown, 'id' | 'createdAt' | 'createdBy' | 'up
   status: "Active",
 };
 
-const functionsInstance = getFunctions(db.app);
-const createGodownFn = httpsCallable<GodownFormDataCallable, {success: boolean, id: string, message: string}>(functionsInstance, 'createGodown');
-const updateGodownFn = httpsCallable<UpdateGodownFormDataCallable, {success: boolean, id: string, message: string}>(functionsInstance, 'updateGodown');
-const deleteGodownFn = httpsCallable<{godownId: string}, {success: boolean, id: string, message: string}>(functionsInstance, 'deleteGodown');
+const createGodownFn = httpsCallable<GodownFormDataCallable, {success: boolean, id: string, message: string}>(functions, 'createGodown');
+const updateGodownFn = httpsCallable<UpdateGodownFormDataCallable, {success: boolean, id: string, message: string}>(functions, 'updateGodown');
+const deleteGodownFn = httpsCallable<{godownId: string}, {success: boolean, id: string, message: string}>(functions, 'deleteGodown');
 
 
 export default function GodownsPage() {

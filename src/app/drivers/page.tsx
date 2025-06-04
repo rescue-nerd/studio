@@ -39,11 +39,10 @@ import { cn } from "@/lib/utils";
 import { db, functions } from "@/lib/firebase";
 import { httpsCallable, type HttpsCallableResult } from "firebase/functions";
 import { handleFirebaseError, logError } from "@/lib/firebase-error-handler";
-import { collection, getDocs, query, orderBy, Timestamp } from "firebase/firestore";
+import { collection, getDocs, query, orderBy, Timestamp, serverTimestamp } from "firebase/firestore";
 import type { Driver as FirestoreDriver } from "@/types/firestore";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/auth-context";
-import { getIdToken } from "firebase/auth";
 import { useRouter } from "next/navigation";
 
 
@@ -69,6 +68,7 @@ const defaultDriverFormData: Omit<Driver, 'id' | 'createdAt' | 'createdBy' | 'up
   address: "",
 };
 
+// Use the functions instance from the central firebase.ts
 const createDriverFn = httpsCallable<DriverFormDataCallable, {success: boolean, id: string, message: string}>(functions, 'createDriver');
 const updateDriverFn = httpsCallable<UpdateDriverFormDataCallable, {success: boolean, id: string, message: string}>(functions, 'updateDriver');
 const deleteDriverFn = httpsCallable<{driverId: string}, {success: boolean, id: string, message: string}>(functions, 'deleteDriver');
@@ -108,14 +108,16 @@ export default function DriversPage() {
           ...data,
           id: docSnap.id,
           joiningDate: data.joiningDate ? data.joiningDate.toDate() : undefined,
-          createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate() : data.createdAt,
-          updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toDate() : data.updatedAt,
+          createdAt: data.createdAt ? data.createdAt.toDate() : undefined,
+          updatedAt: data.updatedAt ? data.updatedAt.toDate() : undefined,
         };
       });
       setDrivers(fetchedDrivers);
     } catch (error) {
-      console.error("Error fetching drivers: ", error);
-      toast({ title: "Error", description: "Failed to fetch drivers.", variant: "destructive" });
+      logError(error, "Error fetching drivers");
+      handleFirebaseError(error, toast, {
+        default: "Failed to fetch drivers."
+      });
     } finally {
       setIsLoading(false);
     }
@@ -179,11 +181,6 @@ export default function DriversPage() {
     };
 
     try {
-      // Ensure we have a fresh auth token before making the request
-      if (authUser) {
-        await getIdToken(authUser, true); // Force refresh the token
-      }
-      
       let result: HttpsCallableResult<{success: boolean; id: string; message: string}>;
       if (editingDriver) {
         result = await updateDriverFn({ driverId: editingDriver.id, ...driverDataPayload });
@@ -198,9 +195,11 @@ export default function DriversPage() {
       } else {
         toast({ title: "Error", description: result.data.message, variant: "destructive" });
       }
-    } catch (error: any) {
-      console.error("Error saving driver:", error);
-      toast({ title: "Error", description: error.message || "Failed to save driver.", variant: "destructive" });
+    } catch (error) {
+      logError(error, `Error ${editingDriver ? 'updating' : 'creating'} driver`);
+      handleFirebaseError(error, toast, {
+        default: `Failed to ${editingDriver ? 'update' : 'create'} driver. Please try again.`
+      });
     } finally {
       setIsSubmitting(false);
     }
@@ -215,11 +214,6 @@ export default function DriversPage() {
     if (driverToDelete) {
       setIsSubmitting(true);
       try {
-        // Ensure we have a fresh auth token before making the request
-        if (authUser) {
-          await getIdToken(authUser, true); // Force refresh the token
-        }
-        
         const result = await deleteDriverFn({ driverId: driverToDelete.id });
         if (result.data.success) {
             toast({ title: "Success", description: result.data.message});
@@ -227,9 +221,11 @@ export default function DriversPage() {
         } else {
             toast({ title: "Error", description: result.data.message, variant: "destructive" });
         }
-      } catch (error: any) {
-        console.error("Error deleting driver: ", error);
-        toast({ title: "Error", description: error.message || "Failed to delete driver.", variant: "destructive" });
+      } catch (error) {
+        logError(error, "Error deleting driver");
+        handleFirebaseError(error, toast, {
+          default: "Failed to delete driver. Please try again."
+        });
       } finally {
         setIsSubmitting(false);
         setIsDeleteDialogOpen(false);
