@@ -36,7 +36,7 @@ import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import SmartManifestSelectDialog from "@/components/shared/smart-manifest-select-dialog";
 import SmartBranchSelectDialog from "@/components/shared/smart-branch-select-dialog";
-import { db } from "@/lib/firebase";
+import { db, functions } from "@/lib/firebase";
 import { 
   collection, 
   getDocs, 
@@ -44,7 +44,8 @@ import {
   query,
   orderBy
 } from "firebase/firestore";
-import { getFunctions, httpsCallable, type HttpsCallableResult } from "firebase/functions";
+import { httpsCallable, type HttpsCallableResult } from "firebase/functions";
+import { handleFirebaseError, logError } from "@/lib/firebase-error-handler";
 import type { 
   GoodsReceiptCreateRequest, 
   GoodsReceiptUpdateRequest, 
@@ -107,9 +108,6 @@ export default function GoodsReceiptPage() {
   const [selectedManifestInForm, setSelectedManifestInForm] = useState<Manifest | null>(null);
   const [selectedReceivingBranchInForm, setSelectedReceivingBranchInForm] = useState<Branch | null>(null);
 
-  // Initialize Firebase Functions
-  const functions = getFunctions();
-
   const fetchMasterData = async () => {
     try {
       const [manifestsSnap, branchesSnap] = await Promise.all([
@@ -129,8 +127,10 @@ export default function GoodsReceiptPage() {
       // setGodowns(godownsSnap.docs.map(d => ({ ...d.data(), id: d.id } as Godown)));
 
     } catch (error) {
-      console.error("Error fetching master data for goods receipt: ", error);
-      toast({ title: "Error", description: "Failed to load required data.", variant: "destructive" });
+      logError(error, "Error fetching master data for goods receipt");
+      handleFirebaseError(error, toast, {
+        "permission-denied": "You don't have permission to access this data."
+      });
     }
   };
 
@@ -145,8 +145,10 @@ export default function GoodsReceiptPage() {
       });
       setGoodsReceipts(fetchedReceipts);
     } catch (error) {
-      console.error("Error fetching goods receipts: ", error);
-      toast({ title: "Error", description: "Failed to fetch goods receipts.", variant: "destructive" });
+      logError(error, "Error fetching goods receipts");
+      handleFirebaseError(error, toast, {
+        "permission-denied": "You don't have permission to view goods receipts."
+      });
     }
   };
 
@@ -208,8 +210,10 @@ export default function GoodsReceiptPage() {
       handleReceivingBranchSelect(newBranch); // Auto-select new branch
       toast({ title: "Branch Added", description: `${newBranch.name} has been added.`});
     } catch (error) {
-      console.error("Error adding branch from dialog: ", error);
-      toast({ title: "Error", description: "Failed to add new branch.", variant: "destructive" });
+      logError(error, "Error adding branch from dialog");
+      handleFirebaseError(error, toast, {
+        "permission-denied": "You don't have permission to add branches."
+      });
     } finally {
       setIsSubmitting(false);
     }
@@ -294,13 +298,11 @@ export default function GoodsReceiptPage() {
           throw new Error(result.data.message);
         }
       }
-    } catch (error: any) {
-      console.error("Error with goods receipt operation:", error);
-      const errorMessage = error?.message || 'An unknown error occurred';
-      toast({ 
-        title: "Error", 
-        description: `Failed to ${editingReceipt ? 'update' : 'create'} goods receipt: ${errorMessage}`, 
-        variant: "destructive" 
+    } catch (error) {
+      logError(error, `Error with goods receipt ${editingReceipt ? 'update' : 'create'} operation`);
+      handleFirebaseError(error, toast, {
+        "permission-denied": `You don't have permission to ${editingReceipt ? 'update' : 'create'} goods receipts.`,
+        "unauthenticated": "Please log in to continue."
       });
     }
 
@@ -335,13 +337,11 @@ export default function GoodsReceiptPage() {
         } else {
           throw new Error(result.data.message);
         }
-      } catch (error: any) {
-        console.error("Error deleting goods receipt:", error);
-        const errorMessage = error?.message || 'An unknown error occurred';
-        toast({ 
-          title: "Error", 
-          description: `Failed to delete goods receipt: ${errorMessage}`, 
-          variant: "destructive" 
+      } catch (error) {
+        logError(error, "Error deleting goods receipt");
+        handleFirebaseError(error, toast, {
+          "permission-denied": "You don't have permission to delete goods receipts.",
+          "unauthenticated": "Please log in to continue."
         });
       } finally {
         setIsSubmitting(false);

@@ -31,7 +31,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { db } from "@/lib/firebase";
+import { db, functions } from "@/lib/firebase";
 import { 
   collection, 
   getDocs, 
@@ -39,7 +39,8 @@ import {
   query,
   orderBy
 } from "firebase/firestore";
-import { getFunctions, httpsCallable, type HttpsCallableResult } from "firebase/functions";
+import { httpsCallable, type HttpsCallableResult } from "firebase/functions";
+import { handleFirebaseError, logError } from "@/lib/firebase-error-handler";
 import type { InvoiceLineCustomization as FirestoreInvoiceLineCustomization, InvoiceLineType } from "@/types/firestore";
 import type { 
   CreateInvoiceLineCustomizationPayload, 
@@ -54,8 +55,6 @@ interface InvoiceLineCustomization extends FirestoreInvoiceLineCustomization {}
 
 const lineTypes: InvoiceLineType[] = ["Text", "Number", "Currency", "Percentage", "Date", "Textarea", "Boolean", "Select"];
 
-// Firebase Functions setup
-const functions = getFunctions();
 const createInvoiceLineCustomizationFn = httpsCallable<CreateInvoiceLineCustomizationPayload, {success: boolean, id: string, message: string}>(functions, 'createInvoiceLineCustomization');
 const updateInvoiceLineCustomizationFn = httpsCallable<UpdateInvoiceLineCustomizationPayload, {success: boolean, message: string}>(functions, 'updateInvoiceLineCustomization');
 const deleteInvoiceLineCustomizationFn = httpsCallable<DeleteInvoiceLineCustomizationPayload, {success: boolean, message: string}>(functions, 'deleteInvoiceLineCustomization');

@@ -28,7 +28,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "cmdk";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { db } from "@/lib/firebase";
+import { db, functions } from "@/lib/firebase";
 import {
   collection,
   query,
@@ -39,7 +39,8 @@ import {
   type DocumentData,
   type QueryDocumentSnapshot,
 } from "firebase/firestore";
-import { getFunctions, httpsCallable } from "firebase/functions";
+import { httpsCallable } from "firebase/functions";
+import { handleFirebaseError, logError } from "@/lib/firebase-error-handler";
 import type { 
   LedgerAccount as FirestoreLedgerAccount, 
   LedgerEntry as FirestoreLedgerEntry, 
@@ -51,8 +52,6 @@ import type {
 import { useAuth } from "@/contexts/auth-context"; // Import useAuth
 import { useRouter } from "next/navigation"; // Import useRouter
 
-// Initialize Firebase Functions
-const functions = getFunctions();
 const createManualLedgerEntryFn = httpsCallable<LedgerEntryCreateRequest, CloudFunctionResponse>(functions, 'createManualLedgerEntry');
 const updateLedgerEntryStatusFn = httpsCallable<LedgerEntryUpdateStatusRequest, CloudFunctionResponse>(functions, 'updateLedgerEntryStatus');
 

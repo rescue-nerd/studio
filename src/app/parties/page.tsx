@@ -32,13 +32,14 @@ import {
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { db } from "@/lib/firebase";
-import { getFunctions, httpsCallable, type HttpsCallableResult } from "firebase/functions";
+import { db, functions } from "@/lib/firebase";
+import { httpsCallable, type HttpsCallableResult } from "firebase/functions";
 import { collection, getDocs, query, orderBy } from "firebase/firestore";
 import type { Party as FirestoreParty } from "@/types/firestore";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/auth-context";
 import { useRouter } from "next/navigation";
+import { handleFirebaseError, logError } from "@/lib/firebase-error-handler";
 
 interface Party extends FirestoreParty {}
 type PartyFormDataCallable = Omit<FirestoreParty, 'id' | 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy'>;
@@ -61,10 +62,9 @@ const defaultPartyFormData: Omit<Party, 'id' | 'createdAt' | 'createdBy' | 'upda
   status: "Active",
 };
 
-const functionsInstance = getFunctions(db.app);
-const createPartyFn = httpsCallable<PartyFormDataCallable, {success: boolean, id: string, message: string}>(functionsInstance, 'createParty');
-const updatePartyFn = httpsCallable<UpdatePartyFormDataCallable, {success: boolean, id: string, message: string}>(functionsInstance, 'updateParty');
-const deletePartyFn = httpsCallable<{partyId: string}, {success: boolean, id: string, message: string}>(functionsInstance, 'deleteParty');
+const createPartyFn = httpsCallable<PartyFormDataCallable, {success: boolean, id: string, message: string}>(functions, 'createParty');
+const updatePartyFn = httpsCallable<UpdatePartyFormDataCallable, {success: boolean, id: string, message: string}>(functions, 'updateParty');
+const deletePartyFn = httpsCallable<{partyId: string}, {success: boolean, id: string, message: string}>(functions, 'deleteParty');
 
 
 export default function PartiesPage() {
@@ -100,8 +100,11 @@ export default function PartiesPage() {
       });
       setParties(fetchedParties);
     } catch (error) {
-      console.error("Error fetching parties: ", error);
-      toast({ title: "Error", description: "Failed to fetch parties.", variant: "destructive" });
+      logError(error, "Failed to fetch parties");
+      handleFirebaseError(error, toast, {
+        "permission-denied": "You don't have permission to view parties.",
+        "unauthenticated": "Please log in to view parties."
+      });
     } finally {
       setIsLoading(false);
     }
@@ -172,9 +175,12 @@ export default function PartiesPage() {
       } else {
         toast({ title: "Error", description: result.data.message, variant: "destructive" });
       }
-    } catch (error: any) {
-      console.error("Error saving party:", error);
-      toast({ title: "Error", description: error.message || "Failed to save party.", variant: "destructive" });
+    } catch (error) {
+      logError(error, "Failed to save party");
+      handleFirebaseError(error, toast, {
+        "permission-denied": "You don't have permission to modify parties.",
+        "unauthenticated": "Please log in to continue."
+      });
     } finally {
       setIsSubmitting(false);
     }

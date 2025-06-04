@@ -7,6 +7,7 @@ import AppHeader from '@/components/layout/app-header';
 import { Toaster } from "@/components/ui/toaster";
 import { cn } from '@/lib/utils';
 import { AuthProvider } from '@/contexts/auth-context'; // Import AuthProvider
+import { FirebaseEmulatorInitializer } from '@/components/shared/firebase-emulator-initializer';
 
 export const metadata: Metadata = {
   title: 'GorkhaTrans - TMS',
@@ -46,6 +47,7 @@ export default function RootLayout({
             </div>
           </SidebarProvider>
           <Toaster />
+          <FirebaseEmulatorInitializer />
         </AuthProvider>
       </body>
     </html>

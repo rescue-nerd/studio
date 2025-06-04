@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, LogIn } from "lucide-react";
+import { handleFirebaseError } from "@/lib/firebase-error-handler";
 import Image from "next/image";
 
 export default function LoginPage() {
@@ -28,12 +29,11 @@ export default function LoginPage() {
       await signInWithEmailAndPassword(auth, email, password);
       toast({ title: "Login Successful", description: "Welcome back!" });
       router.push("/"); // Redirect to dashboard or desired page
-    } catch (error: any) {
+    } catch (error) {
       console.error("Login error:", error);
-      toast({
-        title: "Login Failed",
-        description: error.message || "Invalid credentials. Please try again.",
-        variant: "destructive",
+      handleFirebaseError(error, toast, {
+        'auth/user-not-found': 'Account not found. Please check your email or sign up.',
+        'auth/wrong-password': 'Incorrect password. Please try again.'
       });
     } finally {
       setIsLoading(false);

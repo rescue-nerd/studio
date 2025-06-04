@@ -29,7 +29,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { db } from "@/lib/firebase";
+import { db, functions } from "@/lib/firebase";
 import { 
   collection, 
   getDocs, 
@@ -37,7 +37,8 @@ import {
   query,
   orderBy
 } from "firebase/firestore";
-import { getFunctions, httpsCallable, type HttpsCallableResult } from "firebase/functions";
+import { httpsCallable, type HttpsCallableResult } from "firebase/functions";
+import { handleFirebaseError, logError } from "@/lib/firebase-error-handler";
 import type { NarrationTemplate as FirestoreNarrationTemplate } from "@/types/firestore";
 import type { 
   CreateNarrationTemplatePayload, 
@@ -56,8 +57,6 @@ const defaultFormData: Omit<NarrationTemplate, 'id' | 'createdAt' | 'createdBy' 
   applicableTo: [], 
 };
 
-// Firebase Functions setup
-const functions = getFunctions();
 const createNarrationTemplateFn = httpsCallable<CreateNarrationTemplatePayload, {success: boolean, id: string, message: string}>(functions, 'createNarrationTemplate');
 const updateNarrationTemplateFn = httpsCallable<UpdateNarrationTemplatePayload, {success: boolean, message: string}>(functions, 'updateNarrationTemplate');
 const deleteNarrationTemplateFn = httpsCallable<DeleteNarrationTemplatePayload, {success: boolean, message: string}>(functions, 'deleteNarrationTemplate');

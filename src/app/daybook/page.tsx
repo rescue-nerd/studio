@@ -40,8 +40,9 @@ import { BookOpenCheck, CalendarIcon, PlusCircle, Edit, Trash2, Filter, AlertTri
 import { format, parse, isValid, addDays, subDays } from "date-fns";
 import { enUS } from "date-fns/locale";
 
-import { db } from "@/lib/firebase";
-import { getFunctions, httpsCallable, type HttpsCallableResult } from "firebase/functions";
+import { db, functions } from "@/lib/firebase";
+import { httpsCallable, type HttpsCallableResult } from "firebase/functions";
+import { handleFirebaseError, logError } from "@/lib/firebase-error-handler";
 import {
   collection,
   query,
@@ -122,16 +123,13 @@ const transactionTypes: DaybookTransactionType[] = [
   "Adjustment/Correction",
 ];
 
-// Initialize Firebase Functions
-const functionsInstance = getFunctions(db.app);
-
 // Create callable function references
-const submitDaybookFn = httpsCallable<{daybookId: string}, {success: boolean, message: string}>(functionsInstance, 'submitDaybook');
-const approveDaybookFn = httpsCallable<{daybookId: string}, {success: boolean, message: string}>(functionsInstance, 'approveDaybook');
-const rejectDaybookFn = httpsCallable<{daybookId: string, remarks: string}, {success: boolean, message: string}>(functionsInstance, 'rejectDaybook');
-const createDaybookTransactionFn = httpsCallable<DaybookTransactionCreateRequest, {success: boolean, id: string, message: string}>(functionsInstance, 'createDaybookTransaction');
-const deleteDaybookTransactionFn = httpsCallable<DaybookTransactionDeleteRequest, {success: boolean, id: string, message: string}>(functionsInstance, 'deleteDaybookTransaction');
-const createDaybookFn = httpsCallable<{branchId: string, nepaliMiti: string, englishMiti: string, openingBalance?: number}, {success: boolean, id: string, message: string}>(functionsInstance, 'createDaybook');
+const submitDaybookFn = httpsCallable<{daybookId: string}, {success: boolean, message: string}>(functions, 'submitDaybook');
+const approveDaybookFn = httpsCallable<{daybookId: string}, {success: boolean, message: string}>(functions, 'approveDaybook');
+const rejectDaybookFn = httpsCallable<{daybookId: string, remarks: string}, {success: boolean, message: string}>(functions, 'rejectDaybook');
+const createDaybookTransactionFn = httpsCallable<DaybookTransactionCreateRequest, {success: boolean, id: string, message: string}>(functions, 'createDaybookTransaction');
+const deleteDaybookTransactionFn = httpsCallable<DaybookTransactionDeleteRequest, {success: boolean, id: string, message: string}>(functions, 'deleteDaybookTransaction');
+const createDaybookFn = httpsCallable<{branchId: string, nepaliMiti: string, englishMiti: string, openingBalance?: number}, {success: boolean, id: string, message: string}>(functions, 'createDaybook');
 
 
 export default function DaybookPage() {

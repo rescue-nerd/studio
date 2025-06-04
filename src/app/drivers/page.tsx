@@ -36,8 +36,9 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Calendar } from "@/components/ui/calendar";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
-import { db } from "@/lib/firebase";
-import { getFunctions, httpsCallable, type HttpsCallableResult } from "firebase/functions";
+import { db, functions } from "@/lib/firebase";
+import { httpsCallable, type HttpsCallableResult } from "firebase/functions";
+import { handleFirebaseError, logError } from "@/lib/firebase-error-handler";
 import { collection, getDocs, query, orderBy, Timestamp } from "firebase/firestore";
 import type { Driver as FirestoreDriver } from "@/types/firestore";
 import { useToast } from "@/hooks/use-toast";

@@ -31,13 +31,14 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { db } from "@/lib/firebase";
-import { getFunctions, httpsCallable, type HttpsCallableResult } from "firebase/functions";
+import { db, functions } from "@/lib/firebase";
+import { httpsCallable, type HttpsCallableResult } from "firebase/functions";
 import { collection, getDocs, query, orderBy } from "firebase/firestore";
 import type { Truck as FirestoreTruck } from "@/types/firestore";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/auth-context";
 import { useRouter } from "next/navigation";
+import { handleFirebaseError, logError } from "@/lib/firebase-error-handler";
 
 
 interface Truck extends FirestoreTruck {}
@@ -58,10 +59,9 @@ const defaultTruckFormData: Omit<Truck, 'id' | 'createdAt' | 'createdBy' | 'upda
   assignedLedgerId: "",
 };
 
-const functionsInstance = getFunctions(db.app);
-const createTruckFn = httpsCallable<TruckFormDataCallable, {success: boolean, id: string, message: string}>(functionsInstance, 'createTruck');
-const updateTruckFn = httpsCallable<UpdateTruckFormDataCallable, {success: boolean, id: string, message: string}>(functionsInstance, 'updateTruck');
-const deleteTruckFn = httpsCallable<{truckId: string}, {success: boolean, id: string, message: string}>(functionsInstance, 'deleteTruck');
+const createTruckFn = httpsCallable<TruckFormDataCallable, {success: boolean, id: string, message: string}>(functions, 'createTruck');
+const updateTruckFn = httpsCallable<UpdateTruckFormDataCallable, {success: boolean, id: string, message: string}>(functions, 'updateTruck');
+const deleteTruckFn = httpsCallable<{truckId: string}, {success: boolean, id: string, message: string}>(functions, 'deleteTruck');
 
 
 export default function TrucksPage() {
@@ -98,8 +98,10 @@ export default function TrucksPage() {
       });
       setTrucks(fetchedTrucks);
     } catch (error) {
-      console.error("Error fetching trucks: ", error);
-      toast({ title: "Error", description: "Failed to fetch trucks.", variant: "destructive" });
+      logError(error, "Error fetching trucks");
+      handleFirebaseError(error, toast, {
+        "permission-denied": "You don't have permission to view trucks."
+      });
     } finally {
       setIsLoading(false);
     }

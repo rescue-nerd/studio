@@ -6,13 +6,14 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createUserWithEmailAndPassword, updateProfile } from "firebase/auth";
 import { auth, db } from "@/lib/firebase";
-import { doc, setDoc, Timestamp } from "firebase/firestore";
+import { doc, setDoc, Timestamp, serverTimestamp } from "firebase/firestore";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, UserPlus } from "lucide-react";
+import { handleFirebaseError, logError } from "@/lib/firebase-error-handler";
 import Image from "next/image";
 
 export default function SignupPage() {
@@ -47,21 +48,22 @@ export default function SignupPage() {
           displayName: displayName,
           role: "operator", // Default role for new signups
           assignedBranchIds: [],
-          createdAt: Timestamp.now(),
+          createdAt: serverTimestamp(), // Using serverTimestamp for consistency
+          updatedAt: serverTimestamp(),
           enableEmailNotifications: false,
           darkModeEnabled: false,
           autoDataSyncEnabled: false,
+          lastLoginAt: serverTimestamp(),
         });
         
         toast({ title: "Signup Successful", description: "Your account has been created." });
         router.push("/"); // Redirect to dashboard
       }
-    } catch (error: any) {
-      console.error("Signup error:", error);
-      toast({
-        title: "Signup Failed",
-        description: error.message || "Could not create account. Please try again.",
-        variant: "destructive",
+    } catch (error) {
+      logError(error, "User signup");
+      handleFirebaseError(error, toast, {
+        'auth/email-already-in-use': 'This email address is already registered. Please try logging in instead.',
+        'auth/weak-password': 'Please choose a stronger password (at least 6 characters).'
       });
     } finally {
       setIsLoading(false);

@@ -38,8 +38,9 @@ import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { db } from "@/lib/firebase";
-import { getFunctions, httpsCallable, type HttpsCallableResult } from "firebase/functions";
+import { db, functions } from "@/lib/firebase";
+import { httpsCallable, type HttpsCallableResult } from "firebase/functions";
+import { handleFirebaseError, logError } from "@/lib/firebase-error-handler";
 import { 
   collection, 
   getDocs, 

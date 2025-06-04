@@ -155,3 +155,47 @@ export function getFirebaseErrorMessage(error: unknown): string {
     return error.message;
   }
 }
+
+/**
+ * Handle Firebase errors and display toast notifications
+ * @param error Firebase error or any error object
+ * @param toast Toast function from useToast()
+ * @param customMessages Optional custom error messages for specific error codes
+ */
+export function handleFirebaseError(
+  error: unknown, 
+  toast: { 
+    (props: { title?: string; description: string; variant?: "default" | "destructive" }): void;
+  },
+  customMessages: Record<string, string> = {}
+): void {
+  const message = getFirebaseErrorMessage(error);
+  
+  // Check for custom message based on error code
+  if (error instanceof FirebaseError && customMessages[error.code]) {
+    toast({
+      title: "Error",
+      description: customMessages[error.code],
+      variant: "destructive",
+    });
+    return;
+  }
+  
+  toast({
+    title: "Error",
+    description: message,
+    variant: "destructive",
+  });
+}
+
+/**
+ * Log errors to console with structured format
+ * @param error Error object
+ * @param context Additional context information
+ */
+export function logError(error: unknown, context?: string): void {
+  const errorMessage = error instanceof Error ? error.message : String(error);
+  const errorCode = error instanceof FirebaseError ? error.code : "unknown";
+  
+  console.error(`🔥 Firebase Error: [${errorCode}] ${errorMessage}${context ? ` | Context: ${context}` : ""}`);
+}

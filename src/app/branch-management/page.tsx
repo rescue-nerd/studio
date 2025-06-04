@@ -31,8 +31,8 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { db } from "@/lib/firebase"; 
-import { getFunctions, httpsCallable, type HttpsCallableResult } from "firebase/functions";
+import { db, functions } from "@/lib/firebase"; 
+import { httpsCallable, type HttpsCallableResult } from "firebase/functions";
 import { 
   collection, 
   getDocs, 
@@ -44,6 +44,7 @@ import type { Branch as FirestoreBranch } from "@/types/firestore";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/auth-context";
 import { useRouter } from "next/navigation";
+import { handleFirebaseError, logError } from "@/lib/firebase-error-handler";
 
 interface Branch extends Omit<FirestoreBranch, 'createdAt' | 'updatedAt' | 'createdBy' | 'updatedBy'> {
   id: string; 
@@ -65,10 +66,9 @@ const defaultBranchFormData: Omit<Branch, 'id' | 'createdAt' | 'updatedAt' | 'cr
   status: "Active",
 };
 
-const functionsInstance = getFunctions(db.app);
-const createBranchFn = httpsCallable<BranchCallableData, {success: boolean, id: string, message: string}>(functionsInstance, 'createBranch');
-const updateBranchFn = httpsCallable<UpdateBranchCallableData, {success: boolean, id: string, message: string}>(functionsInstance, 'updateBranch');
-const deleteBranchFn = httpsCallable<{branchId: string}, {success: boolean, id: string, message: string}>(functionsInstance, 'deleteBranch');
+const createBranchFn = httpsCallable<BranchCallableData, {success: boolean, id: string, message: string}>(functions, 'createBranch');
+const updateBranchFn = httpsCallable<UpdateBranchCallableData, {success: boolean, id: string, message: string}>(functions, 'updateBranch');
+const deleteBranchFn = httpsCallable<{branchId: string}, {success: boolean, id: string, message: string}>(functions, 'deleteBranch');
 
 
 export default function BranchManagementPage() {
@@ -111,12 +111,8 @@ export default function BranchManagementPage() {
       });
       setBranches(fetchedBranches);
     } catch (error) {
-      console.error("Error fetching branches: ", error);
-      toast({
-        title: "Error",
-        description: "Failed to fetch branches. Please try again.",
-        variant: "destructive",
-      });
+      logError(error, "Fetching branches");
+      handleFirebaseError(error, toast);
     } finally {
       setIsLoading(false);
     }

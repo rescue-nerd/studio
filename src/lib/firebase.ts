@@ -5,17 +5,11 @@ import { getFirestore, enableIndexedDbPersistence, type Firestore } from "fireba
 import { getAuth, type Auth } from "firebase/auth";
 import { getFunctions, type Functions } from "firebase/functions";
 import { getStorage, type FirebaseStorage } from "firebase/storage";
+import { getFirebaseConfig, getFirebaseRegion } from "./firebase-config";
 // https://firebase.google.com/docs/web/setup#available-libraries
 
-// Your web app's Firebase configuration using environment variables
-const firebaseConfig = {
-  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
-  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
-  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
-  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
-  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID
-};
+// Get Firebase configuration from environment-aware config utility
+const firebaseConfig = getFirebaseConfig();
 
 // Initialize Firebase
 let app: FirebaseApp;
@@ -32,7 +26,7 @@ if (!getApps().length) {
 
 db = getFirestore(app);
 auth = getAuth(app);
-functions = getFunctions(app, 'us-central1'); // Specify region to match our deployed functions
+functions = getFunctions(app, getFirebaseRegion()); // Get region from environment config
 storage = getStorage(app);
 
 // Enable offline persistence for Firestore when in browser environment

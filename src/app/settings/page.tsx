@@ -20,9 +20,10 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
-import { db } from "@/lib/firebase";
+import { db, functions } from "@/lib/firebase";
 import { collection, getDocs, doc, Timestamp, query, orderBy, getDoc } from "firebase/firestore";
-import { getFunctions, httpsCallable, type HttpsCallableResult } from "firebase/functions";
+import { httpsCallable, type HttpsCallableResult } from "firebase/functions";
+import { handleFirebaseError, logError } from "@/lib/firebase-error-handler";
 import type { User as FirestoreUser, Branch as FirestoreBranch } from "@/types/firestore";
 import type { UpdateUserProfilePayload, UpdateUserBranchAssignmentsPayload } from "@/functions/src/types";
 import { Loader2 } from "lucide-react";
@@ -32,8 +33,6 @@ import { useRouter } from "next/navigation"; // Import useRouter
 interface User extends FirestoreUser {} 
 interface Branch extends FirestoreBranch { id: string; }
 
-// Firebase Functions setup
-const functions = getFunctions();
 const updateUserProfileFn = httpsCallable<UpdateUserProfilePayload, {success: boolean, message: string}>(functions, 'updateUserProfile');
 const updateUserBranchAssignmentsFn = httpsCallable<UpdateUserBranchAssignmentsPayload, {success: boolean, message: string}>(functions, 'updateUserBranchAssignments');
 

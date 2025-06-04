@@ -37,8 +37,8 @@ import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import SmartPartySelectDialog from "@/components/shared/smart-party-select-dialog";
-import { db } from "@/lib/firebase";
-import { getFunctions, httpsCallable, type HttpsCallableResult } from "firebase/functions";
+import { db, functions } from "@/lib/firebase";
+import { httpsCallable, type HttpsCallableResult } from "firebase/functions";
 import { 
   collection, 
   getDocs, 
@@ -64,6 +64,7 @@ import type {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useAuth } from "@/contexts/auth-context"; // Import useAuth
 import { useRouter } from "next/navigation"; // Import useRouter
+import { handleFirebaseError, logError } from "@/lib/firebase-error-handler";
 
 
 // Interfaces (aligning with Firestore types)

@@ -38,7 +38,7 @@ import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import SmartBiltiMultiSelectDialog from "@/components/shared/smart-bilti-multi-select-dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { db } from "@/lib/firebase";
+import { db, functions } from "@/lib/firebase";
 import { 
   collection, 
   getDocs, 
@@ -46,7 +46,8 @@ import {
   query,
   orderBy
 } from "firebase/firestore";
-import { getFunctions, httpsCallable, type HttpsCallableResult } from "firebase/functions";
+import { httpsCallable, type HttpsCallableResult } from "firebase/functions";
+import { handleFirebaseError, logError } from "@/lib/firebase-error-handler";
 import type { 
   GoodsDeliveryCreateRequest, 
   GoodsDeliveryUpdateRequest, 
@@ -117,9 +118,6 @@ export default function GoodsDeliveryPage() {
   
   const [isBiltiSelectDialogOpen, setIsBiltiSelectDialogOpen] = useState(false);
 
-  // Initialize Firebase Functions
-  const functions = getFunctions();
-
   const fetchMasterData = async () => {
     try {
       const [biltisSnap, partiesSnap] = await Promise.all([
@@ -137,8 +135,10 @@ export default function GoodsDeliveryPage() {
       setParties(partiesSnap.docs.map(d => ({ ...d.data(), id: d.id } as Party)));
 
     } catch (error) {
-      console.error("Error fetching master data for goods delivery: ", error);
-      toast({ title: "Error", description: "Failed to load required data.", variant: "destructive" });
+      logError(error, "Error fetching master data for goods delivery");
+      handleFirebaseError(error, toast, {
+        "permission-denied": "You don't have permission to access this data."
+      });
     }
   };
 
@@ -163,8 +163,10 @@ export default function GoodsDeliveryPage() {
       });
       setGoodsDeliveries(fetchedDeliveries);
     } catch (error) {
-      console.error("Error fetching goods deliveries: ", error);
-      toast({ title: "Error", description: "Failed to fetch goods deliveries.", variant: "destructive" });
+      logError(error, "Error fetching goods deliveries");
+      handleFirebaseError(error, toast, {
+        "permission-denied": "You don't have permission to view goods deliveries."
+      });
     }
   };
 
@@ -307,13 +309,11 @@ export default function GoodsDeliveryPage() {
           throw new Error(result.data.message);
         }
       }
-    } catch (error: any) {
-      console.error("Error with goods delivery operation:", error);
-      const errorMessage = error?.message || 'An unknown error occurred';
-      toast({ 
-        title: "Error", 
-        description: `Failed to ${editingDelivery ? 'update' : 'create'} goods delivery: ${errorMessage}`, 
-        variant: "destructive" 
+    } catch (error) {
+      logError(error, `Error with goods delivery ${editingDelivery ? 'update' : 'create'} operation`);
+      handleFirebaseError(error, toast, {
+        "permission-denied": `You don't have permission to ${editingDelivery ? 'update' : 'create'} goods deliveries.`,
+        "unauthenticated": "Please log in to continue."
       });
     }
 
@@ -346,13 +346,11 @@ export default function GoodsDeliveryPage() {
         } else {
           throw new Error(result.data.message);
         }
-      } catch (error: any) {
-        console.error("Error deleting goods delivery:", error);
-        const errorMessage = error?.message || 'An unknown error occurred';
-        toast({ 
-          title: "Error", 
-          description: `Failed to delete goods delivery: ${errorMessage}`, 
-          variant: "destructive" 
+      } catch (error) {
+        logError(error, "Error deleting goods delivery");
+        handleFirebaseError(error, toast, {
+          "permission-denied": "You don't have permission to delete goods deliveries.",
+          "unauthenticated": "Please log in to continue."
         });
       } finally {
         setIsSubmitting(false);

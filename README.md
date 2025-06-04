@@ -3,6 +3,145 @@
 
 GorkhaTrans is a comprehensive Transportation Management System (TMS) built with a modern technology stack to streamline logistics operations.
 
+## 🚀 Tech Stack
+
+- **Frontend**: Next.js 15, TypeScript, TailwindCSS, Shadcn UI
+- **Backend**: Firebase (Firestore, Cloud Functions, Authentication, Storage, Hosting)
+- **Infrastructure**: Google Cloud Platform
+- **Development**: Firebase Emulators, Hot Reload, TypeScript
+
+## 📋 Prerequisites
+
+- Node.js (v18.x or later)
+- npm (v9.x or later)
+- Firebase CLI (`npm install -g firebase-tools`)
+- Git
+
+## 🛠️ Installation & Setup
+
+### 1. Clone the Repository
+```bash
+git clone https://github.com/yourusername/gorkhatrans.git
+cd gorkhatrans
+```
+
+### 2. Install Dependencies
+```bash
+npm install
+cd functions && npm install && cd ..
+```
+
+### 3. Firebase Configuration
+```bash
+# Copy environment template
+cp .env.example .env.local
+
+# Login to Firebase
+firebase login
+
+# Select your Firebase project
+firebase use your-project-id
+```
+
+### 4. Configure Environment Variables
+Edit `.env.local` with your Firebase configuration:
+```bash
+NEXT_PUBLIC_FIREBASE_API_KEY=your_api_key_here
+NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=your_project_id.firebaseapp.com
+NEXT_PUBLIC_FIREBASE_PROJECT_ID=your_project_id
+NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=your_project_id.appspot.com
+NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=your_sender_id
+NEXT_PUBLIC_FIREBASE_APP_ID=your_app_id
+
+# For local development with emulators
+NEXT_PUBLIC_USE_FIREBASE_EMULATORS=true
+```
+
+## 🔥 Development
+
+### Local Development (Production Firebase)
+```bash
+npm run dev
+```
+
+### Local Development with Firebase Emulators
+```bash
+# Start emulators (recommended for development)
+./firebase-dev.sh start-emulators
+
+# In another terminal, start the Next.js app
+npm run dev
+```
+
+### Firebase Development Utilities
+```bash
+# Available commands
+./firebase-dev.sh help
+
+# Start emulators with data persistence
+./firebase-dev.sh start-emulators
+
+# Test Firebase connection
+./firebase-dev.sh test-connection
+
+# Export/import emulator data
+./firebase-dev.sh export-data
+./firebase-dev.sh import-data
+```
+
+## 🚀 Deployment
+
+### Using the Deploy Script
+```bash
+./deploy.sh
+```
+
+Choose from:
+1. Deploy everything (Hosting, Functions, Firestore rules)
+2. Deploy only Hosting
+3. Deploy only Functions
+4. Deploy only Firestore rules and indexes
+5. Start Firebase emulators
+6. Start emulators with data persistence
+
+### Manual Deployment
+```bash
+# Build the application
+npm run build
+
+# Deploy to Firebase
+firebase deploy
+```
+
+## 🧪 Testing Firebase Integration
+
+Run Firebase integration tests:
+```bash
+# In browser console or Node.js environment
+import { runFirebaseTests } from './src/lib/firebase-test';
+runFirebaseTests();
+```
+
+## 🏗️ Architecture
+
+### Firebase Services Integration
+- **Authentication**: Secure user authentication with role-based access
+- **Firestore**: Real-time database with offline persistence
+- **Cloud Functions**: Serverless backend logic with TypeScript
+- **Storage**: File uploads and document management
+- **Hosting**: Static site hosting with CDN
+
+### Enhanced Error Handling
+- Comprehensive Firebase error handling with user-friendly messages
+- Structured error logging with context
+- Toast notifications for user feedback
+
+### Development Features
+- Firebase emulators for local development
+- Hot reload with emulator data persistence
+- Environment-aware configuration
+- Comprehensive testing utilities
+
 ## Core Features Implemented
 
 *   **Branch Management:** Create, update, and delete branches.
