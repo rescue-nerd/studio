@@ -1,34 +1,32 @@
 
 "use client";
 
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+    Dialog,
+    DialogClose,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Button } from "@/components/ui/button";
-import { Switch } from "@/components/ui/switch";
-import { useState, useEffect, type ChangeEvent, type FormEvent } from "react";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-  DialogClose,
-} from "@/components/ui/dialog";
-import { Checkbox } from "@/components/ui/checkbox";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Switch } from "@/components/ui/switch";
+import { useAuth } from "@/contexts/auth-context"; // Import useAuth
+import type { UpdateUserBranchAssignmentsPayload, UpdateUserProfilePayload } from "@/functions/src/types";
 import { useToast } from "@/hooks/use-toast";
 import { db, functions } from "@/lib/firebase";
-import { collection, getDocs, doc, Timestamp, query, orderBy, getDoc } from "firebase/firestore";
+import type { Branch as FirestoreBranch, User as FirestoreUser } from "@/types/firestore";
+import { collection, doc, getDoc, getDocs, orderBy, query, Timestamp } from "firebase/firestore";
 import { httpsCallable, type HttpsCallableResult } from "firebase/functions";
-import { handleFirebaseError, logError } from "@/lib/firebase-error-handler";
-import type { User as FirestoreUser, Branch as FirestoreBranch } from "@/types/firestore";
-import type { UpdateUserProfilePayload, UpdateUserBranchAssignmentsPayload } from "@/functions/src/types";
 import { Loader2 } from "lucide-react";
-import { useAuth } from "@/contexts/auth-context"; // Import useAuth
 import { useRouter } from "next/navigation"; // Import useRouter
+import { useEffect, useState, type ChangeEvent, type FormEvent } from "react";
 
 interface User extends FirestoreUser {} 
 interface Branch extends FirestoreBranch { id: string; }

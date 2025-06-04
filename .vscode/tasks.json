@@ -5,7 +5,10 @@
       "label": "Start Development Server",
       "type": "shell",
       "command": "npm",
-      "args": ["run", "dev"],
+      "args": [
+        "run",
+        "dev"
+      ],
       "group": {
         "kind": "build",
         "isDefault": true
@@ -18,7 +21,9 @@
         "showReuseMessage": true,
         "clear": false
       },
-      "problemMatcher": ["$tsc"],
+      "problemMatcher": [
+        "$tsc"
+      ],
       "isBackground": true,
       "runOptions": {
         "runOn": "folderOpen"
@@ -28,7 +33,10 @@
       "label": "Build Application",
       "type": "shell",
       "command": "npm",
-      "args": ["run", "build"],
+      "args": [
+        "run",
+        "build"
+      ],
       "group": "build",
       "presentation": {
         "echo": true,
@@ -36,13 +44,17 @@
         "focus": false,
         "panel": "shared"
       },
-      "problemMatcher": ["$tsc"]
+      "problemMatcher": [
+        "$tsc"
+      ]
     },
     {
       "label": "Start Firebase Emulators",
       "type": "shell",
       "command": "./firebase-dev.sh",
-      "args": ["start-emulators"],
+      "args": [
+        "start-emulators"
+      ],
       "group": "build",
       "presentation": {
         "echo": true,
@@ -71,7 +83,9 @@
       "label": "Stop Firebase Emulators",
       "type": "shell",
       "command": "./firebase-dev.sh",
-      "args": ["stop-emulators"],
+      "args": [
+        "stop-emulators"
+      ],
       "group": "build",
       "presentation": {
         "echo": true,
@@ -84,7 +98,9 @@
       "label": "Test Firebase Connection",
       "type": "shell",
       "command": "./firebase-dev.sh",
-      "args": ["test-connection"],
+      "args": [
+        "test-connection"
+      ],
       "group": "test",
       "presentation": {
         "echo": true,
@@ -110,7 +126,9 @@
       "label": "Install Dependencies",
       "type": "shell",
       "command": "npm",
-      "args": ["install"],
+      "args": [
+        "install"
+      ],
       "group": "build",
       "presentation": {
         "echo": true,
@@ -126,7 +144,9 @@
       "label": "Install Function Dependencies",
       "type": "shell",
       "command": "npm",
-      "args": ["install"],
+      "args": [
+        "install"
+      ],
       "options": {
         "cwd": "./functions"
       },
@@ -142,7 +162,10 @@
       "label": "Build Functions",
       "type": "shell",
       "command": "npm",
-      "args": ["run", "build"],
+      "args": [
+        "run",
+        "build"
+      ],
       "options": {
         "cwd": "./functions"
       },
@@ -153,13 +176,18 @@
         "focus": false,
         "panel": "shared"
       },
-      "problemMatcher": ["$tsc"]
+      "problemMatcher": [
+        "$tsc"
+      ]
     },
     {
       "label": "Watch Functions",
       "type": "shell",
       "command": "npm",
-      "args": ["run", "build:watch"],
+      "args": [
+        "run",
+        "build:watch"
+      ],
       "options": {
         "cwd": "./functions"
       },
@@ -171,13 +199,17 @@
         "panel": "dedicated"
       },
       "isBackground": true,
-      "problemMatcher": ["$tsc-watch"]
+      "problemMatcher": [
+        "$tsc-watch"
+      ]
     },
     {
       "label": "Reset Firebase Emulator Data",
       "type": "shell",
       "command": "./firebase-dev.sh",
-      "args": ["reset-data"],
+      "args": [
+        "reset-data"
+      ],
       "group": "build",
       "presentation": {
         "echo": true,
@@ -190,7 +222,9 @@
       "label": "Export Firebase Emulator Data",
       "type": "shell",
       "command": "./firebase-dev.sh",
-      "args": ["export-data"],
+      "args": [
+        "export-data"
+      ],
       "group": "build",
       "presentation": {
         "echo": true,

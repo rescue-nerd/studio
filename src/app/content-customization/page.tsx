@@ -1,55 +1,52 @@
 
 "use client";
 
-import { useState, useEffect, type ChangeEvent, type FormEvent } from "react";
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+    Dialog,
+    DialogClose,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+    DialogTrigger,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { PlusCircle, Edit, Trash2, Loader2 } from "lucide-react";
-import { Textarea } from "@/components/ui/textarea";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-  DialogClose,
-} from "@/components/ui/dialog";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import { db, functions } from "@/lib/firebase";
-import { 
-  collection, 
-  getDocs, 
-  Timestamp,
-  query,
-  orderBy
-} from "firebase/firestore";
-import { httpsCallable, type HttpsCallableResult } from "firebase/functions";
-import { handleFirebaseError, logError } from "@/lib/firebase-error-handler";
-import type { InvoiceLineCustomization as FirestoreInvoiceLineCustomization, InvoiceLineType } from "@/types/firestore";
-import type { 
-  CreateInvoiceLineCustomizationPayload, 
-  UpdateInvoiceLineCustomizationPayload, 
-  DeleteInvoiceLineCustomizationPayload 
+import { useAuth } from "@/contexts/auth-context"; // Import useAuth
+import type {
+    CreateInvoiceLineCustomizationPayload,
+    DeleteInvoiceLineCustomizationPayload,
+    UpdateInvoiceLineCustomizationPayload
 } from "@/functions/src/types";
 import { useToast } from "@/hooks/use-toast";
-import { useAuth } from "@/contexts/auth-context"; // Import useAuth
+import { db, functions } from "@/lib/firebase";
+import type { InvoiceLineCustomization as FirestoreInvoiceLineCustomization, InvoiceLineType } from "@/types/firestore";
+import {
+    collection,
+    getDocs,
+    orderBy,
+    query
+} from "firebase/firestore";
+import { httpsCallable, type HttpsCallableResult } from "firebase/functions";
+import { Edit, Loader2, PlusCircle, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation"; // Import useRouter
+import { useEffect, useState, type ChangeEvent, type FormEvent } from "react";
 
 interface InvoiceLineCustomization extends FirestoreInvoiceLineCustomization {}
 

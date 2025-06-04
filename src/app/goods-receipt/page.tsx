@@ -1,63 +1,60 @@
 "use client";
 
-import { useState, useEffect, type ChangeEvent, type FormEvent } from "react";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Textarea } from "@/components/ui/textarea";
-import { PlusCircle, Search, Edit, Trash2, ArchiveRestore, CalendarIcon, Loader2 } from "lucide-react";
+import SmartBranchSelectDialog from "@/components/shared/smart-branch-select-dialog";
+import SmartManifestSelectDialog from "@/components/shared/smart-manifest-select-dialog";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-  DialogClose,
-} from "@/components/ui/dialog";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+    AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { Button } from "@/components/ui/button";
+import { Calendar } from "@/components/ui/calendar";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+    Dialog,
+    DialogClose,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+    DialogTrigger,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Calendar } from "@/components/ui/calendar";
-import { format } from "date-fns";
-import { cn } from "@/lib/utils";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import SmartManifestSelectDialog from "@/components/shared/smart-manifest-select-dialog";
-import SmartBranchSelectDialog from "@/components/shared/smart-branch-select-dialog";
 import { db, functions } from "@/lib/firebase";
-import { 
-  collection, 
-  getDocs, 
-  Timestamp,
-  query,
-  orderBy
-} from "firebase/firestore";
-import { httpsCallable, type HttpsCallableResult } from "firebase/functions";
 import { handleFirebaseError, logError } from "@/lib/firebase-error-handler";
-import type { 
-  GoodsReceiptCreateRequest, 
-  GoodsReceiptUpdateRequest, 
-  GoodsReceiptDeleteRequest,
-  CloudFunctionResponse
+import { cn } from "@/lib/utils";
+import type {
+    CloudFunctionResponse,
+    Branch as FirestoreBranch,
+    GoodsReceipt as FirestoreGoodsReceipt,
+    Manifest as FirestoreManifest,
+    GoodsReceiptCreateRequest,
+    GoodsReceiptDeleteRequest,
+    GoodsReceiptUpdateRequest
 } from "@/types/firestore";
-import type { 
-  GoodsReceipt as FirestoreGoodsReceipt, 
-  Manifest as FirestoreManifest, 
-  Branch as FirestoreBranch,
-  Godown as FirestoreGodown // Assuming you might use Godowns later
-} from "@/types/firestore";
+import { format } from "date-fns";
+import {
+    collection,
+    getDocs,
+    orderBy,
+    query,
+    Timestamp
+} from "firebase/firestore";
+import { httpsCallable } from "firebase/functions";
+import { ArchiveRestore, CalendarIcon, Edit, Loader2, PlusCircle, Search, Trash2 } from "lucide-react";
+import { useEffect, useState, type ChangeEvent, type FormEvent } from "react";
 
 // Local Interfaces
 interface GoodsReceipt extends Omit<FirestoreGoodsReceipt, 'miti' | 'createdAt' | 'updatedAt'> {

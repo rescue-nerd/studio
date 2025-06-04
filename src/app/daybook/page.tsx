@@ -1,74 +1,69 @@
 
 "use client";
 
-import { useState, useEffect, useMemo, type ChangeEvent, type FormEvent } from "react";
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+    Dialog,
+    DialogClose,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
-import { Checkbox } from "@/components/ui/checkbox";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-  DialogClose,
-} from "@/components/ui/dialog";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Calendar } from "@/components/ui/calendar";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Badge } from "@/components/ui/badge";
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "cmdk";
+import { Command, CommandEmpty, CommandInput, CommandItem, CommandList } from "cmdk";
+import { useEffect, useMemo, useState, type ChangeEvent } from "react";
 
-import { BookOpenCheck, CalendarIcon, PlusCircle, Edit, Trash2, Filter, AlertTriangle, CheckCircle2, XCircle, Loader2, ChevronsUpDown, Check as CheckIcon, UploadCloud } from "lucide-react";
-import { format, parse, isValid, addDays, subDays } from "date-fns";
+import { format, isValid, parse } from "date-fns";
 import { enUS } from "date-fns/locale";
+import { AlertTriangle, BookOpenCheck, Check as CheckIcon, ChevronsUpDown, Edit, Loader2, PlusCircle, Trash2, UploadCloud } from "lucide-react";
 
 import { db, functions } from "@/lib/firebase";
-import { httpsCallable, type HttpsCallableResult } from "firebase/functions";
-import { handleFirebaseError, logError } from "@/lib/firebase-error-handler";
 import {
-  collection,
-  query,
-  orderBy,
-  where,
-  getDocs,
-  Timestamp,
-  doc,
-  getDoc,
+    collection,
+    doc,
+    getDoc,
+    getDocs,
+    orderBy,
+    query,
+    where
 } from "firebase/firestore";
+import { httpsCallable } from "firebase/functions";
 
-import type {
-  FirestoreDaybook,
-  DaybookTransaction as FirestoreDaybookTransaction,
-  DaybookTransactionType,
-  Branch as FirestoreBranch,
-  Bilti as FirestoreBilti,
-  Party as FirestoreParty,
-  LedgerAccount as FirestoreLedgerAccount,
-  DaybookTransactionCreateRequest,
-  DaybookTransactionDeleteRequest,
-  User as FirestoreUser,
-} from "@/types/firestore";
-import { cn } from "@/lib/utils";
-import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/auth-context";
+import { useToast } from "@/hooks/use-toast";
+import { cn } from "@/lib/utils";
+import type {
+    DaybookTransactionCreateRequest,
+    DaybookTransactionDeleteRequest,
+    DaybookTransactionType,
+    Bilti as FirestoreBilti,
+    Branch as FirestoreBranch,
+    FirestoreDaybook,
+    DaybookTransaction as FirestoreDaybookTransaction,
+    LedgerAccount as FirestoreLedgerAccount,
+    Party as FirestoreParty,
+    User as FirestoreUser,
+} from "@/types/firestore";
 import { useRouter } from "next/navigation";
 
 

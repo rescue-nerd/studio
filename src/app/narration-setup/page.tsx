@@ -1,53 +1,51 @@
 
 "use client";
 
-import { useState, type ChangeEvent, type FormEvent, useEffect } from "react";
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Label } from "@/components/ui/label";
-import { PlusCircle, Search, Edit, Trash2, Loader2 } from "lucide-react";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-  DialogClose,
+    Dialog,
+    DialogClose,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+    DialogTrigger,
 } from "@/components/ui/dialog";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import { db, functions } from "@/lib/firebase";
-import { 
-  collection, 
-  getDocs, 
-  Timestamp,
-  query,
-  orderBy
-} from "firebase/firestore";
-import { httpsCallable, type HttpsCallableResult } from "firebase/functions";
-import { handleFirebaseError, logError } from "@/lib/firebase-error-handler";
-import type { NarrationTemplate as FirestoreNarrationTemplate } from "@/types/firestore";
-import type { 
-  CreateNarrationTemplatePayload, 
-  UpdateNarrationTemplatePayload, 
-  DeleteNarrationTemplatePayload 
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Textarea } from "@/components/ui/textarea";
+import { useAuth } from "@/contexts/auth-context"; // Import useAuth
+import type {
+    CreateNarrationTemplatePayload,
+    DeleteNarrationTemplatePayload,
+    UpdateNarrationTemplatePayload
 } from "@/functions/src/types";
 import { useToast } from "@/hooks/use-toast";
-import { useAuth } from "@/contexts/auth-context"; // Import useAuth
+import { db, functions } from "@/lib/firebase";
+import type { NarrationTemplate as FirestoreNarrationTemplate } from "@/types/firestore";
+import {
+    collection,
+    getDocs,
+    orderBy,
+    query
+} from "firebase/firestore";
+import { httpsCallable, type HttpsCallableResult } from "firebase/functions";
+import { Edit, Loader2, PlusCircle, Search, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation"; // Import useRouter
+import { useEffect, useState, type ChangeEvent, type FormEvent } from "react";
 
 interface NarrationTemplate extends FirestoreNarrationTemplate {}
 

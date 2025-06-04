@@ -1,46 +1,45 @@
 
 "use client";
 
+import {
+    SidebarContent,
+    SidebarFooter,
+    SidebarHeader,
+    SidebarMenu,
+    SidebarMenuButton,
+    SidebarMenuItem,
+    SidebarSeparator,
+} from '@/components/ui/sidebar';
+import { useAuth } from '@/contexts/auth-context'; // Import useAuth
+import { useToast } from '@/hooks/use-toast'; // Import useToast
+import { auth } from '@/lib/firebase'; // Import auth for signOut
+import { cn } from '@/lib/utils';
+import { signOut } from 'firebase/auth'; // Import signOut
+import {
+    ArchiveRestore,
+    BarChartBig,
+    BookMarked,
+    BookOpenCheck,
+    BookText,
+    Building2, // Added LogIn icon
+    Car,
+    ClipboardList,
+    FileText,
+    Hash,
+    LayoutDashboard,
+    LogIn,
+    LogOut,
+    MapPin,
+    PackageOpen,
+    Receipt,
+    Settings,
+    Truck,
+    Users2,
+    Warehouse
+} from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation'; // Added useRouter
 import React, { useEffect } from 'react';
-import {
-  SidebarHeader,
-  SidebarContent,
-  SidebarMenu,
-  SidebarMenuItem,
-  SidebarMenuButton,
-  SidebarFooter,
-  SidebarSeparator, 
-} from '@/components/ui/sidebar';
-import { 
-  LayoutDashboard, 
-  Building2, 
-  MapPin, 
-  FileText, 
-  BookText, 
-  Waypoints, 
-  Hash,
-  Truck,
-  Settings,
-  LogOut,
-  LogIn, // Added LogIn icon
-  Car, 
-  Users2,
-  Warehouse,
-  Receipt,
-  ClipboardList,
-  ArchiveRestore,
-  PackageOpen,
-  BookMarked, 
-  BarChartBig,
-  BookOpenCheck
-} from 'lucide-react';
-import { cn } from '@/lib/utils';
-import { useAuth } from '@/contexts/auth-context'; // Import useAuth
-import { auth } from '@/lib/firebase'; // Import auth for signOut
-import { signOut } from 'firebase/auth'; // Import signOut
-import { useToast } from '@/hooks/use-toast'; // Import useToast
 
 const navStructure = [
   {

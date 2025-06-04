@@ -1,56 +1,52 @@
 
 "use client";
 
-import { useState, useEffect, useMemo, type ChangeEvent, type FormEvent } from "react";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-  DialogClose,
-} from "@/components/ui/dialog";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { CalendarIcon, Search, Filter, PlusCircle, ChevronsUpDown, Check, FileText, Printer, BadgeAlert, CheckCircle2, XCircle, Loader2 } from "lucide-react";
-import { Calendar } from "@/components/ui/calendar";
-import { format, startOfDay, endOfDay } from "date-fns";
-import { cn } from "@/lib/utils";
-import { useToast } from "@/hooks/use-toast";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "cmdk";
-import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { db, functions } from "@/lib/firebase";
+import { Button } from "@/components/ui/button";
+import { Calendar } from "@/components/ui/calendar";
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import {
-  collection,
-  query,
-  orderBy,
-  getDocs,
-  where,
-  Timestamp,
-  type DocumentData,
-  type QueryDocumentSnapshot,
+    Dialog,
+    DialogClose,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+    DialogTrigger,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Textarea } from "@/components/ui/textarea";
+import { useAuth } from "@/contexts/auth-context"; // Import useAuth
+import { useToast } from "@/hooks/use-toast";
+import { db, functions } from "@/lib/firebase";
+import { cn } from "@/lib/utils";
+import type {
+    CloudFunctionResponse,
+    LedgerAccount as FirestoreLedgerAccount,
+    LedgerEntry as FirestoreLedgerEntry,
+    LedgerEntryCreateRequest,
+    LedgerEntryUpdateStatusRequest,
+    LedgerTransactionType
+} from "@/types/firestore";
+import { Command, CommandEmpty, CommandInput, CommandItem, CommandList } from "cmdk";
+import { endOfDay, format, startOfDay } from "date-fns";
+import {
+    collection,
+    getDocs,
+    orderBy,
+    query,
+    where
 } from "firebase/firestore";
 import { httpsCallable } from "firebase/functions";
-import { handleFirebaseError, logError } from "@/lib/firebase-error-handler";
-import type { 
-  LedgerAccount as FirestoreLedgerAccount, 
-  LedgerEntry as FirestoreLedgerEntry, 
-  LedgerTransactionType,
-  CloudFunctionResponse,
-  LedgerEntryCreateRequest,
-  LedgerEntryUpdateStatusRequest
-} from "@/types/firestore";
-import { useAuth } from "@/contexts/auth-context"; // Import useAuth
+import { BadgeAlert, CalendarIcon, Check, CheckCircle2, ChevronsUpDown, FileText, Filter, Loader2, PlusCircle, Printer, XCircle } from "lucide-react";
 import { useRouter } from "next/navigation"; // Import useRouter
+import { useEffect, useMemo, useState, type ChangeEvent, type FormEvent } from "react";
 
 const createManualLedgerEntryFn = httpsCallable<LedgerEntryCreateRequest, CloudFunctionResponse>(functions, 'createManualLedgerEntry');
 const updateLedgerEntryStatusFn = httpsCallable<LedgerEntryUpdateStatusRequest, CloudFunctionResponse>(functions, 'updateLedgerEntryStatus');

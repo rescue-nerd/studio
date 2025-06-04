@@ -3,21 +3,20 @@
  * This file contains tests to verify Firebase services are working correctly
  */
 
-import { auth, db, functions, storage } from './firebase';
-import { 
-  signInAnonymously,
-  signOut
+import {
+    signInAnonymously,
+    signOut
 } from 'firebase/auth';
 import {
-  collection,
-  doc,
-  setDoc,
-  getDoc,
-  deleteDoc,
-  serverTimestamp
+    deleteDoc,
+    doc,
+    getDoc,
+    serverTimestamp,
+    setDoc
 } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
-import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
+import { deleteObject, getDownloadURL, ref, uploadBytes } from 'firebase/storage';
+import { auth, db, functions, storage } from './firebase';
 
 /**
  * Test Firebase Authentication
@@ -163,8 +162,8 @@ export async function runFirebaseTests(): Promise<void> {
 
 // Export individual test functions for selective testing
 export {
-  testFirebaseAuth as testAuth,
-  testFirestore,
-  testFirebaseFunctions as testFunctions,
-  testFirebaseStorage as testStorage
+    testFirebaseAuth as testAuth,
+    testFirestore,
+    testFirebaseFunctions as testFunctions,
+    testFirebaseStorage as testStorage
 };

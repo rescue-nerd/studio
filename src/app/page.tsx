@@ -2,18 +2,13 @@
 "use client"; 
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Building2, MapPin, FileText, BookText, Hash, DollarSign, Clock, Users, Package, PlusSquare, ClipboardPlus, ArchiveRestore, PackageOpen } from "lucide-react";
+import { useAuth } from "@/contexts/auth-context";
+import { useToast } from "@/hooks/use-toast";
+import { ArchiveRestore, BookText, Building2, ClipboardPlus, FileText, Hash, Loader2, MapPin, PackageOpen, PlusSquare, Users } from "lucide-react";
 import Image from "next/image";
 import Link from 'next/link';
-import { useAuth } from "@/contexts/auth-context"; 
-import { useRouter } from "next/navigation"; 
-import { useEffect, useState } from "react";
-import { Loader2 } from "lucide-react";
-import { db } from "@/lib/firebase";
-import { collection, query, where, getCountFromServer, Timestamp, getDocs } from "firebase/firestore";
-import { useToast } from "@/hooks/use-toast";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Button } from "@/components/ui/button";
+import { useRouter } from "next/navigation";
+import { useEffect } from "react";
 
 // FeatureCard component is removed as it's no longer used.
 
