@@ -18,7 +18,7 @@ import { Button } from "@/components/ui/button";
 // FeatureCard component is removed as it's no longer used.
 
 const QuickActionCard = ({ title, icon: Icon, href, description }: { title: string; icon: React.ElementType; href: string; description?: string; }) => (
-  <Link href={href} passHref>
+  <Link href={href}>
     <Card className="shadow-md hover:shadow-lg transition-shadow duration-200 cursor-pointer h-full">
       <CardContent className="p-4 flex flex-col items-center justify-center text-center">
         <Icon className="h-10 w-10 text-primary mb-3" />
@@ -80,9 +80,7 @@ export default function DashboardPage() {
           </div>
         </CardContent>
       </Card>
-
       {/* The div containing FeatureCards has been removed */}
-      
       <div>
         <h2 className="text-2xl font-headline font-semibold text-foreground mb-4">Quick Actions</h2>
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
@@ -92,7 +90,6 @@ export default function DashboardPage() {
             <QuickActionCard title="Record Goods Delivery" icon={PackageOpen} href="/goods-delivery" description="Confirm delivered items." />
         </div>
       </div>
-
       <div className="grid gap-6 md:grid-cols-2">
          <Card className="shadow-lg">
           <CardHeader>
@@ -107,7 +104,10 @@ export default function DashboardPage() {
               { title: "Auto Numbering", icon: Hash, href: "/automatic-numbering"},
               { title: "Settings", icon: Users, href: "/settings"}
             ].map(item => (
-              <Link href={item.href} key={item.title} className="block p-3 bg-secondary hover:bg-accent/80 rounded-lg transition-colors">
+              <Link
+                href={item.href}
+                key={item.title}
+                className="block p-3 bg-secondary hover:bg-accent/80 rounded-lg transition-colors">
                 <div className="flex items-center gap-3">
                   <item.icon className="h-5 w-5 text-primary" />
                   <span className="font-medium text-foreground text-sm">{item.title}</span>

@@ -244,7 +244,6 @@ export default function SettingsPage() {
         <h1 className="text-3xl font-headline font-bold text-foreground">Settings</h1>
         <p className="text-muted-foreground">Manage your application preferences and configurations.</p>
       </div>
-
       <Card className="shadow-lg">
         <CardHeader>
           <CardTitle className="font-headline text-xl">User Profile</CardTitle>
@@ -292,9 +291,8 @@ export default function SettingsPage() {
           )}
         </CardContent>
       </Card>
-
       {currentUserProfile?.role === "superAdmin" && ( // Only show User Management to superAdmin
-        <Card className="shadow-lg">
+        (<Card className="shadow-lg">
           <CardHeader>
             <CardTitle className="font-headline text-xl">User Management</CardTitle>
             <CardDescription>Manage users, roles, and branch privileges.</CardDescription>
@@ -352,9 +350,8 @@ export default function SettingsPage() {
               </DialogContent>
             </Dialog>
           </CardContent>
-        </Card>
+        </Card>)
       )}
-
       <Card className="shadow-lg">
         <CardHeader>
           <CardTitle className="font-headline text-xl">API Integrations (UI Placeholder)</CardTitle>

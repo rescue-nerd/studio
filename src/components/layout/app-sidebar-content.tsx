@@ -135,7 +135,9 @@ export default function AppSidebarContent() {
   return (
     <>
       <SidebarHeader className="p-4 border-b border-sidebar-border">
-        <Link href="/" className="flex items-center gap-2 group-data-[collapsible=icon]:justify-center">
+        <Link
+          href="/"
+          className="flex items-center gap-2 group-data-[collapsible=icon]:justify-center">
           <Truck className="h-7 w-7 text-primary transition-transform duration-300 group-hover:scale-110" />
           <span className="font-headline text-2xl font-semibold text-sidebar-foreground group-data-[collapsible=icon]:hidden">GorkhaTrans</span>
         </Link>
@@ -158,9 +160,8 @@ export default function AppSidebarContent() {
                   if (item.authRequired && !user) return null; // Hide item if auth required and no user
                   return (
                     <SidebarMenuItem key={item.href}>
-                      <Link href={item.href} passHref legacyBehavior>
+                      <Link href={item.href}>
                         <SidebarMenuButton
-                          asChild
                           isActive={pathname === item.href}
                           tooltip={{ children: item.label, side: 'right', className: 'bg-popover text-popover-foreground' }}
                           className={cn(
@@ -168,10 +169,8 @@ export default function AppSidebarContent() {
                             pathname === item.href ? "bg-sidebar-primary text-sidebar-primary-foreground" : "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
                           )}
                         >
-                          <a>
-                            <item.icon className="h-5 w-5" />
-                            <span className="group-data-[collapsible=icon]:hidden">{item.label}</span>
-                          </a>
+                          <item.icon className="h-5 w-5" />
+                          <span className="group-data-[collapsible=icon]:hidden">{item.label}</span>
                         </SidebarMenuButton>
                       </Link>
                     </SidebarMenuItem>
@@ -187,9 +186,8 @@ export default function AppSidebarContent() {
         <SidebarMenu>
             {user && (
               <SidebarMenuItem>
-                   <Link href="/settings" passHref legacyBehavior>
+                   <Link href="/settings">
                       <SidebarMenuButton 
-                          asChild
                           isActive={pathname === "/settings"}
                           tooltip={{ children: "Settings", side: 'right', className: 'bg-popover text-popover-foreground' }}
                           className={cn(
@@ -197,10 +195,8 @@ export default function AppSidebarContent() {
                               pathname === "/settings" ? "bg-sidebar-primary text-sidebar-primary-foreground" : "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
                           )}
                       >
-                          <a>
-                              <Settings className="h-5 w-5" />
-                              <span className="group-data-[collapsible=icon]:hidden">Settings</span>
-                          </a>
+                          <Settings className="h-5 w-5" />
+                          <span className="group-data-[collapsible=icon]:hidden">Settings</span>
                       </SidebarMenuButton>
                    </Link>
               </SidebarMenuItem>
@@ -218,9 +214,8 @@ export default function AppSidebarContent() {
                     </button>
                 </SidebarMenuButton>
               ) : (
-                 <Link href="/login" passHref legacyBehavior>
+                 <Link href="/login">
                      <SidebarMenuButton 
-                        asChild
                         isActive={pathname === "/login"}
                         tooltip={{ children: "Login", side: 'right', className: 'bg-popover text-popover-foreground' }}
                         className={cn(
@@ -228,10 +223,8 @@ export default function AppSidebarContent() {
                             pathname === "/login" ? "bg-sidebar-primary text-sidebar-primary-foreground" : "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
                         )}
                     >
-                        <a>
-                            <LogIn className="h-5 w-5" />
-                            <span className="group-data-[collapsible=icon]:hidden">Login</span>
-                        </a>
+                        <LogIn className="h-5 w-5" />
+                        <span className="group-data-[collapsible=icon]:hidden">Login</span>
                     </SidebarMenuButton>
                  </Link>
               )}

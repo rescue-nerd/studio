@@ -363,7 +363,6 @@ export default function AutomaticNumberingPage() {
           </DialogContent>
         </Dialog>
       </div>
-
       <Card className="shadow-lg">
         <CardHeader>
           <CardTitle className="font-headline text-xl">Numbering Configurations</CardTitle>
