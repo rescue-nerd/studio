@@ -105,10 +105,9 @@ const defaultBiltiFormData: Omit<Bilti, 'id' | 'totalAmount' | 'status' | 'creat
   // Removed branchId as it's not directly in the default form, can be added if needed
 };
 
-const functionsInstance = getFunctions(db.app);
-const createBiltiFn = httpsCallable<BiltiCallableData, {success: boolean, id: string, message: string}>(functionsInstance, 'createBilti');
-const updateBiltiFn = httpsCallable<{biltiId: string} & Partial<BiltiCallableData>, {success: boolean, id: string, message: string}>(functionsInstance, 'updateBilti');
-const deleteBiltiFn = httpsCallable<{biltiId: string}, {success: boolean, id: string, message: string}>(functionsInstance, 'deleteBilti');
+const createBiltiFn = httpsCallable<BiltiCallableData, {success: boolean, id: string, message: string}>(functions, 'createBilti');
+const updateBiltiFn = httpsCallable<{biltiId: string} & Partial<BiltiCallableData>, {success: boolean, id: string, message: string}>(functions, 'updateBilti');
+const deleteBiltiFn = httpsCallable<{biltiId: string}, {success: boolean, id: string, message: string}>(functions, 'deleteBilti');
 
 
 export default function InvoicingPage() {
