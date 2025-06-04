@@ -42,8 +42,8 @@ import { httpsCallable, type HttpsCallableResult } from "firebase/functions";
 import { 
   collection, 
   getDocs, 
-  // addDoc, // No longer used for bilti creation
-  // doc, // No longer used directly for bilti update/delete
+  addDoc, // Used for party creation
+  doc, // Used for document references
   // updateDoc, // No longer used
   // deleteDoc, // No longer used
   Timestamp, // Still used for type hints if needed
