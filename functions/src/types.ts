@@ -215,46 +215,14 @@ export interface UnitData {
 }
 
 export interface TruckData {
-  id?: string;
+  id?: string; // Firestore document ID
   truckNo: string;
-  type: string;
-  capacity?: string;
+  type: string; // e.g., "6-Wheeler", "10-Wheeler"
+  capacity?: string; // e.g., "10 Ton", "16000 Ltrs"
   ownerName: string;
   ownerPAN?: string;
   status: "Active" | "Inactive" | "Maintenance";
-  assignedLedgerId: string;
-}
-
-export interface DriverData {
-  id?: string;
-  name: string;
-  licenseNo: string;
-  contactNo: string;
-  address?: string;
-  joiningDate?: Timestamp | string;
-  status: "Active" | "Inactive" | "On Leave";
-  assignedLedgerId: string;
-}
-
-export interface GodownData {
-  id?: string;
-  name: string;
-  branchId: string;
-  location: string;
-  status: "Active" | "Inactive" | "Operational";
-}
-
-export interface ManifestData {
-  id?: string;
-  miti: Timestamp | string; // Client might send string, function converts
-  nepaliMiti?: string;
-  truckId: string;
-  driverId: string;
-  fromBranchId: string;
-  toBranchId: string;
-  attachedBiltiIds: string[];
-  remarks?: string;
-  status: "Open" | "In Transit" | "Received" | "Completed" | "Cancelled";
+  assignedLedgerId: string; // Link to LedgerAccount.id
   // Auditable fields
   createdBy?: string;
   createdAt?: Timestamp;
@@ -262,125 +230,22 @@ export interface ManifestData {
   updatedAt?: Timestamp;
 }
 
-// Callable Data Interfaces for HTTPS Callable Functions
-// These are sent from client to functions (miti as string)
-
-export interface GoodsReceiptCallableData extends Omit<GoodsReceiptData, "id" | "miti" | "createdAt" | "createdBy" | "updatedAt" | "updatedBy"> {
-  miti: string;
+// Daybook Function Types
+export interface CreateDaybookPayload {
+  branchId: string;
+  nepaliMiti: string;
+  englishMiti: string; // ISO date string
+  openingBalance?: number;
 }
 
-export interface GoodsDeliveryCallableData extends Omit<GoodsDeliveryData, "id" | "miti" | "createdAt" | "createdBy" | "updatedAt" | "updatedBy" | "ledgerProcessed"> {
-  miti: string;
+export interface DaybookCreateResponse {
+  success: boolean;
+  id: string;
+  message: string;
 }
 
-// Optional: Update/Delete payload types for clarity
-export interface UpdateGoodsReceiptPayload extends Partial<GoodsReceiptCallableData> {
-  receiptId: string;
-}
+// Additional Function Types for Document Numbering, Invoice Customization, etc.
 
-export interface DeleteGoodsReceiptPayload {
-  receiptId: string;
-}
-
-export interface UpdateGoodsDeliveryPayload extends Partial<GoodsDeliveryCallableData> {
-  deliveryId: string;
-}
-
-export interface DeleteGoodsDeliveryPayload {
-  deliveryId: string;
-}
-
-// Ledger Cloud Function Types
-export interface LedgerEntryCallableData extends Omit<LedgerEntryData, "id" | "miti" | "createdAt" | "createdBy" | "status"> {
-  miti: string; // Client sends as string
-  accountId: string;
-}
-
-export interface UpdateLedgerEntryStatusPayload {
-  entryId: string;
-  status: "Approved" | "Rejected";
-  approvalRemarks?: string;
-}
-
-// Daybook Transaction Cloud Function Types
-export interface DaybookTransactionCallableData extends Omit<DaybookTransaction, "id" | "createdAt"> {
-  daybookId: string;
-  transactionId?: string; // For updates, if not provided a new ID will be generated
-}
-
-export interface DeleteDaybookTransactionPayload {
-  daybookId: string;
-  transactionId: string;
-}
-
-// User Management Function Types
-export interface UpdateUserProfilePayload {
-  uid: string;
-  displayName?: string;
-  email?: string;
-  role?: string;
-  status?: "active" | "disabled";
-  enableEmailNotifications?: boolean;
-  darkModeEnabled?: boolean;
-  autoDataSyncEnabled?: boolean;
-}
-
-export interface UpdateUserBranchAssignmentsPayload {
-  uid: string;
-  assignedBranchIds: string[];
-}
-
-// Content Customization Function Types
-export interface InvoiceLineCustomizationData {
-  id?: string;
-  label: string;
-  fieldName: string;
-  type: "Text" | "Number" | "Currency" | "Percentage" | "Date" | "Textarea" | "Boolean" | "Select";
-  options?: string[];
-  required: boolean;
-  order: number;
-  defaultValue?: string | number | boolean;
-  isEnabled: boolean;
-  createdBy?: string;
-  createdAt?: Timestamp;
-  updatedBy?: string;
-  updatedAt?: Timestamp;
-}
-
-export interface CreateInvoiceLineCustomizationPayload extends Omit<InvoiceLineCustomizationData, "id" | "createdAt" | "createdBy" | "updatedAt" | "updatedBy"> {}
-
-export interface UpdateInvoiceLineCustomizationPayload extends Partial<CreateInvoiceLineCustomizationPayload> {
-  customizationId: string;
-}
-
-export interface DeleteInvoiceLineCustomizationPayload {
-  customizationId: string;
-}
-
-// Narration Template Function Types
-export interface NarrationTemplateData {
-  id?: string;
-  templateName: string;
-  templateText: string;
-  category: "bilti" | "delivery" | "payment" | "expense" | "general";
-  isActive: boolean;
-  createdBy?: string;
-  createdAt?: Timestamp;
-  updatedBy?: string;
-  updatedAt?: Timestamp;
-}
-
-export interface CreateNarrationTemplatePayload extends Omit<NarrationTemplateData, "id" | "createdAt" | "createdBy" | "updatedAt" | "updatedBy"> {}
-
-export interface UpdateNarrationTemplatePayload extends Partial<CreateNarrationTemplatePayload> {
-  templateId: string;
-}
-
-export interface DeleteNarrationTemplatePayload {
-  templateId: string;
-}
-
-// Document Numbering Function Types
 export interface DocumentNumberingConfigData {
   id?: string;
   documentType: "bilti" | "manifest" | "invoice" | "receipt" | "delivery";
@@ -388,10 +253,9 @@ export interface DocumentNumberingConfigData {
   suffix?: string;
   startingNumber: number;
   currentNumber: number;
-  digitPadding: number;
-  resetFrequency: "none" | "daily" | "monthly" | "yearly";
+  branchSpecific: boolean;
+  branchId?: string;
   isActive: boolean;
-  branchId?: string; // For branch-specific numbering
   createdBy?: string;
   createdAt?: Timestamp;
   updatedBy?: string;
@@ -418,16 +282,120 @@ export interface GenerateNextDocumentNumberResult {
   configId: string;
 }
 
-// Daybook Function Types
-export interface CreateDaybookPayload {
-  branchId: string;
-  nepaliMiti: string;
-  englishMiti: string; // ISO date string
-  openingBalance?: number;
+export interface InvoiceLineCustomizationData {
+  id?: string;
+  lineType: "header" | "item" | "footer";
+  label: string;
+  isRequired: boolean;
+  fieldType: "text" | "number" | "select" | "textarea";
+  selectOptions?: string[];
+  defaultValue?: string;
+  displayOrder: number;
+  isActive: boolean;
+  branchId?: string;
+  createdBy?: string;
+  createdAt?: Timestamp;
+  updatedBy?: string;
+  updatedAt?: Timestamp;
 }
 
-export interface DaybookCreateResponse {
-  success: boolean;
-  id: string;
-  message: string;
+export interface CreateInvoiceLineCustomizationPayload extends Omit<InvoiceLineCustomizationData, "id" | "createdAt" | "createdBy" | "updatedAt" | "updatedBy"> {}
+
+export interface UpdateInvoiceLineCustomizationPayload extends Partial<CreateInvoiceLineCustomizationPayload> {
+  customizationId: string;
+}
+
+export interface DeleteInvoiceLineCustomizationPayload {
+  customizationId: string;
+}
+
+export interface NarrationTemplateData {
+  id?: string;
+  templateName: string;
+  narrationText: string;
+  category: "income" | "expense" | "transfer" | "adjustment";
+  placeholders: string[];
+  isActive: boolean;
+  branchId?: string;
+  createdBy?: string;
+  createdAt?: Timestamp;
+  updatedBy?: string;
+  updatedAt?: Timestamp;
+}
+
+export interface CreateNarrationTemplatePayload extends Omit<NarrationTemplateData, "id" | "createdAt" | "createdBy" | "updatedAt" | "updatedBy"> {}
+
+export interface UpdateNarrationTemplatePayload extends Partial<CreateNarrationTemplatePayload> {
+  templateId: string;
+}
+
+export interface DeleteNarrationTemplatePayload {
+  templateId: string;
+}
+
+export interface ManifestData {
+  id?: string;
+  manifestNo: string;
+  miti: Timestamp;
+  nepaliMiti?: string;
+  truckId: string;
+  driverId: string;
+  origin: string;
+  destination: string;
+  biltiIds: string[];
+  attachedBiltiIds: string[]; // Alternative name for biltiIds used in some functions
+  fromBranchId: string;
+  toBranchId: string;
+  status: "Draft" | "Open" | "In Transit" | "Delivered" | "Cancelled";
+  departureDateTime?: Timestamp;
+  arrivalDateTime?: Timestamp;
+  totalWeight?: number;
+  totalPackages: number;
+  totalAmount: number;
+  remarks?: string;
+  ledgerProcessed?: boolean;
+  branchId?: string;
+  createdBy?: string;
+  createdAt?: Timestamp;
+  updatedBy?: string;
+  updatedAt?: Timestamp;
+}
+
+export interface LedgerEntryCallableData {
+  ledgerAccountId: string;
+  transactionType: LedgerTransactionType;
+  amount: number;
+  description: string;
+  referenceType?: "bilti" | "manifest" | "receipt" | "payment" | "adjustment";
+  referenceId?: string;
+  nepaliMiti?: string;
+  branchId?: string;
+}
+
+export interface UpdateLedgerEntryStatusPayload {
+  entryId: string;
+  status: "pending" | "approved" | "rejected";
+  remarks?: string;
+}
+
+export interface DaybookTransactionCallableData extends Omit<DaybookTransaction, "id" | "createdAt"> {
+  nepaliMiti: string;
+}
+
+export interface DeleteDaybookTransactionPayload {
+  daybookId: string;
+  transactionId: string;
+}
+
+export interface UpdateUserProfilePayload {
+  userId: string;
+  displayName?: string;
+  email?: string;
+  role?: string;
+  status?: "active" | "disabled";
+}
+
+export interface UpdateUserBranchAssignmentsPayload {
+  userId: string;
+  assignedBranchIds: string[];
 }

@@ -68,10 +68,9 @@ const defaultDriverFormData: Omit<Driver, 'id' | 'createdAt' | 'createdBy' | 'up
   address: "",
 };
 
-const functionsInstance = getFunctions(db.app);
-const createDriverFn = httpsCallable<DriverFormDataCallable, {success: boolean, id: string, message: string}>(functionsInstance, 'createDriver');
-const updateDriverFn = httpsCallable<UpdateDriverFormDataCallable, {success: boolean, id: string, message: string}>(functionsInstance, 'updateDriver');
-const deleteDriverFn = httpsCallable<{driverId: string}, {success: boolean, id: string, message: string}>(functionsInstance, 'deleteDriver');
+const createDriverFn = httpsCallable<DriverFormDataCallable, {success: boolean, id: string, message: string}>(functions, 'createDriver');
+const updateDriverFn = httpsCallable<UpdateDriverFormDataCallable, {success: boolean, id: string, message: string}>(functions, 'updateDriver');
+const deleteDriverFn = httpsCallable<{driverId: string}, {success: boolean, id: string, message: string}>(functions, 'deleteDriver');
 
 
 export default function DriversPage() {
