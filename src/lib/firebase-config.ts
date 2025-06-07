@@ -33,14 +33,14 @@ export function getFirebaseConfig(): FirebaseConfig {
     };
   }
 
-  // Default development config (using environment variables)
+  // Default development config with hardcoded values as fallback
   return {
-    apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY as string,
-    authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN as string,
-    projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID as string,
-    storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET as string,
-    messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID as string,
-    appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID as string,
+    apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY || "AIzaSyBpzB4yM4qvK7TXYc0LA8F4d_jVx8cGjks",
+    authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN || "gorkhatrans.firebaseapp.com",
+    projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || "gorkhatrans",
+    storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET || "gorkhatrans.appspot.com", // Fixed storage bucket URL
+    messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID || "224119383159",
+    appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID || "1:224119383159:web:e02ca988722b8909759272",
   };
 }
 
