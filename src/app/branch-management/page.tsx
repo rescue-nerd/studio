@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useEffect, type ChangeEvent, type FormEvent } from "react";
@@ -200,9 +199,8 @@ export default function BranchManagementPage() {
       setEditingBranch(null);
       fetchBranches(); 
     } catch (error: any) {
-        console.error("Error saving branch: ", error);
-        const message = error.message || (editingBranch ? "Failed to update branch." : "Failed to add branch.");
-        toast({ title: "Error", description: message, variant: "destructive" });
+        logError(error, editingBranch ? "Updating branch" : "Creating branch");
+        handleFirebaseError(error, toast);
     } finally {
         setIsSubmittingForm(false);
     }
@@ -225,8 +223,8 @@ export default function BranchManagementPage() {
             toast({ title: "Deletion Failed", description: result.data.message || "Could not delete branch.", variant: "destructive" });
         }
       } catch (error: any) {
-        console.error("Error deleting branch: ", error);
-        toast({ title: "Error", description: error.message || "Failed to delete branch.", variant: "destructive" });
+        logError(error, "Deleting branch");
+        handleFirebaseError(error, toast);
       } finally {
         setIsDeleting(false);
       }
@@ -427,4 +425,3 @@ export default function BranchManagementPage() {
     </div>
   );
 }
-
