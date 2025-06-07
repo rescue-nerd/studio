@@ -47,3 +47,4 @@ firestore-debug.log
 # Google Cloud SDK (too large for GitHub)
 google-cloud-sdk/
 google-cloud-cli-*.tar.gz
+.env
