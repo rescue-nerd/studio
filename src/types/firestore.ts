@@ -35,7 +35,7 @@ export interface Branch extends Auditable {
   name: string;
   location: string;
   managerName?: string | null;
-  managerUserId?: string; // User.uid
+  managerUserId?: string | null; // User.uid
   contactEmail?: string;
   contactPhone?: string;
   status?: "Active" | "Inactive";
@@ -415,4 +415,3 @@ export interface DaybookTransactionDeleteRequest {
   daybookId: string;
   transactionId: string;
 }
-
