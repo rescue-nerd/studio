@@ -175,7 +175,7 @@ export default function BranchManagementPage() {
       status: formData.status,
       contactEmail: formData.contactEmail || "",
       contactPhone: formData.contactPhone || "",
-      managerUserId: formData.managerUserId || "",
+      managerUserId: formData.managerUserId || null,
     };
 
     try {

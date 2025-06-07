@@ -140,11 +140,18 @@ export const updateBranch = onCall(
       }
 
       const { branchId, ...updateData } = data;
-      await branchRef.update({
+      
+      // Handle managerUserId explicitly - convert empty string to null
+      const processedUpdateData = {
         ...updateData,
+        ...(updateData.hasOwnProperty('managerUserId') && {
+          managerUserId: updateData.managerUserId === '' ? null : updateData.managerUserId
+        }),
         updatedAt: admin.firestore.Timestamp.now(),
         updatedBy: uid,
-      });
+      };
+
+      await branchRef.update(processedUpdateData);
 
       logger.info(`Branch updated: ${branchId} by ${uid}`);
       return {success: true, id: branchId, message: "Branch updated successfully."};

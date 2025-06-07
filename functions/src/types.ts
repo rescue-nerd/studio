@@ -177,7 +177,7 @@ export interface BranchData {
     name: string;
     location: string;
     managerName?: string | null;
-    managerUserId?: string;
+    managerUserId?: string | null;
     contactEmail?: string;
     contactPhone?: string;
     status?: "Active" | "Inactive";
