@@ -1,10 +1,6 @@
 import auth from '@/lib/supabase-auth';
-import storage from '@/lib/supabase-storage';
 import {
   Branch,
-  Daybook,
-  DocumentNumberingConfig,
-  DocumentType,
   User
 } from '@/types/database';
 import { createClient } from '@supabase/supabase-js';
@@ -58,6 +54,38 @@ export const db = {
       return result as T;
     } catch (error) {
       console.error(`Error updating record in ${table}:`, error);
+      throw error;
+    }
+  },
+
+  async updateCountry(id: string, name: string, code: string) {
+    try {
+      const user = supabase.auth.getUser();
+      const session = await supabase.auth.getSession();
+      const accessToken = session.data?.session?.access_token;
+
+      if (!accessToken) {
+        throw new Error('User is not authenticated');
+      }
+
+      const response = await fetch('/api/update-country', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${accessToken}`
+        },
+        body: JSON.stringify({ id, name, code })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error?.message || 'Failed to update country');
+      }
+
+      const data = await response.json();
+      return data.data;
+    } catch (error) {
+      console.error('Error updating country:', error);
       throw error;
     }
   },

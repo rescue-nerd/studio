@@ -22,6 +22,7 @@ serve(async (req) => {
   try {
     // Get authorization header
     const authHeader = req.headers.get('Authorization')
+    console.log('Authorization header:', authHeader);
     if (!authHeader) {
       return new Response(
         JSON.stringify({ success: false, error: { message: 'No authorization header' } }),
@@ -50,8 +51,9 @@ serve(async (req) => {
 
     // Validate request body
     if (!id || !name || !code) {
+      console.log('Validation failed:', { id, name, code });
       return new Response(
-        JSON.stringify({ success: false, error: { message: 'ID, name, and code are required' } }),
+        JSON.stringify({ success: false, error: { message: 'ID, name, and code are required', received: { id, name, code } } }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
@@ -62,6 +64,7 @@ serve(async (req) => {
       .select('id')
       .eq('id', id)
       .single()
+    console.log('Existing country check:', { existingCountry, checkError });
 
     if (checkError) {
       return new Response(
@@ -72,7 +75,7 @@ serve(async (req) => {
 
     if (!existingCountry) {
       return new Response(
-        JSON.stringify({ success: false, error: { message: 'Country not found' } }),
+        JSON.stringify({ success: false, error: { message: 'Country not found', id } }),
         { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
@@ -84,6 +87,7 @@ serve(async (req) => {
       .eq('code', code)
       .neq('id', id)
       .single()
+    console.log('Code conflict check:', { codeConflict, codeError });
 
     if (codeError && codeError.code !== 'PGRST116') {
       return new Response(
@@ -94,22 +98,32 @@ serve(async (req) => {
 
     if (codeConflict) {
       return new Response(
-        JSON.stringify({ success: false, error: { message: 'Country code already exists' } }),
+        JSON.stringify({ success: false, error: { message: 'Country code already exists', code } }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
 
     // Update country
-    const { data: country, error: updateError } = await supabaseClient
-      .from('countries')
-      .update({ name, code })
-      .eq('id', id)
-      .select()
-      .single()
+    try {
+      const { data: country, error: updateError } = await supabaseClient
+        .from('countries')
+        .update({ name, code, updated_at: new Date().toISOString(), updated_by: user.email || user.id })
+        .eq('id', id)
+        .select()
+        .single()
+      console.log('Update country result:', { country, updateError });
 
-    if (updateError) {
+      if (updateError) {
+        console.error('Database update error:', updateError);
+        return new Response(
+          JSON.stringify({ success: false, error: { message: 'Error updating country', details: updateError.message } }),
+          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
+    } catch (dbError) {
+      console.error('Exception during update:', dbError);
       return new Response(
-        JSON.stringify({ success: false, error: { message: 'Error updating country' } }),
+        JSON.stringify({ success: false, error: { message: 'Exception during update', details: dbError instanceof Error ? dbError.message : String(dbError) } }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
@@ -120,8 +134,9 @@ serve(async (req) => {
     )
 
   } catch (error) {
+    console.error('Update country error:', error);
     return new Response(
-      JSON.stringify({ success: false, error: { message: 'Internal server error' } }),
+      JSON.stringify({ success: false, error: { message: 'Internal server error', details: error instanceof Error ? error.message : String(error) } }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
   }

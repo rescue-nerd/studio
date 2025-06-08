@@ -87,21 +87,31 @@ const createCountryFn = async (data: { name: string; code: string }) => {
   }
 }
 
-const updateCountryFn = async (data: { id: string; name: string; code: string }) => {
+const updateCountryFn = async (data: { countryId: string; name: string; code: string }) => {
   try {
     const session = await supabase.auth.getSession();
+    console.log('updateCountryFn payload:', data);
+    console.log('updateCountryFn access token:', session.data.session?.access_token);
     const { data: response, error } = await supabase.functions.invoke('update-country', {
-      body: { id: data.id, name: data.name, code: data.code },
+      body: { countryId: data.countryId, name: data.name, code: data.code },
       headers: {
         'Authorization': `Bearer ${session.data.session?.access_token}`
       }
     })
 
     if (error) {
-      throw new Error(error.message || 'Failed to update country')
+      console.error('Edge function error object:', error);
+      if (error.data && error.data.error && error.data.error.message) {
+        throw new Error(error.data.error.message);
+      } else if (error.message) {
+        throw new Error(error.message);
+      } else {
+        throw new Error('Failed to update country');
+      }
     }
 
     if (response && !response.success) {
+      console.error('Edge function response error:', response.error);
       throw new Error(response.error?.message || 'Failed to update country')
     }
 
@@ -512,7 +522,7 @@ export default function LocationsPage() {
     try {
       let result: {success: boolean; data: any};
       if (editingCountry) {
-        result = await updateCountryFn({ id: editingCountry.id, name: countryFormData.name, code: countryFormData.code });
+        result = await updateCountryFn({ countryId: editingCountry.id, name: countryFormData.name, code: countryFormData.code });
       } else {
         result = await createCountryFn(countryFormData);
       }
