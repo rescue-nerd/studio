@@ -70,9 +70,14 @@ export const auth = {
 
   // Get current user
   async getCurrentUser() {
-    const { data: { user }, error } = await supabase.auth.getUser();
-    if (error) throw error;
-    return user;
+    try {
+      const { data: { user }, error } = await supabase.auth.getUser();
+      if (error) throw error;
+      return user;
+    } catch (error) {
+      console.error("Error getting current user:", error);
+      return null;
+    }
   },
 
   // Get user profile from users table
@@ -100,7 +105,14 @@ export const auth = {
           return this.createFallbackProfile(userId, user);
         }
         
-        return data as AuthUser;
+        return {
+          id: data.id,
+          email: data.email,
+          displayName: data.display_name,
+          role: data.role,
+          assignedBranchIds: data.assigned_branch_ids || [],
+          status: data.status,
+        };
       } catch (dbError) {
         console.error('Database error in getUserProfile:', dbError);
         return this.createFallbackProfile(userId, user);
@@ -149,7 +161,14 @@ export const auth = {
           // Fall back to updating auth metadata
           return this.updateUserMetadata(userId, updates);
         }
-        return data;
+        return {
+          id: data.id,
+          email: data.email,
+          displayName: data.display_name,
+          role: data.role,
+          assignedBranchIds: data.assigned_branch_ids || [],
+          status: data.status,
+        };
       } catch (dbError) {
         console.error("Database error in updateUserProfile:", dbError);
         return this.updateUserMetadata(userId, updates);

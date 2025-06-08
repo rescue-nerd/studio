@@ -6,7 +6,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import auth from "@/lib/supabase-auth";
-import db from "@/lib/supabase-db";
 import { handleSupabaseError, logError } from "@/lib/supabase-error-handler";
 import { Loader2, UserPlus } from "lucide-react";
 import Image from "next/image";
@@ -36,27 +35,11 @@ export default function SignupPage() {
         displayName,
         role: "operator",
         assignedBranchIds: [],
-        enableEmailNotifications: false,
-        darkModeEnabled: false,
-        autoDataSyncEnabled: false,
         status: "active"
       });
-      if (user) {
-        // Create user profile in Supabase users table
-        await db.create("users", {
-          uid: user.id,
-          email: user.email,
-          displayName: displayName,
-          role: "operator",
-          assignedBranchIds: [],
-          enableEmailNotifications: false,
-          darkModeEnabled: false,
-          autoDataSyncEnabled: false,
-          status: "active"
-        });
-        toast({ title: "Signup Successful", description: "Your account has been created." });
-        router.push("/");
-      }
+      
+      toast({ title: "Signup Successful", description: "Your account has been created." });
+      router.push("/");
     } catch (error) {
       logError(error, "User signup");
       handleSupabaseError(error, toast, {
@@ -72,13 +55,9 @@ export default function SignupPage() {
     <div className="container flex h-screen w-screen flex-col items-center justify-center">
       <div className="mx-auto flex w-full flex-col justify-center space-y-6 sm:w-[350px]">
         <div className="flex flex-col space-y-2 text-center">
-          <Image
-            src="/logo.png"
-            alt="Logo"
-            width={120}
-            height={120}
-            className="mx-auto"
-          />
+          <div className="mx-auto h-20 w-20 bg-primary rounded-full flex items-center justify-center">
+            <span className="text-3xl font-bold text-primary-foreground">G</span>
+          </div>
           <h1 className="text-2xl font-semibold tracking-tight">
             Create an account
           </h1>

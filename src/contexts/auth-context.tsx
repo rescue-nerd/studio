@@ -29,7 +29,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             setProfile(userProfile);
           } catch (error) {
             console.error("Error fetching user profile:", error);
-            // Don't set profile to null here to avoid infinite loop
+            // Create a fallback profile
+            setProfile({
+              id: currentUser.id,
+              email: currentUser.email,
+              displayName: currentUser.user_metadata?.displayName || 'User',
+              role: 'operator',
+              status: 'active',
+              assignedBranchIds: []
+            });
           }
         } else {
           setUser(null);
@@ -48,6 +56,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
     // Set up auth state change listener
     const { data: { subscription } } = auth.onAuthStateChange(async (event, session) => {
+      console.log("Auth state changed:", event, session);
       if (session?.user) {
         setUser(session.user);
         try {
@@ -55,7 +64,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           setProfile(profile);
         } catch (error) {
           console.error("Error fetching user profile:", error);
-          // Don't set profile to null here to avoid infinite loop
+          // Create a fallback profile
+          setProfile({
+            id: session.user.id,
+            email: session.user.email,
+            displayName: session.user.user_metadata?.displayName || 'User',
+            role: 'operator',
+            status: 'active',
+            assignedBranchIds: []
+          });
         }
       } else {
         setUser(null);
