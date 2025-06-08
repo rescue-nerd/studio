@@ -1,45 +1,43 @@
-
 "use client";
 
-import { useState, type ChangeEvent, type FormEvent, useEffect } from "react";
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+    AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
-import { PlusCircle, Search, Edit, Trash2, UsersRound, Loader2 } from "lucide-react";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-  DialogClose,
+    Dialog,
+    DialogClose,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+    DialogTrigger,
 } from "@/components/ui/dialog";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
-import { db, functions } from "@/lib/firebase";
-import { httpsCallable, type HttpsCallableResult } from "firebase/functions";
-import { collection, getDocs, query, orderBy } from "firebase/firestore";
-import type { Party as FirestoreParty } from "@/types/firestore";
-import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/auth-context";
+import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/lib/supabase";
+import { db } from "@/lib/supabase-db";
+import { handleSupabaseError, logError } from "@/lib/supabase-error-handler";
+import type { Party as FirestoreParty } from "@/types/firestore";
+import { Edit, Loader2, PlusCircle, Search, Trash2, UsersRound } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { handleFirebaseError, logError } from "@/lib/firebase-error-handler";
+import { useEffect, useState, type ChangeEvent, type FormEvent } from "react";
 
 interface Party extends FirestoreParty {}
 type PartyFormDataCallable = Omit<FirestoreParty, 'id' | 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy'>;
@@ -62,10 +60,20 @@ const defaultPartyFormData: Omit<Party, 'id' | 'createdAt' | 'createdBy' | 'upda
   status: "Active",
 };
 
-const createPartyFn = httpsCallable<PartyFormDataCallable, {success: boolean, id: string, message: string}>(functions, 'createParty');
-const updatePartyFn = httpsCallable<UpdatePartyFormDataCallable, {success: boolean, id: string, message: string}>(functions, 'updateParty');
-const deletePartyFn = httpsCallable<{partyId: string}, {success: boolean, id: string, message: string}>(functions, 'deleteParty');
+const createPartyFn = async (data: PartyFormDataCallable) => {
+  const response = await supabase.functions.invoke('create-party', { body: data });
+  return response.data as {success: boolean, id: string, message: string};
+};
 
+const updatePartyFn = async (data: UpdatePartyFormDataCallable) => {
+  const response = await supabase.functions.invoke('update-party', { body: data });
+  return response.data as {success: boolean, id: string, message: string};
+};
+
+const deletePartyFn = async (data: {partyId: string}) => {
+  const response = await supabase.functions.invoke('delete-party', { body: data });
+  return response.data as {success: boolean, id: string, message: string};
+};
 
 export default function PartiesPage() {
   const [parties, setParties] = useState<Party[]>([]);
@@ -88,26 +96,9 @@ export default function PartiesPage() {
   }, [authUser, authLoading, router]);
 
   const fetchParties = async () => {
-    if(!authUser) return;
-    setIsLoading(true);
-    try {
-      const partiesCollectionRef = collection(db, "parties");
-      const q = query(partiesCollectionRef, orderBy("name"));
-      const querySnapshot = await getDocs(q);
-      const fetchedParties: Party[] = querySnapshot.docs.map(docSnap => {
-        const data = docSnap.data() as FirestoreParty;
-        return { ...data, id: docSnap.id };
-      });
-      setParties(fetchedParties);
-    } catch (error) {
-      logError(error, "Failed to fetch parties");
-      handleFirebaseError(error, toast, {
-        "permission-denied": "You don't have permission to view parties.",
-        "unauthenticated": "Please log in to view parties."
-      });
-    } finally {
-      setIsLoading(false);
-    }
+    const { data, error } = await db.query('parties', { select: '*' });
+    if (error) throw error;
+    return data;
   };
 
   useEffect(() => {
@@ -160,27 +151,24 @@ export default function PartiesPage() {
     const partyDataPayload: PartyFormDataCallable = { ...formData };
 
     try {
-      let result: HttpsCallableResult<{success: boolean; id: string; message: string}>;
+      let result;
       if (editingParty) {
         result = await updatePartyFn({ partyId: editingParty.id, ...partyDataPayload });
       } else {
         result = await createPartyFn(partyDataPayload);
       }
 
-      if (result.data.success) {
-        toast({ title: "Success", description: result.data.message });
+      if (result.success) {
+        toast({ title: "Success", description: result.message });
         fetchParties();
         setIsFormDialogOpen(false);
         setEditingParty(null);
       } else {
-        toast({ title: "Error", description: result.data.message, variant: "destructive" });
+        toast({ title: "Error", description: result.message, variant: "destructive" });
       }
     } catch (error) {
       logError(error, "Failed to save party");
-      handleFirebaseError(error, toast, {
-        "permission-denied": "You don't have permission to modify parties.",
-        "unauthenticated": "Please log in to continue."
-      });
+      handleSupabaseError(error, toast);
     } finally {
       setIsSubmitting(false);
     }
@@ -196,15 +184,15 @@ export default function PartiesPage() {
       setIsSubmitting(true);
       try {
         const result = await deletePartyFn({ partyId: partyToDelete.id });
-        if (result.data.success) {
-          toast({ title: "Success", description: result.data.message});
+        if (result.success) {
+          toast({ title: "Success", description: result.message});
           fetchParties();
         } else {
-          toast({ title: "Error", description: result.data.message, variant: "destructive" });
+          toast({ title: "Error", description: result.message, variant: "destructive" });
         }
-      } catch (error: any) {
-        console.error("Error deleting party: ", error);
-        toast({ title: "Error", description: error.message || "Failed to delete party.", variant: "destructive" });
+      } catch (error) {
+        logError(error, "Error deleting party");
+        handleSupabaseError(error, toast);
       } finally {
         setIsSubmitting(false);
         setIsDeleteDialogOpen(false);

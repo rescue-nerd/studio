@@ -32,8 +32,8 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { db, functions } from "@/lib/firebase";
-import { handleFirebaseError, logError } from "@/lib/firebase-error-handler";
+import { db } from "@/lib/supabase-db";
+import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
 import type {
     CloudFunctionResponse,
@@ -45,14 +45,6 @@ import type {
     GoodsReceiptUpdateRequest
 } from "@/types/firestore";
 import { format } from "date-fns";
-import {
-    collection,
-    getDocs,
-    orderBy,
-    query,
-    Timestamp
-} from "firebase/firestore";
-import { httpsCallable } from "firebase/functions";
 import { ArchiveRestore, CalendarIcon, Edit, Loader2, PlusCircle, Search, Trash2 } from "lucide-react";
 import { useEffect, useState, type ChangeEvent, type FormEvent } from "react";
 
@@ -81,6 +73,27 @@ const defaultGoodsReceiptFormData: Omit<GoodsReceipt, 'id' | 'createdAt' | 'crea
 
 const PLACEHOLDER_USER_ID = "system_user_placeholder";
 
+const createGoodsReceiptFn = async (data: GoodsReceiptCreateRequest) => {
+  const response = await supabase.functions.invoke('create-goods-receipt', {
+    body: data
+  });
+  return response.data as CloudFunctionResponse;
+};
+
+const updateGoodsReceiptFn = async (data: GoodsReceiptUpdateRequest) => {
+  const response = await supabase.functions.invoke('update-goods-receipt', {
+    body: data
+  });
+  return response.data as CloudFunctionResponse;
+};
+
+const deleteGoodsReceiptFn = async (data: GoodsReceiptDeleteRequest) => {
+  const response = await supabase.functions.invoke('delete-goods-receipt', {
+    body: data
+  });
+  return response.data as CloudFunctionResponse;
+};
+
 export default function GoodsReceiptPage() {
   const [goodsReceipts, setGoodsReceipts] = useState<GoodsReceipt[]>([]);
   const [manifestsForSelection, setManifestsForSelection] = useState<Manifest[]>([]);
@@ -107,45 +120,36 @@ export default function GoodsReceiptPage() {
 
   const fetchMasterData = async () => {
     try {
-      const [manifestsSnap, branchesSnap] = await Promise.all([
-        getDocs(query(collection(db, "manifests"))), // Fetch all manifests for context
-        getDocs(query(collection(db, "branches"), orderBy("name"))),
-        // getDocs(query(collection(db, "godowns"), orderBy("name"))), // For godowns later
+      const [manifests, branches] = await Promise.all([
+        db.query<Manifest>('manifests', {
+          select: '*',
+          orderBy: { column: 'createdAt', ascending: false }
+        }),
+        db.query<Branch>('branches', {
+          select: '*',
+          orderBy: { column: 'name', ascending: true }
+        })
       ]);
 
-      const allFetchedManifests = manifestsSnap.docs.map(d => {
-        const data = d.data() as FirestoreManifest;
-        return { ...data, id: d.id, miti: data.miti.toDate() } as Manifest;
-      });
-      setAllManifestsMaster(allFetchedManifests);
-      setManifestsForSelection(allFetchedManifests.filter(m => m.status === "In Transit"));
-
-      setBranches(branchesSnap.docs.map(d => ({ ...d.data(), id: d.id } as Branch)));
-      // setGodowns(godownsSnap.docs.map(d => ({ ...d.data(), id: d.id } as Godown)));
-
+      setAllManifestsMaster(manifests);
+      setManifestsForSelection(manifests.filter(m => m.status === "In Transit"));
+      setBranches(branches);
     } catch (error) {
-      logError(error, "Error fetching master data for goods receipt");
-      handleFirebaseError(error, toast, {
-        "permission-denied": "You don't have permission to access this data."
-      });
+      console.error("Error fetching master data for goods receipt:", error);
+      toast({ title: "Error", description: "Failed to fetch master data.", variant: "destructive" });
     }
   };
 
   const fetchGoodsReceipts = async () => {
     try {
-      const receiptsCollectionRef = collection(db, "goodsReceipts");
-      const q = query(receiptsCollectionRef, orderBy("createdAt", "desc"));
-      const querySnapshot = await getDocs(q);
-      const fetchedReceipts: GoodsReceipt[] = querySnapshot.docs.map(docSnap => {
-        const data = docSnap.data() as FirestoreGoodsReceipt;
-        return { ...data, id: docSnap.id, miti: data.miti.toDate() };
+      const receipts = await db.query<GoodsReceipt>('goodsReceipts', {
+        select: '*',
+        orderBy: { column: 'createdAt', ascending: false }
       });
-      setGoodsReceipts(fetchedReceipts);
+      setGoodsReceipts(receipts);
     } catch (error) {
-      logError(error, "Error fetching goods receipts");
-      handleFirebaseError(error, toast, {
-        "permission-denied": "You don't have permission to view goods receipts."
-      });
+      console.error("Error fetching goods receipts:", error);
+      toast({ title: "Error", description: "Failed to fetch goods receipts.", variant: "destructive" });
     }
   };
 
@@ -190,27 +194,20 @@ export default function GoodsReceiptPage() {
   };
   
   const handleBranchAdd = async (newBranchData: Omit<Branch, 'id' | 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy' | 'status' | 'managerName' | 'managerUserId' | 'contactEmail' | 'contactPhone'> & { status?: "Active" | "Inactive" }) => {
-    setIsSubmitting(true); // Use isSubmitting to disable buttons during this operation
+    setIsSubmitting(true);
     try {
-      // Note: Branch creation should ideally use a Cloud Function too, but keeping direct Firestore for now
-      const { addDoc } = await import("firebase/firestore");
-      const branchPayload: Omit<FirestoreBranch, 'id'> = {
+      const branch = await db.create<Branch>('branches', {
         name: newBranchData.name,
         location: newBranchData.location || "",
         status: newBranchData.status || "Active",
-        createdAt: Timestamp.now(),
-        createdBy: PLACEHOLDER_USER_ID,
-      };
-      const docRef = await addDoc(collection(db, "branches"), branchPayload);
-      const newBranch: Branch = { ...branchPayload, id: docRef.id };
-      setBranches(prev => [...prev, newBranch].sort((a,b) => a.name.localeCompare(b.name)));
-      handleReceivingBranchSelect(newBranch); // Auto-select new branch
-      toast({ title: "Branch Added", description: `${newBranch.name} has been added.`});
-    } catch (error) {
-      logError(error, "Error adding branch from dialog");
-      handleFirebaseError(error, toast, {
-        "permission-denied": "You don't have permission to add branches."
+        createdAt: new Date(),
+        createdBy: PLACEHOLDER_USER_ID
       });
+      setBranches(prev => [...prev, branch]);
+      toast({ title: "Success", description: "Branch created successfully." });
+    } catch (error) {
+      console.error("Error creating branch:", error);
+      toast({ title: "Error", description: "Failed to create branch.", variant: "destructive" });
     } finally {
       setIsSubmitting(false);
     }
@@ -259,7 +256,6 @@ export default function GoodsReceiptPage() {
     try {
       if (editingReceipt) {
         // Update existing receipt
-        const updateGoodsReceipt = httpsCallable<GoodsReceiptUpdateRequest, CloudFunctionResponse>(functions, 'updateGoodsReceipt');
         const updateData: GoodsReceiptUpdateRequest = {
           receiptId: editingReceipt.id,
           miti: formData.miti.toISOString(),
@@ -270,15 +266,14 @@ export default function GoodsReceiptPage() {
           // Note: shortages and damages would be handled here if form included them
         };
         
-        const result = await updateGoodsReceipt(updateData);
-        if (result.data.success) {
-          toast({ title: "Goods Receipt Updated", description: result.data.message });
+        const result = await updateGoodsReceiptFn(updateData);
+        if (result.success) {
+          toast({ title: "Goods Receipt Updated", description: result.message });
         } else {
-          throw new Error(result.data.message);
+          throw new Error(result.message);
         }
       } else {
         // Create new receipt
-        const createGoodsReceipt = httpsCallable<GoodsReceiptCreateRequest, CloudFunctionResponse>(functions, 'createGoodsReceipt');
         const createData: GoodsReceiptCreateRequest = {
           miti: formData.miti.toISOString(),
           nepaliMiti: formData.nepaliMiti,
@@ -288,19 +283,16 @@ export default function GoodsReceiptPage() {
           // Note: shortages and damages would be handled here if form included them
         };
         
-        const result = await createGoodsReceipt(createData);
-        if (result.data.success) {
-          toast({ title: "Goods Receipt Created", description: result.data.message });
+        const result = await createGoodsReceiptFn(createData);
+        if (result.success) {
+          toast({ title: "Goods Receipt Created", description: result.message });
         } else {
-          throw new Error(result.data.message);
+          throw new Error(result.message);
         }
       }
     } catch (error) {
-      logError(error, `Error with goods receipt ${editingReceipt ? 'update' : 'create'} operation`);
-      handleFirebaseError(error, toast, {
-        "permission-denied": `You don't have permission to ${editingReceipt ? 'update' : 'create'} goods receipts.`,
-        "unauthenticated": "Please log in to continue."
-      });
+      console.error(`Error with goods receipt ${editingReceipt ? 'update' : 'create'} operation:`, error);
+      toast({ title: "Error", description: "Failed to process goods receipt.", variant: "destructive" });
     }
 
     setIsSubmitting(false);
@@ -321,25 +313,17 @@ export default function GoodsReceiptPage() {
     if (receiptToDelete) {
       setIsSubmitting(true);
       try {
-        const deleteGoodsReceipt = httpsCallable<GoodsReceiptDeleteRequest, CloudFunctionResponse>(functions, 'deleteGoodsReceipt');
-        const deleteData: GoodsReceiptDeleteRequest = {
-          receiptId: receiptToDelete.id
-        };
-        
-        const result = await deleteGoodsReceipt(deleteData);
-        if (result.data.success) {
-          toast({ title: "Goods Receipt Deleted", description: result.data.message });
+        const result = await deleteGoodsReceiptFn({ receiptId: receiptToDelete.id });
+        if (result.success) {
+          toast({ title: "Goods Receipt Deleted", description: result.message });
           fetchGoodsReceipts();
           fetchMasterData(); // Refresh manifests list
         } else {
-          throw new Error(result.data.message);
+          throw new Error(result.message);
         }
       } catch (error) {
-        logError(error, "Error deleting goods receipt");
-        handleFirebaseError(error, toast, {
-          "permission-denied": "You don't have permission to delete goods receipts.",
-          "unauthenticated": "Please log in to continue."
-        });
+        console.error("Error deleting goods receipt:", error);
+        toast({ title: "Error", description: "Failed to delete goods receipt.", variant: "destructive" });
       } finally {
         setIsSubmitting(false);
       }

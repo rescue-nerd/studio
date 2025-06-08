@@ -1,4 +1,3 @@
-
 "use client";
 
 import SmartBiltiMultiSelectDialog from "@/components/shared/smart-bilti-multi-select-dialog";
@@ -33,8 +32,8 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { db, functions } from "@/lib/firebase";
 import { handleFirebaseError, logError } from "@/lib/firebase-error-handler";
+import { db } from "@/lib/supabase-db";
 import { cn } from "@/lib/utils";
 import type {
     CloudFunctionResponse,

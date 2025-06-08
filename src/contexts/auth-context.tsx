@@ -1,64 +1,53 @@
-
 "use client";
 
-import type { User as FirebaseUser } from "firebase/auth";
-import { onAuthStateChanged } from "firebase/auth";
+import auth from "@/lib/supabase-auth";
+import { User } from "@supabase/supabase-js";
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
-import { auth, db } from "@/lib/firebase";
-import { doc, getDoc } from "firebase/firestore";
-import type { User as FirestoreUser } from "@/types/firestore"; // Your Firestore user type
 
 interface AuthContextType {
-  user: FirebaseUser | null;
-  firestoreUser: FirestoreUser | null; // Optional: store more detailed user profile from Firestore
+  user: User | null;
+  profile: any | null;
   loading: boolean;
-  // Add more auth-related functions if needed, e.g., fetchFirestoreUser
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
-  const [user, setUser] = useState<FirebaseUser | null>(null);
-  const [firestoreUser, setFirestoreUser] = useState<FirestoreUser | null>(null); // Example for richer profile
+  const [user, setUser] = useState<User | null>(null);
+  const [profile, setProfile] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      setUser(firebaseUser);
-      if (firebaseUser) {
+    const { data: { subscription } } = auth.onAuthStateChange(async (event, session) => {
+      if (session?.user) {
+        setUser(session.user);
         try {
-          // Fetch more user details from Firestore to get role and branch assignments
-          const userDoc = await getDoc(doc(db, "users", firebaseUser.uid));
-          if (userDoc.exists()) {
-            setFirestoreUser({
-              ...userDoc.data() as FirestoreUser,
-              id: userDoc.id
-            });
-          } else {
-            console.warn(`User document not found for uid: ${firebaseUser.uid}`);
-            setFirestoreUser(null);
-          }
+          const profile = await auth.getUserProfile(session.user.id);
+          setProfile(profile);
         } catch (error) {
-          console.error("Error fetching user data:", error);
-          setFirestoreUser(null);
+          console.error("Error fetching user profile:", error);
+          setProfile(null);
         }
       } else {
-        setFirestoreUser(null);
+        setUser(null);
+        setProfile(null);
       }
       setLoading(false);
     });
 
-    return () => unsubscribe();
+    return () => {
+      subscription.unsubscribe();
+    };
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, firestoreUser, loading }}>
+    <AuthContext.Provider value={{ user, profile, loading }}>
       {children}
     </AuthContext.Provider>
   );
 };
 
-export const useAuth = (): AuthContextType => {
+export const useAuth = () => {
   const context = useContext(AuthContext);
   if (context === undefined) {
     throw new Error("useAuth must be used within an AuthProvider");

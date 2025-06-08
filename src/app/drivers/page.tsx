@@ -1,23 +1,5 @@
-
 "use client";
 
-import { useState, type ChangeEvent, type FormEvent, useEffect } from "react";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
-import { PlusCircle, Search, Edit, Trash2, Car, CalendarIcon, Loader2 } from "lucide-react";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-  DialogClose,
-} from "@/components/ui/dialog";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -29,21 +11,38 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
-import { format } from "date-fns";
-import { cn } from "@/lib/utils";
-import { db, functions } from "@/lib/firebase";
-import { httpsCallable, type HttpsCallableResult } from "firebase/functions";
-import { handleFirebaseError, logError } from "@/lib/firebase-error-handler";
-import { collection, getDocs, query, orderBy, Timestamp, serverTimestamp } from "firebase/firestore";
-import type { Driver as FirestoreDriver } from "@/types/firestore";
-import { useToast } from "@/hooks/use-toast";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/contexts/auth-context";
+import { useToast } from "@/hooks/use-toast";
+import { handleFirebaseError, logError } from "@/lib/firebase-error-handler";
+import { supabase } from "@/lib/supabase";
+import { db } from "@/lib/supabase-db";
+import { cn } from "@/lib/utils";
+import type { Driver as FirestoreDriver } from "@/types/firestore";
+import { format } from "date-fns";
+import { type HttpsCallableResult } from "firebase/functions";
+import { CalendarIcon, Car, Edit, Loader2, PlusCircle, Search, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { useEffect, useState, type ChangeEvent, type FormEvent } from "react";
 
 
 interface Driver extends Omit<FirestoreDriver, 'joiningDate' | 'createdAt' | 'updatedAt'> {
@@ -68,10 +67,28 @@ const defaultDriverFormData: Omit<Driver, 'id' | 'createdAt' | 'createdBy' | 'up
   address: "",
 };
 
-// Use the functions instance from the central firebase.ts
-const createDriverFn = httpsCallable<DriverFormDataCallable, {success: boolean, id: string, message: string}>(functions, 'createDriver');
-const updateDriverFn = httpsCallable<UpdateDriverFormDataCallable, {success: boolean, id: string, message: string}>(functions, 'updateDriver');
-const deleteDriverFn = httpsCallable<{driverId: string}, {success: boolean, id: string, message: string}>(functions, 'deleteDriver');
+// Replace Firestore queries with Supabase queries
+const fetchDrivers = async () => {
+  const response = await db.query<Driver>('drivers', { select: '*' }) as unknown as { data: Driver[], error: any };
+  if (response.error) throw response.error;
+  return response.data;
+};
+
+// Replace Firebase Functions calls with Supabase Edge Function calls
+const createDriverFn = async (data: any) => {
+  const response = await supabase.functions.invoke('create-driver', { body: data });
+  return response.data;
+};
+
+const updateDriverFn = async (data: any) => {
+  const response = await supabase.functions.invoke('update-driver', { body: data });
+  return response.data;
+};
+
+const deleteDriverFn = async (data: any) => {
+  const response = await supabase.functions.invoke('delete-driver', { body: data });
+  return response.data;
+};
 
 
 export default function DriversPage() {
@@ -93,42 +110,6 @@ export default function DriversPage() {
       router.push('/login');
     }
   }, [authUser, authLoading, router]);
-
-
-  const fetchDrivers = async () => {
-    if (!authUser) return;
-    setIsLoading(true);
-    try {
-      const driversCollectionRef = collection(db, "drivers");
-      const q = query(driversCollectionRef, orderBy("name"));
-      const querySnapshot = await getDocs(q);
-      const fetchedDrivers: Driver[] = querySnapshot.docs.map(docSnap => {
-        const data = docSnap.data() as FirestoreDriver;
-        return {
-          ...data,
-          id: docSnap.id,
-          joiningDate: data.joiningDate ? data.joiningDate.toDate() : undefined,
-          createdAt: data.createdAt ? data.createdAt.toDate() : undefined,
-          updatedAt: data.updatedAt ? data.updatedAt.toDate() : undefined,
-        };
-      });
-      setDrivers(fetchedDrivers);
-    } catch (error) {
-      logError(error, "Error fetching drivers");
-      handleFirebaseError(error, toast, {
-        default: "Failed to fetch drivers."
-      });
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    if(authUser){
-      fetchDrivers();
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authUser]);
 
 
   const handleInputChange = (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {

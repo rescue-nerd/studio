@@ -1,44 +1,42 @@
-
 "use client";
 
-import { useState, type ChangeEvent, type FormEvent, useEffect } from "react";
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+    AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
-import { PlusCircle, Search, Edit, Trash2, Loader2 } from "lucide-react";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-  DialogClose,
+    Dialog,
+    DialogClose,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+    DialogTrigger,
 } from "@/components/ui/dialog";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { db, functions } from "@/lib/firebase";
-import { httpsCallable, type HttpsCallableResult } from "firebase/functions";
-import { collection, getDocs, query, orderBy } from "firebase/firestore";
-import type { Truck as FirestoreTruck } from "@/types/firestore";
-import { useToast } from "@/hooks/use-toast";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useAuth } from "@/contexts/auth-context";
-import { useRouter } from "next/navigation";
+import { useToast } from "@/hooks/use-toast";
 import { handleFirebaseError, logError } from "@/lib/firebase-error-handler";
+import { supabase } from "@/lib/supabase";
+import { db } from "@/lib/supabase-db";
+import type { Truck as FirestoreTruck } from "@/types/firestore";
+import { Edit, Loader2, PlusCircle, Search, Trash2 } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { useEffect, useState, type ChangeEvent, type FormEvent } from "react";
 
 
 interface Truck extends FirestoreTruck {}
@@ -59,9 +57,20 @@ const defaultTruckFormData: Omit<Truck, 'id' | 'createdAt' | 'createdBy' | 'upda
   assignedLedgerId: "",
 };
 
-const createTruckFn = httpsCallable<TruckFormDataCallable, {success: boolean, id: string, message: string}>(functions, 'createTruck');
-const updateTruckFn = httpsCallable<UpdateTruckFormDataCallable, {success: boolean, id: string, message: string}>(functions, 'updateTruck');
-const deleteTruckFn = httpsCallable<{truckId: string}, {success: boolean, id: string, message: string}>(functions, 'deleteTruck');
+const createTruckFn = async (data: TruckFormDataCallable) => {
+  const response = await supabase.functions.invoke('create-truck', { body: data });
+  return response.data;
+};
+
+const updateTruckFn = async (data: UpdateTruckFormDataCallable) => {
+  const response = await supabase.functions.invoke('update-truck', { body: data });
+  return response.data;
+};
+
+const deleteTruckFn = async (data: { truckId: string }) => {
+  const response = await supabase.functions.invoke('delete-truck', { body: data });
+  return response.data;
+};
 
 
 export default function TrucksPage() {
@@ -89,14 +98,9 @@ export default function TrucksPage() {
     if (!authUser) return;
     setIsLoading(true);
     try {
-      const trucksCollectionRef = collection(db, "trucks");
-      const q = query(trucksCollectionRef, orderBy("truckNo"));
-      const querySnapshot = await getDocs(q);
-      const fetchedTrucks: Truck[] = querySnapshot.docs.map(doc => {
-        const data = doc.data() as FirestoreTruck;
-        return { ...data, id: doc.id };
-      });
-      setTrucks(fetchedTrucks);
+      const { data, error } = await db.query('trucks', { select: '*', orderBy: { column: 'truckNo', ascending: true } });
+      if (error) throw error;
+      setTrucks(data);
     } catch (error) {
       logError(error, "Error fetching trucks");
       handleFirebaseError(error, toast, {
@@ -157,20 +161,20 @@ export default function TrucksPage() {
     };
 
     try {
-      let result: HttpsCallableResult<{success: boolean; id: string; message: string}>;
+      let result: any;
       if (editingTruck) {
         result = await updateTruckFn({ truckId: editingTruck.id, ...truckDataPayload });
       } else {
         result = await createTruckFn(truckDataPayload);
       }
 
-      if (result.data.success) {
-        toast({ title: "Success", description: result.data.message });
+      if (result.success) {
+        toast({ title: "Success", description: result.message });
         fetchTrucks();
         setIsFormDialogOpen(false);
         setEditingTruck(null);
       } else {
-        toast({ title: "Error", description: result.data.message, variant: "destructive" });
+        toast({ title: "Error", description: result.message, variant: "destructive" });
       }
     } catch (error: any) {
         console.error("Error saving truck:", error);
@@ -190,11 +194,11 @@ export default function TrucksPage() {
       setIsSubmitting(true);
       try {
         const result = await deleteTruckFn({ truckId: truckToDelete.id });
-        if (result.data.success) {
-            toast({ title: "Success", description: result.data.message });
+        if (result.success) {
+            toast({ title: "Success", description: result.message });
             fetchTrucks();
         } else {
-            toast({ title: "Error", description: result.data.message, variant: "destructive" });
+            toast({ title: "Error", description: result.message, variant: "destructive" });
         }
       } catch (error: any) {
         console.error("Error deleting truck: ", error);

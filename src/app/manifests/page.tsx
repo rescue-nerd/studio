@@ -1,70 +1,65 @@
-
 "use client";
 
-import { useState, useEffect, type ChangeEvent, type FormEvent } from "react";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Checkbox } from "@/components/ui/checkbox";
-import { PlusCircle, Search, Edit, Trash2, ClipboardList, Loader2 } from "lucide-react";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-  DialogClose,
-} from "@/components/ui/dialog";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+    AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { CalendarIcon } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
-import { format } from "date-fns";
-import { cn } from "@/lib/utils";
-import { useToast } from "@/hooks/use-toast";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+    Dialog,
+    DialogClose,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+    DialogTrigger,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { db, functions } from "@/lib/firebase";
-import { httpsCallable, type HttpsCallableResult } from "firebase/functions";
-import { handleFirebaseError, logError } from "@/lib/firebase-error-handler";
-import { 
-  collection, 
-  getDocs, 
-  // addDoc, // Replaced by callable
-  // doc, // Replaced by callable
-  // updateDoc, // Replaced by callable
-  // deleteDoc, // Replaced by callable
-  // writeBatch, // Logic moved to backend
-  Timestamp,
-  query,
-  orderBy,
-  // where,
-  // documentId
-} from "firebase/firestore";
-import type { 
-  Manifest as FirestoreManifest, 
-  Bilti as FirestoreBilti, 
-  Truck as FirestoreTruck, 
-  Driver as FirestoreDriver, 
-  Branch as FirestoreBranch,
-  Party as FirestoreParty
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { useAuth } from "@/contexts/auth-context";
+import { useToast } from "@/hooks/use-toast";
+import { db } from "@/lib/supabase-db";
+import { cn } from "@/lib/utils";
+import type {
+    Bilti as FirestoreBilti,
+    Branch as FirestoreBranch,
+    Driver as FirestoreDriver,
+    Manifest as FirestoreManifest,
+    Party as FirestoreParty,
+    Truck as FirestoreTruck
 } from "@/types/firestore";
-import { useAuth } from "@/contexts/auth-context"; 
+import { format } from "date-fns";
+import {
+    collection,
+    getDocs,
+    orderBy,
+    query,
+    // addDoc, // Replaced by callable
+    // doc, // Replaced by callable
+    // updateDoc, // Replaced by callable
+    // deleteDoc, // Replaced by callable
+    // writeBatch, // Logic moved to backend
+    Timestamp,
+} from "firebase/firestore";
+import { httpsCallable, type HttpsCallableResult } from "firebase/functions";
+import { CalendarIcon, ClipboardList, Edit, Loader2, PlusCircle, Search, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { useEffect, useState, type ChangeEvent, type FormEvent } from "react";
 
 // Local Interfaces
 interface Manifest extends Omit<FirestoreManifest, 'miti' | 'createdAt' | 'updatedAt'> {

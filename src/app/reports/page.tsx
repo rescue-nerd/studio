@@ -1,24 +1,23 @@
-
 "use client";
 
-import { useState, useEffect, type ChangeEvent, type FormEvent, useMemo } from "react";
+import SmartPartySelectDialog from "@/components/shared/smart-party-select-dialog";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Calendar } from "@/components/ui/calendar";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Calendar } from "@/components/ui/calendar";
-import { Label } from "@/components/ui/label";
-import { CalendarIcon, Download, Search, Loader2, ChevronsUpDown, Check } from "lucide-react";
-import { format, parseISO, isValid, startOfDay, endOfDay, differenceInDays } from "date-fns";
-import { cn } from "@/lib/utils";
-import { useToast } from "@/hooks/use-toast";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import SmartPartySelectDialog from "@/components/shared/smart-party-select-dialog";
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "cmdk";
 import { useAuth } from "@/contexts/auth-context"; // Import useAuth
+import { useToast } from "@/hooks/use-toast";
+import { cn } from "@/lib/utils";
+import { Command, CommandEmpty, CommandInput, CommandItem, CommandList } from "cmdk";
+import { endOfDay, format, startOfDay } from "date-fns";
+import { CalendarIcon, Check, ChevronsUpDown, Download, Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation"; // Import useRouter
+import { useEffect, useState } from "react";
 
 
 // Simplified Interfaces for mock data within this component

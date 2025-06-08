@@ -1,4 +1,3 @@
-
 "use client";
 
 import {
@@ -35,7 +34,7 @@ import type {
     UpdateInvoiceLineCustomizationPayload
 } from "@/functions/src/types";
 import { useToast } from "@/hooks/use-toast";
-import { db, functions } from "@/lib/firebase";
+import { db } from "@/lib/supabase-db";
 import type { InvoiceLineCustomization as FirestoreInvoiceLineCustomization, InvoiceLineType } from "@/types/firestore";
 import {
     collection,

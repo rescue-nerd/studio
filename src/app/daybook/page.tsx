@@ -1,4 +1,3 @@
-
 "use client";
 
 import {
@@ -37,37 +36,28 @@ import { format, isValid, parse } from "date-fns";
 import { enUS } from "date-fns/locale";
 import { AlertTriangle, BookOpenCheck, Check as CheckIcon, ChevronsUpDown, Edit, Loader2, PlusCircle, Trash2, UploadCloud } from "lucide-react";
 
-import { db, functions } from "@/lib/firebase";
-import {
-    collection,
-    doc,
-    getDoc,
-    getDocs,
-    orderBy,
-    query,
-    where
-} from "firebase/firestore";
-import { httpsCallable } from "firebase/functions";
+import { supabase } from "@/lib/supabase";
+import { db } from "@/lib/supabase-db";
 
 import { useAuth } from "@/contexts/auth-context";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import type {
+    Bilti,
+    Branch,
+    Daybook,
+    DaybookTransaction,
     DaybookTransactionCreateRequest,
     DaybookTransactionDeleteRequest,
     DaybookTransactionType,
-    Bilti as FirestoreBilti,
-    Branch as FirestoreBranch,
-    FirestoreDaybook,
-    DaybookTransaction as FirestoreDaybookTransaction,
-    LedgerAccount as FirestoreLedgerAccount,
-    Party as FirestoreParty,
-    User as FirestoreUser,
-} from "@/types/firestore";
+    LedgerAccount,
+    Party,
+    User,
+} from "@/types/supabase";
 import { useRouter } from "next/navigation";
 
 
-interface Daybook extends Omit<FirestoreDaybook, 'englishMiti' | 'createdAt' | 'updatedAt' | 'submittedAt' | 'approvedAt' | 'transactions' | 'processingTimestamp' | 'createdBy'> {
+interface Daybook extends Omit<Daybook, 'englishMiti' | 'createdAt' | 'updatedAt' | 'submittedAt' | 'approvedAt' | 'transactions' | 'processingTimestamp' | 'createdBy'> {
   id: string;
   englishMiti: Date;
   transactions: DaybookTransaction[];
@@ -79,24 +69,27 @@ interface Daybook extends Omit<FirestoreDaybook, 'englishMiti' | 'createdAt' | '
   createdBy?: string;
 }
 
-interface DaybookTransaction extends Omit<FirestoreDaybookTransaction, 'createdAt' | 'createdBy'> {
+interface DaybookTransaction extends Omit<DaybookTransaction, 'createdAt' | 'createdBy'> {
   createdAt?: Date;
   createdBy?: string;
 }
 
-interface Branch extends FirestoreBranch {
+interface Branch extends Branch {
     id: string;
 }
-interface Bilti extends Omit<FirestoreBilti, 'miti' | 'createdAt' | 'updatedAt'> {
+
+interface Bilti extends Omit<Bilti, 'miti' | 'createdAt' | 'updatedAt'> {
   id: string;
   miti: Date;
   createdAt?: Date;
   updatedAt?: Date;
 }
-interface Party extends FirestoreParty {
+
+interface Party extends Party {
     id: string;
 }
-interface LedgerAccount extends Omit<FirestoreLedgerAccount, 'createdAt' | 'updatedAt' | 'lastTransactionAt'> {
+
+interface LedgerAccount extends Omit<LedgerAccount, 'createdAt' | 'updatedAt' | 'lastTransactionAt'> {
    id: string;
    createdAt?: Date;
    updatedAt?: Date;
@@ -118,13 +111,31 @@ const transactionTypes: DaybookTransactionType[] = [
   "Adjustment/Correction",
 ];
 
-// Create callable function references
-const submitDaybookFn = httpsCallable<{daybookId: string}, {success: boolean, message: string}>(functions, 'submitDaybook');
-const approveDaybookFn = httpsCallable<{daybookId: string}, {success: boolean, message: string}>(functions, 'approveDaybook');
-const rejectDaybookFn = httpsCallable<{daybookId: string, remarks: string}, {success: boolean, message: string}>(functions, 'rejectDaybook');
-const createDaybookTransactionFn = httpsCallable<DaybookTransactionCreateRequest, {success: boolean, id: string, message: string}>(functions, 'createDaybookTransaction');
-const deleteDaybookTransactionFn = httpsCallable<DaybookTransactionDeleteRequest, {success: boolean, id: string, message: string}>(functions, 'deleteDaybookTransaction');
-const createDaybookFn = httpsCallable<{branchId: string, nepaliMiti: string, englishMiti: string, openingBalance?: number}, {success: boolean, id: string, message: string}>(functions, 'createDaybook');
+// Supabase Edge Function references
+const submitDaybookFn = async (data: {daybookId: string}) => {
+  const response = await supabase.functions.invoke('submit-daybook', { body: data });
+  return response.data as {success: boolean, message: string};
+};
+const approveDaybookFn = async (data: {daybookId: string}) => {
+  const response = await supabase.functions.invoke('approve-daybook', { body: data });
+  return response.data as {success: boolean, message: string};
+};
+const rejectDaybookFn = async (data: {daybookId: string, remarks: string}) => {
+  const response = await supabase.functions.invoke('reject-daybook', { body: data });
+  return response.data as {success: boolean, message: string};
+};
+const createDaybookTransactionFn = async (data: DaybookTransactionCreateRequest) => {
+  const response = await supabase.functions.invoke('create-daybook-transaction', { body: data });
+  return response.data as {success: boolean, id: string, message: string};
+};
+const deleteDaybookTransactionFn = async (data: DaybookTransactionDeleteRequest) => {
+  const response = await supabase.functions.invoke('delete-daybook-transaction', { body: data });
+  return response.data as {success: boolean, id: string, message: string};
+};
+const createDaybookFn = async (data: {branchId: string, nepaliMiti: string, englishMiti: string, openingBalance?: number}) => {
+  const response = await supabase.functions.invoke('create-daybook', { body: data });
+  return response.data as {success: boolean, id: string, message: string};
+};
 
 
 export default function DaybookPage() {
@@ -183,26 +194,26 @@ export default function DaybookPage() {
     }
   }, [authUser, authLoading, router]);
 
-  useEffect(() => {
-    const checkUserRole = async () => {
-        if (authUser?.uid) {
-            try {
-                const userDocRef = doc(db, "users", authUser.uid);
-                const userDocSnap = await getDoc(userDocRef);
-                if (userDocSnap.exists()) {
-                    const userData = userDocSnap.data() as FirestoreUser;
-                    setIsSuperAdmin(userData.role === 'superAdmin');
-                } else {
-                    setIsSuperAdmin(false);
-                }
-            } catch (error) {
-                console.error("Error fetching user role:", error);
-                setIsSuperAdmin(false);
-            }
+  const checkUserRole = async () => {
+    if (authUser?.uid) {
+      try {
+        const { data, error } = await db.query<User>('users', { select: '*', filters: { id: authUser.uid }, limit: 1 });
+        if (error) throw error;
+        if (data && data.length > 0) {
+          setIsSuperAdmin(data[0].role === 'superAdmin');
         } else {
-            setIsSuperAdmin(false);
+          setIsSuperAdmin(false);
         }
-    };
+      } catch (error) {
+        console.error("Error fetching user role:", error);
+        setIsSuperAdmin(false);
+      }
+    } else {
+      setIsSuperAdmin(false);
+    }
+  };
+
+  useEffect(() => {
     checkUserRole();
   }, [authUser]);
 
@@ -210,29 +221,21 @@ export default function DaybookPage() {
   const fetchMasterData = async () => {
     if (!authUser) return;
     try {
-      const [branchesSnap, biltisSnap, partiesSnap, ledgersSnap] = await Promise.all([
-        getDocs(query(collection(db, "branches"), orderBy("name"))),
-        getDocs(collection(db, "biltis")), 
-        getDocs(query(collection(db, "parties"), orderBy("name"))),
-        getDocs(query(collection(db, "ledgerAccounts"), orderBy("accountName"))),
+      const [branches, biltis, parties, ledgers] = await Promise.all([
+        db.query<Branch>('branches', { select: '*', orderBy: { column: 'name', ascending: true } }),
+        db.query<Bilti>('biltis', { select: '*' }),
+        db.query<Party>('parties', { select: '*', orderBy: { column: 'name', ascending: true } }),
+        db.query<LedgerAccount>('ledgerAccounts', { select: '*', orderBy: { column: 'accountName', ascending: true } }),
       ]);
 
-      const fetchedBranches = branchesSnap.docs.map(doc => ({ ...doc.data(), id: doc.id } as Branch));
-      setBranches(fetchedBranches);
-      if (fetchedBranches.length > 0 && !filterBranchId) {
-        setFilterBranchId(fetchedBranches[0].id);
+      setBranches(branches);
+      if (branches.length > 0 && !filterBranchId) {
+        setFilterBranchId(branches[0].id);
       }
-
-      const allFetchedBiltis = biltisSnap.docs.map(d => {
-        const data = d.data() as FirestoreBilti;
-        return { ...data, id: d.id, miti: data.miti.toDate(), createdAt: data.createdAt?.toDate(), updatedAt: data.updatedAt?.toDate() } as Bilti;
-      });
-      setAllBiltisMaster(allFetchedBiltis);
-      setBiltisForSelection(allFetchedBiltis);
-
-      setParties(partiesSnap.docs.map(doc => ({ ...doc.data(), id: doc.id } as Party)));
-      setLedgerAccounts(ledgersSnap.docs.map(doc => ({ ...doc.data(), id: doc.id } as LedgerAccount)));
-
+      setAllBiltisMaster(biltis);
+      setBiltisForSelection(biltis);
+      setParties(parties);
+      setLedgerAccounts(ledgers);
     } catch (error) {
       console.error("Error fetching master data:", error);
       toast({ title: "Error", description: "Failed to load master data.", variant: "destructive" });
@@ -248,29 +251,25 @@ export default function DaybookPage() {
     }
     setIsLoading(true);
     try {
-      const daybookQuery = query(
-        collection(db, "daybooks"),
-        where("branchId", "==", filterBranchId),
-        where("nepaliMiti", "==", filterNepaliMiti)
-      );
-      const querySnapshot = await getDocs(daybookQuery);
-
-      if (!querySnapshot.empty) {
-        const daybookDoc = querySnapshot.docs[0];
-        const data = daybookDoc.data() as FirestoreDaybook;
+      const daybooks = await db.query<Daybook>('daybooks', {
+        select: '*',
+        filters: { branchId: filterBranchId, nepaliMiti: filterNepaliMiti },
+        limit: 1
+      });
+      if (daybooks.length > 0) {
+        const data = daybooks[0];
         const loadedDaybook: Daybook = {
-          ...(data as Omit<FirestoreDaybook, 'englishMiti' | 'createdAt' | 'updatedAt' | 'submittedAt' | 'approvedAt' | 'transactions' | 'processingTimestamp'>),
-          id: daybookDoc.id,
-          englishMiti: data.englishMiti.toDate(),
+          ...data,
+          englishMiti: new Date(data.englishMiti),
           transactions: (data.transactions || []).map(tx => ({
             ...tx,
-            createdAt: tx.createdAt?.toDate(), 
+            createdAt: tx.createdAt ? new Date(tx.createdAt) : undefined,
           })),
-          createdAt: data.createdAt?.toDate(),
-          updatedAt: data.updatedAt?.toDate(),
-          submittedAt: data.submittedAt?.toDate(),
-          approvedBy: data.approvedBy,
-          processingTimestamp: data.processingTimestamp?.toDate(),
+          createdAt: data.createdAt ? new Date(data.createdAt) : undefined,
+          updatedAt: data.updatedAt ? new Date(data.updatedAt) : undefined,
+          submittedAt: data.submittedAt ? new Date(data.submittedAt) : undefined,
+          approvedAt: data.approvedAt ? new Date(data.approvedAt) : undefined,
+          processingTimestamp: data.processingTimestamp ? new Date(data.processingTimestamp) : undefined,
         };
         setActiveDaybook(loadedDaybook);
         setActiveDaybookFromState(loadedDaybook);

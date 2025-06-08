@@ -1,13 +1,11 @@
-
+import AppHeader from '@/components/layout/app-header';
+import AppSidebarContent from '@/components/layout/app-sidebar-content';
+import { Sidebar, SidebarInset, SidebarProvider } from '@/components/ui/sidebar';
+import { Toaster } from "@/components/ui/toaster";
+import { AuthProvider } from '@/contexts/auth-context'; // Import AuthProvider
+import { cn } from '@/lib/utils';
 import type { Metadata } from 'next';
 import './globals.css';
-import { SidebarProvider, Sidebar, SidebarInset } from '@/components/ui/sidebar';
-import AppSidebarContent from '@/components/layout/app-sidebar-content';
-import AppHeader from '@/components/layout/app-header';
-import { Toaster } from "@/components/ui/toaster";
-import { cn } from '@/lib/utils';
-import { AuthProvider } from '@/contexts/auth-context'; // Import AuthProvider
-import { FirebaseEmulatorInitializer } from '@/components/shared/firebase-emulator-initializer';
 
 export const metadata: Metadata = {
   title: 'GorkhaTrans - TMS',
@@ -47,7 +45,6 @@ export default function RootLayout({
             </div>
           </SidebarProvider>
           <Toaster />
-          <FirebaseEmulatorInitializer />
         </AuthProvider>
       </body>
     </html>

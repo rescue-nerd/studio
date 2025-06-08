@@ -1,4 +1,3 @@
-
 "use client";
 
 import {
@@ -12,9 +11,8 @@ import {
 } from '@/components/ui/sidebar';
 import { useAuth } from '@/contexts/auth-context'; // Import useAuth
 import { useToast } from '@/hooks/use-toast'; // Import useToast
-import { auth } from '@/lib/firebase'; // Import auth for signOut
+import { supabase } from "@/lib/supabase";
 import { cn } from '@/lib/utils';
-import { signOut } from 'firebase/auth'; // Import signOut
 import {
     ArchiveRestore,
     BarChartBig,
@@ -102,15 +100,8 @@ export default function AppSidebarContent() {
   const router = useRouter();
   const { toast } = useToast();
 
-  const handleLogout = async () => {
-    try {
-      await signOut(auth);
-      toast({ title: "Logged Out", description: "You have been successfully logged out." });
-      router.push('/login');
-    } catch (error) {
-      console.error("Logout error:", error);
-      toast({ title: "Logout Failed", description: "Could not log out. Please try again.", variant: "destructive" });
-    }
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
   };
 
   // Handle navigation in useEffect to avoid setState during render
@@ -211,7 +202,7 @@ export default function AppSidebarContent() {
                     tooltip={{ children: "Logout", side: 'right', className: 'bg-popover text-popover-foreground' }}
                     className="justify-start hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
                 >
-                    <button onClick={handleLogout}>
+                    <button onClick={handleSignOut}>
                         <LogOut className="h-5 w-5" />
                         <span className="group-data-[collapsible=icon]:hidden">Logout</span>
                     </button>

@@ -1,71 +1,56 @@
-
 "use client";
 
-import { useState, useEffect, type ChangeEvent, type FormEvent, useMemo } from "react";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { PlusCircle, Printer, Search, Edit, Trash2, CalendarIcon, Loader2 } from "lucide-react";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-  DialogClose,
-} from "@/components/ui/dialog";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger, // Added AlertDialogTrigger
-} from "@/components/ui/alert-dialog";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Calendar } from "@/components/ui/calendar";
-import { format } from "date-fns";
-import { cn } from "@/lib/utils";
-import { useToast } from "@/hooks/use-toast";
 import SmartPartySelectDialog from "@/components/shared/smart-party-select-dialog";
-import { db, functions } from "@/lib/firebase";
-import { httpsCallable, type HttpsCallableResult } from "firebase/functions";
-import { 
-  collection, 
-  getDocs, 
-  addDoc, // Used for party creation
-  doc, // Used for document references
-  // updateDoc, // No longer used
-  // deleteDoc, // No longer used
-  Timestamp, // Still used for type hints if needed
-  query,
-  orderBy,
-  type DocumentData,
-  type QueryDocumentSnapshot
-} from "firebase/firestore";
-import type { 
-  Party as FirestoreParty, 
-  Truck as FirestoreTruck, 
-  Driver as FirestoreDriver,
-  Bilti as FirestoreBilti, // Main Firestore Bilti type
-  City as FirestoreCity,
-  Godown as FirestoreGodown,
-  Branch as FirestoreBranch
-} from "@/types/firestore";
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+    AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import { Button } from "@/components/ui/button";
+import { Calendar } from "@/components/ui/calendar";
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+    Dialog,
+    DialogClose,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+    DialogTrigger,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { useAuth } from "@/contexts/auth-context"; // Import useAuth
-import { useRouter } from "next/navigation"; // Import useRouter
-import { handleFirebaseError, logError } from "@/lib/firebase-error-handler";
-
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Textarea } from "@/components/ui/textarea";
+import { useAuth } from "@/contexts/auth-context";
+import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/lib/supabase";
+import { db } from "@/lib/supabase-db";
+import { handleSupabaseError, logError } from "@/lib/supabase-error-handler";
+import { cn } from "@/lib/utils";
+import type {
+    Bilti as FirestoreBilti,
+    Branch as FirestoreBranch,
+    City as FirestoreCity,
+    Driver as FirestoreDriver,
+    Godown as FirestoreGodown,
+    Party as FirestoreParty,
+    Truck as FirestoreTruck
+} from "@/types/firestore";
+import { format } from "date-fns";
+import { CalendarIcon, Edit, Loader2, PlusCircle, Printer, Search, Trash2 } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useState, type ChangeEvent, type FormEvent } from "react";
 
 // Interfaces (aligning with Firestore types)
 export interface Party extends FirestoreParty {} 
@@ -74,19 +59,17 @@ export interface Driver extends FirestoreDriver {}
 export interface Bilti extends Omit<FirestoreBilti, 'miti' | 'createdAt' | 'updatedAt'> {
   id: string;
   miti: Date; 
-  createdAt?: Date | Timestamp; // Client-side might handle as Date, Firestore as Timestamp
-  updatedAt?: Date | Timestamp;
+  createdAt?: Date;
+  updatedAt?: Date;
 }
 export interface City extends FirestoreCity {}
 export interface Godown extends FirestoreGodown {}
 export interface Branch extends FirestoreBranch {}
 
-
 const payModes: FirestoreBilti["payMode"][] = ["Paid", "To Pay", "Due"];
 
 // Type for data passed to createBilti/updateBilti Cloud Functions
 type BiltiCallableData = Omit<FirestoreBilti, 'id' | 'miti' | 'totalAmount' | 'status' | 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy' | 'ledgerProcessed'> & { miti: string };
-
 
 const defaultBiltiFormData: Omit<Bilti, 'id' | 'totalAmount' | 'status' | 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy'> = {
   miti: new Date(),
@@ -102,13 +85,28 @@ const defaultBiltiFormData: Omit<Bilti, 'id' | 'totalAmount' | 'status' | 'creat
   payMode: "To Pay",
   truckId: "", 
   driverId: "",
-  // Removed branchId as it's not directly in the default form, can be added if needed
 };
 
-const createBiltiFn = httpsCallable<BiltiCallableData, {success: boolean, id: string, message: string}>(functions, 'createBilti');
-const updateBiltiFn = httpsCallable<{biltiId: string} & Partial<BiltiCallableData>, {success: boolean, id: string, message: string}>(functions, 'updateBilti');
-const deleteBiltiFn = httpsCallable<{biltiId: string}, {success: boolean, id: string, message: string}>(functions, 'deleteBilti');
+const createBiltiFn = async (data: BiltiCallableData) => {
+  const response = await supabase.functions.invoke('create-bilti', {
+    body: data
+  });
+  return response.data as {success: boolean, id: string, message: string};
+};
 
+const updateBiltiFn = async (data: {biltiId: string} & Partial<BiltiCallableData>) => {
+  const response = await supabase.functions.invoke('update-bilti', {
+    body: data
+  });
+  return response.data as {success: boolean, id: string, message: string};
+};
+
+const deleteBiltiFn = async (data: {biltiId: string}) => {
+  const response = await supabase.functions.invoke('delete-bilti', {
+    body: data
+  });
+  return response.data as {success: boolean, id: string, message: string};
+};
 
 export default function InvoicingPage() {
   const [biltis, setBiltis] = useState<Bilti[]>([]);
@@ -120,8 +118,8 @@ export default function InvoicingPage() {
   const [branchesForLocations, setBranchesForLocations] = useState<Branch[]>([]);
 
   const { toast } = useToast();
-  const { user: authUser, loading: authLoading } = useAuth(); // Get authenticated user
-  const router = useRouter(); // Import useRouter
+  const { user: authUser, loading: authLoading } = useAuth();
+  const router = useRouter();
 
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -145,75 +143,83 @@ export default function InvoicingPage() {
     }
   }, [authUser, authLoading, router]);
 
-  
   const fetchMasterData = async () => {
     if (!authUser) return;
-    // setIsLoading(true); // Ensure loading is true at the start // Already handled by parent loadAllData
     try {
-      const [partiesSnapshot, trucksSnapshot, driversSnapshot, citiesSnapshot, godownsSnapshot, branchesSnapshot] = await Promise.all([
-        getDocs(query(collection(db, "parties"), orderBy("name"))),
-        getDocs(query(collection(db, "trucks"), orderBy("truckNo"))),
-        getDocs(query(collection(db, "drivers"), orderBy("name"))),
-        getDocs(query(collection(db, "cities"), orderBy("name"))),
-        getDocs(query(collection(db, "godowns"), orderBy("name"))),
-        getDocs(query(collection(db, "branches"), orderBy("name")))
+      const [
+        { data: partiesData, error: partiesError },
+        { data: trucksData, error: trucksError },
+        { data: driversData, error: driversError },
+        { data: citiesData, error: citiesError },
+        { data: godownsData, error: godownsError },
+        { data: branchesData, error: branchesError }
+      ] = await Promise.all([
+        supabase.from('parties').select('*').order('name'),
+        supabase.from('trucks').select('*').order('truckNo'),
+        supabase.from('drivers').select('*').order('name'),
+        supabase.from('cities').select('*').order('name'),
+        supabase.from('godowns').select('*').order('name'),
+        supabase.from('branches').select('*').order('name')
       ]);
-      setParties(partiesSnapshot.docs.map(doc => ({ ...doc.data() as FirestoreParty, id: doc.id })));
-      setTrucks(trucksSnapshot.docs.map(doc => ({ ...doc.data() as FirestoreTruck, id: doc.id })));
-      setDrivers(driversSnapshot.docs.map(doc => ({ ...doc.data() as FirestoreDriver, id: doc.id })));
-      setCities(citiesSnapshot.docs.map(doc => ({ ...doc.data() as FirestoreCity, id: doc.id })));
-      setGodowns(godownsSnapshot.docs.map(doc => ({ ...doc.data() as FirestoreGodown, id: doc.id })));
-      setBranchesForLocations(branchesSnapshot.docs.map(doc => ({ ...doc.data() as FirestoreBranch, id: doc.id })));
+
+      if (partiesError) throw partiesError;
+      if (trucksError) throw trucksError;
+      if (driversError) throw driversError;
+      if (citiesError) throw citiesError;
+      if (godownsError) throw godownsError;
+      if (branchesError) throw branchesError;
+
+      setParties(partiesData);
+      setTrucks(trucksData);
+      setDrivers(driversData);
+      setCities(citiesData);
+      setGodowns(godownsData);
+      setBranchesForLocations(branchesData);
       
-      if (!editingBilti) { // Only set defaults if not editing
+      if (!editingBilti) {
         setFormData(prev => ({
           ...prev,
-          truckId: trucksSnapshot.docs.length > 0 ? trucksSnapshot.docs[0].id : "",
-          driverId: driversSnapshot.docs.length > 0 ? driversSnapshot.docs[0].id : "",
+          truckId: trucksData.length > 0 ? trucksData[0].id : "",
+          driverId: driversData.length > 0 ? driversData[0].id : "",
         }));
       }
-
     } catch (error) {
-      console.error("Error fetching master data: ", error);
-      toast({ title: "Error", description: "Failed to load master data.", variant: "destructive" });
-    } finally {
-      // This will be set after fetchBiltis completes in the main useEffect
+      logError(error, "Error fetching master data");
+      handleSupabaseError(error, toast);
     }
   };
   
   const fetchBiltis = async () => {
     if (!authUser) return;
-    // setIsLoading(true); // isLoading is handled by the calling useEffect
     try {
-      const biltisCollectionRef = collection(db, "biltis");
-      const q = query(biltisCollectionRef, orderBy("createdAt", "desc"));
-      const querySnapshot = await getDocs(q);
-      const fetchedBiltis: Bilti[] = querySnapshot.docs.map(docSnap => {
-        const data = docSnap.data() as FirestoreBilti;
-        return {
-          ...data,
-          id: docSnap.id,
-          miti: data.miti.toDate(), 
-          createdAt: data.createdAt?.toDate(),
-          updatedAt: data.updatedAt?.toDate(),
-        };
-      });
+      const { data, error } = await supabase
+        .from('biltis')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+
+      const fetchedBiltis: Bilti[] = data.map(bilti => ({
+        ...bilti,
+        miti: new Date(bilti.miti),
+        createdAt: bilti.created_at ? new Date(bilti.created_at) : undefined,
+        updatedAt: bilti.updated_at ? new Date(bilti.updated_at) : undefined,
+      }));
+
       setBiltis(fetchedBiltis);
     } catch (error) {
-      console.error("Error fetching biltis: ", error);
-      toast({ title: "Error", description: "Failed to fetch Biltis.", variant: "destructive" });
-    } finally {
-      // setIsLoading(false); // isLoading is handled by the calling useEffect
+      logError(error, "Error fetching biltis");
+      handleSupabaseError(error, toast);
     }
   };
   
   useEffect(() => {
     if (authUser) {
       const loadAllData = async () => {
-          setIsLoading(true);
-          await fetchMasterData();
-          await fetchBiltis();
-          setIsLoading(false);
+        setIsLoading(true);
+        await fetchMasterData();
+        await fetchBiltis();
+        setIsLoading(false);
       }
       loadAllData();
     }
@@ -237,7 +243,6 @@ export default function InvoicingPage() {
     
     return uniqueOptions.sort((a, b) => a.label.localeCompare(b.label));
   }, [cities, godowns, branchesForLocations]);
-
 
   useEffect(() => {
     const calculatedTotal = (formData.packages || 0) * (formData.rate || 0);
@@ -313,7 +318,6 @@ export default function InvoicingPage() {
     }
   };
 
-
   const handleConsignorSelect = (party: Party) => {
     setFormData(prev => ({...prev, consignorId: party.id}));
     setSelectedConsignor(party);
@@ -322,7 +326,6 @@ export default function InvoicingPage() {
      setFormData(prev => ({...prev, consigneeId: party.id}));
     setSelectedConsignee(party);
   };
-
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -350,22 +353,22 @@ export default function InvoicingPage() {
     };
 
     try {
-      let result: HttpsCallableResult<{success: boolean; id: string; message: string}>;
+      let result: {success: boolean; id: string; message: string};
       if (editingBilti) {
         result = await updateBiltiFn({ biltiId: editingBilti.id, ...biltiDataPayload });
       } else {
         result = await createBiltiFn(biltiDataPayload);
       }
 
-      if (result.data.success) {
-        toast({ title: "Success", description: result.data.message });
+      if (result.success) {
+        toast({ title: "Success", description: result.message });
         fetchBiltis(); // Refresh list
         setIsFormDialogOpen(false);
         setEditingBilti(null);
         setSelectedConsignor(null);
         setSelectedConsignee(null);
       } else {
-        toast({ title: "Error", description: result.data.message, variant: "destructive" });
+        toast({ title: "Error", description: result.message, variant: "destructive" });
       }
     } catch (error: any) {
         console.error("Error saving Bilti:", error);
@@ -398,11 +401,11 @@ export default function InvoicingPage() {
       setIsSubmitting(true); // Use general isSubmitting for delete as well
       try {
         const result = await deleteBiltiFn({ biltiId: biltiToDelete.id });
-        if (result.data.success) {
-            toast({ title: "Bilti Deleted", description: result.data.message });
+        if (result.success) {
+            toast({ title: "Bilti Deleted", description: result.message });
             fetchBiltis(); // Refresh list
         } else {
-            toast({ title: "Error", description: result.data.message, variant: "destructive" });
+            toast({ title: "Error", description: result.message, variant: "destructive" });
         }
       } catch (error: any) {
          console.error("Error deleting Bilti: ", error);
@@ -423,7 +426,6 @@ export default function InvoicingPage() {
       </div>
     );
   }
-
 
   return (
     <div className="space-y-6">

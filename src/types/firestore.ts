@@ -1,4 +1,4 @@
-import type { Timestamp } from 'firebase/firestore';
+import type { Bilti, DaybookTransaction } from "@/types/supabase";
 
 // Placeholder Account IDs - In a real app, these would come from config/settings
 export const PLACEHOLDER_FREIGHT_INCOME_ACCOUNT_ID = "ACC_FREIGHT_INCOME";

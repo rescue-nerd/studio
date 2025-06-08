@@ -1,43 +1,39 @@
-
 "use client";
 
-import { useState, type ChangeEvent, type FormEvent, useEffect } from "react";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { PlusCircle, Search, Edit, Trash2, Loader2 } from "lucide-react";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-  DialogClose,
-} from "@/components/ui/dialog";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+    AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+    Dialog,
+    DialogClose,
+    DialogContent,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+    DialogTrigger
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { db, functions } from "@/lib/firebase";
-import { httpsCallable, type HttpsCallableResult } from "firebase/functions";
-import { collection, getDocs, query, orderBy } from "firebase/firestore";
-import type { Country as FirestoreCountry, State as FirestoreState, City as FirestoreCity, Unit as FirestoreUnit } from "@/types/firestore";
-import { useToast } from "@/hooks/use-toast";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from "@/contexts/auth-context";
+import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/lib/supabase";
+import type { City as FirestoreCity, Country as FirestoreCountry, State as FirestoreState, Unit as FirestoreUnit } from "@/types/firestore";
+import { Edit, Loader2, PlusCircle, Search, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { useEffect, useState, type ChangeEvent, type FormEvent } from "react";
 
 interface Country extends FirestoreCountry {}
 interface State extends FirestoreState {}
@@ -60,21 +56,92 @@ const defaultCityFormData: CityFormData = { name: "", stateId: "" };
 const defaultUnitFormData: UnitFormData = { name: "", symbol: "", type: "Other" };
 
 // Countries
-const createCountryFn = httpsCallable<CountryFormData, {success: boolean, id: string, message: string}>(functions, 'createCountry');
-const updateCountryFn = httpsCallable<{countryId: string} & Partial<CountryFormData>, {success: boolean, id: string, message: string}>(functions, 'updateCountry');
-const deleteCountryFn = httpsCallable<{countryId: string}, {success: boolean, id: string, message: string}>(functions, 'deleteCountry');
+const createCountryFn = async (data: CountryFormData) => {
+  const response = await supabase.functions.invoke('create-country', {
+    body: data
+  });
+  return response.data as {success: boolean, id: string, message: string};
+};
+
+const updateCountryFn = async (data: {countryId: string} & Partial<CountryFormData>) => {
+  const response = await supabase.functions.invoke('update-country', {
+    body: data
+  });
+  return response.data as {success: boolean, id: string, message: string};
+};
+
+const deleteCountryFn = async (data: {countryId: string}) => {
+  const response = await supabase.functions.invoke('delete-country', {
+    body: data
+  });
+  return response.data as {success: boolean, id: string, message: string};
+};
+
 // States
-const createStateFn = httpsCallable<StateFormData, {success: boolean, id: string, message: string}>(functions, 'createState');
-const updateStateFn = httpsCallable<{stateId: string} & Partial<StateFormData>, {success: boolean, id: string, message: string}>(functions, 'updateState');
-const deleteStateFn = httpsCallable<{stateId: string}, {success: boolean, id: string, message: string}>(functions, 'deleteState');
+const createStateFn = async (data: StateFormData) => {
+  const response = await supabase.functions.invoke('create-state', {
+    body: data
+  });
+  return response.data as {success: boolean, id: string, message: string};
+};
+
+const updateStateFn = async (data: {stateId: string} & Partial<StateFormData>) => {
+  const response = await supabase.functions.invoke('update-state', {
+    body: data
+  });
+  return response.data as {success: boolean, id: string, message: string};
+};
+
+const deleteStateFn = async (data: {stateId: string}) => {
+  const response = await supabase.functions.invoke('delete-state', {
+    body: data
+  });
+  return response.data as {success: boolean, id: string, message: string};
+};
+
 // Cities
-const createCityFn = httpsCallable<CityFormData, {success: boolean, id: string, message: string}>(functions, 'createCity');
-const updateCityFn = httpsCallable<{cityId: string} & Partial<CityFormData>, {success: boolean, id: string, message: string}>(functions, 'updateCity');
-const deleteCityFn = httpsCallable<{cityId: string}, {success: boolean, id: string, message: string}>(functions, 'deleteCity');
+const createCityFn = async (data: CityFormData) => {
+  const response = await supabase.functions.invoke('create-city', {
+    body: data
+  });
+  return response.data as {success: boolean, id: string, message: string};
+};
+
+const updateCityFn = async (data: {cityId: string} & Partial<CityFormData>) => {
+  const response = await supabase.functions.invoke('update-city', {
+    body: data
+  });
+  return response.data as {success: boolean, id: string, message: string};
+};
+
+const deleteCityFn = async (data: {cityId: string}) => {
+  const response = await supabase.functions.invoke('delete-city', {
+    body: data
+  });
+  return response.data as {success: boolean, id: string, message: string};
+};
+
 // Units
-const createUnitFn = httpsCallable<UnitFormData, {success: boolean, id: string, message: string}>(functions, 'createUnit');
-const updateUnitFn = httpsCallable<{unitId: string} & Partial<UnitFormData>, {success: boolean, id: string, message: string}>(functions, 'updateUnit');
-const deleteUnitFn = httpsCallable<{unitId: string}, {success: boolean, id: string, message: string}>(functions, 'deleteUnit');
+const createUnitFn = async (data: UnitFormData) => {
+  const response = await supabase.functions.invoke('create-unit', {
+    body: data
+  });
+  return response.data as {success: boolean, id: string, message: string};
+};
+
+const updateUnitFn = async (data: {unitId: string} & Partial<UnitFormData>) => {
+  const response = await supabase.functions.invoke('update-unit', {
+    body: data
+  });
+  return response.data as {success: boolean, id: string, message: string};
+};
+
+const deleteUnitFn = async (data: {unitId: string}) => {
+  const response = await supabase.functions.invoke('delete-unit', {
+    body: data
+  });
+  return response.data as {success: boolean, id: string, message: string};
+};
 
 
 export default function LocationsPage() {
@@ -103,9 +170,12 @@ export default function LocationsPage() {
     if (!authUser) return;
     setIsLoadingCountries(true);
     try {
-      const q = query(collection(db, "countries"), orderBy("name"));
-      const querySnapshot = await getDocs(q);
-      setCountries(querySnapshot.docs.map(doc => ({ ...doc.data() as Omit<FirestoreCountry, 'id'>, id: doc.id })));
+      const { data, error } = await supabase
+        .from('countries')
+        .select('*')
+        .order('name');
+      if (error) throw error;
+      setCountries(data);
     } catch (error) {
       console.error("Error fetching countries: ", error);
       toast({ title: "Error", description: "Failed to fetch countries.", variant: "destructive" });
@@ -118,9 +188,12 @@ export default function LocationsPage() {
     if (!authUser) return;
     setIsLoadingStates(true);
     try {
-      const q = query(collection(db, "states"), orderBy("name"));
-      const querySnapshot = await getDocs(q);
-      setStates(querySnapshot.docs.map(doc => ({ ...doc.data() as Omit<FirestoreState, 'id'>, id: doc.id })));
+      const { data, error } = await supabase
+        .from('states')
+        .select('*')
+        .order('name');
+      if (error) throw error;
+      setStates(data);
     } catch (error) {
       console.error("Error fetching states: ", error);
       toast({ title: "Error", description: "Failed to fetch states.", variant: "destructive" });
@@ -133,9 +206,12 @@ export default function LocationsPage() {
     if (!authUser) return;
     setIsLoadingCities(true);
     try {
-      const q = query(collection(db, "cities"), orderBy("name"));
-      const querySnapshot = await getDocs(q);
-      setCities(querySnapshot.docs.map(doc => ({ ...doc.data() as Omit<FirestoreCity, 'id'>, id: doc.id })));
+      const { data, error } = await supabase
+        .from('cities')
+        .select('*')
+        .order('name');
+      if (error) throw error;
+      setCities(data);
     } catch (error) {
       console.error("Error fetching cities: ", error);
       toast({ title: "Error", description: "Failed to fetch cities.", variant: "destructive" });
@@ -148,9 +224,12 @@ export default function LocationsPage() {
     if (!authUser) return;
     setIsLoadingUnits(true);
     try {
-      const q = query(collection(db, "units"), orderBy("name"));
-      const querySnapshot = await getDocs(q);
-      setUnits(querySnapshot.docs.map(doc => ({ ...doc.data() as Omit<FirestoreUnit, 'id'>, id: doc.id })));
+      const { data, error } = await supabase
+        .from('units')
+        .select('*')
+        .order('name');
+      if (error) throw error;
+      setUnits(data);
     } catch (error) {
       console.error("Error fetching units: ", error);
       toast({ title: "Error", description: "Failed to fetch units.", variant: "destructive" });
@@ -219,18 +298,18 @@ export default function LocationsPage() {
     }
     setIsSubmitting(true);
     try {
-      let result: HttpsCallableResult<{success: boolean; id: string; message: string}>;
+      let result: {success: boolean; id: string; message: string};
       if (editingCountry) {
         result = await updateCountryFn({ countryId: editingCountry.id, ...countryFormData });
       } else {
         result = await createCountryFn(countryFormData);
       }
-      if (result.data.success) {
-        toast({ title: "Success", description: result.data.message });
+      if (result.success) {
+        toast({ title: "Success", description: result.message });
         fetchCountries();
         setIsCountryFormOpen(false);
       } else {
-        toast({ title: "Error", description: result.data.message, variant: "destructive" });
+        toast({ title: "Error", description: result.message, variant: "destructive" });
       }
     } catch (error: any) {
       console.error("Error saving country: ", error);
@@ -245,11 +324,11 @@ export default function LocationsPage() {
       setIsSubmitting(true);
       try {
         const result = await deleteCountryFn({ countryId: countryToDelete.id });
-        if (result.data.success) {
-          toast({ title: "Success", description: result.data.message });
+        if (result.success) {
+          toast({ title: "Success", description: result.message });
           fetchCountries();
         } else {
-          toast({ title: "Error", description: result.data.message, variant: "destructive" });
+          toast({ title: "Error", description: result.message, variant: "destructive" });
         }
       } catch (error: any) {
         console.error("Error deleting country:", error);
@@ -282,18 +361,18 @@ export default function LocationsPage() {
     }
     setIsSubmitting(true);
     try {
-      let result: HttpsCallableResult<{success: boolean; id: string; message: string}>;
+      let result: {success: boolean; id: string; message: string};
       if (editingState) {
         result = await updateStateFn({ stateId: editingState.id, ...stateFormData });
       } else {
         result = await createStateFn(stateFormData);
       }
-       if (result.data.success) {
-        toast({ title: "Success", description: result.data.message });
+       if (result.success) {
+        toast({ title: "Success", description: result.message });
         fetchStates();
         setIsStateFormOpen(false);
       } else {
-        toast({ title: "Error", description: result.data.message, variant: "destructive" });
+        toast({ title: "Error", description: result.message, variant: "destructive" });
       }
     } catch (error: any) {
       console.error("Error saving state: ", error);
@@ -308,11 +387,11 @@ export default function LocationsPage() {
       setIsSubmitting(true);
       try {
         const result = await deleteStateFn({ stateId: stateToDelete.id });
-        if (result.data.success) {
-          toast({ title: "Success", description: result.data.message });
+        if (result.success) {
+          toast({ title: "Success", description: result.message });
           fetchStates();
         } else {
-          toast({ title: "Error", description: result.data.message, variant: "destructive" });
+          toast({ title: "Error", description: result.message, variant: "destructive" });
         }
       } catch (error: any) {
         console.error("Error deleting state:", error);
@@ -346,7 +425,7 @@ export default function LocationsPage() {
     }
     setIsSubmitting(true);
     try {
-      let result: HttpsCallableResult<{success: boolean; id: string; message: string}>;
+      let result: {success: boolean; id: string; message: string};
       if (editingCity) {
         result = await updateCityFn({ cityId: editingCity.id, ...cityFormData });
       } else {

@@ -1,44 +1,41 @@
-
 "use client";
 
-import { useState, type ChangeEvent, type FormEvent, useEffect } from "react";
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+    AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
-import { PlusCircle, Search, Edit, Trash2, Warehouse, Loader2 } from "lucide-react";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-  DialogClose,
+    Dialog,
+    DialogClose,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+    DialogTrigger,
 } from "@/components/ui/dialog";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
-import { db, functions } from "@/lib/firebase";
-import { httpsCallable, type HttpsCallableResult } from "firebase/functions";
-import { collection, getDocs, query, orderBy } from "firebase/firestore";
-import type { Godown as FirestoreGodown, Branch as FirestoreBranch } from "@/types/firestore";
-import { useToast } from "@/hooks/use-toast";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useAuth } from "@/contexts/auth-context";
+import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/lib/supabase";
+import { handleSupabaseError, logError } from "@/lib/supabase-error-handler";
+import type { Branch as FirestoreBranch, Godown as FirestoreGodown } from "@/types/firestore";
+import { Edit, Loader2, PlusCircle, Search, Trash2, Warehouse } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { useEffect, useState, type ChangeEvent, type FormEvent } from "react";
 
 interface Godown extends FirestoreGodown {}
 interface Branch extends FirestoreBranch {} 
@@ -55,10 +52,20 @@ const defaultGodownFormData: Omit<Godown, 'id' | 'createdAt' | 'createdBy' | 'up
   status: "Active",
 };
 
-const createGodownFn = httpsCallable<GodownFormDataCallable, {success: boolean, id: string, message: string}>(functions, 'createGodown');
-const updateGodownFn = httpsCallable<UpdateGodownFormDataCallable, {success: boolean, id: string, message: string}>(functions, 'updateGodown');
-const deleteGodownFn = httpsCallable<{godownId: string}, {success: boolean, id: string, message: string}>(functions, 'deleteGodown');
+const createGodownFn = async (data: GodownFormDataCallable) => {
+  const response = await supabase.functions.invoke('create-godown', { body: data });
+  return response.data as {success: boolean, id: string, message: string};
+};
 
+const updateGodownFn = async (data: UpdateGodownFormDataCallable) => {
+  const response = await supabase.functions.invoke('update-godown', { body: data });
+  return response.data as {success: boolean, id: string, message: string};
+};
+
+const deleteGodownFn = async (data: {godownId: string}) => {
+  const response = await supabase.functions.invoke('delete-godown', { body: data });
+  return response.data as {success: boolean, id: string, message: string};
+};
 
 export default function GodownsPage() {
   const [godowns, setGodowns] = useState<Godown[]>([]);
@@ -86,20 +93,18 @@ export default function GodownsPage() {
     if (!authUser) return;
     setIsLoadingBranches(true);
     try {
-      const branchesCollectionRef = collection(db, "branches");
-      const q = query(branchesCollectionRef, orderBy("name"));
-      const querySnapshot = await getDocs(q);
-      const fetchedBranches: Branch[] = querySnapshot.docs.map(docSnap => {
-        const data = docSnap.data() as FirestoreBranch;
-        return { ...data, id: docSnap.id };
-      });
-      setBranches(fetchedBranches);
-      if (fetchedBranches.length > 0 && !formData.branchId) {
-          setFormData(prev => ({...prev, branchId: fetchedBranches[0].id}));
+      const { data, error } = await supabase
+        .from('branches')
+        .select('*')
+        .order('name');
+      if (error) throw error;
+      setBranches(data);
+      if (data.length > 0 && !formData.branchId) {
+        setFormData(prev => ({...prev, branchId: data[0].id}));
       }
     } catch (error) {
-      console.error("Error fetching branches: ", error);
-      toast({ title: "Error", description: "Failed to fetch branches for dropdown.", variant: "destructive" });
+      logError(error, "Error fetching branches");
+      handleSupabaseError(error, toast);
     } finally {
       setIsLoadingBranches(false);
     }
@@ -109,17 +114,15 @@ export default function GodownsPage() {
     if (!authUser) return;
     setIsLoading(true);
     try {
-      const godownsCollectionRef = collection(db, "godowns");
-      const q = query(godownsCollectionRef, orderBy("name"));
-      const querySnapshot = await getDocs(q);
-      const fetchedGodowns: Godown[] = querySnapshot.docs.map(docSnap => {
-        const data = docSnap.data() as FirestoreGodown;
-        return { ...data, id: docSnap.id };
-      });
-      setGodowns(fetchedGodowns);
+      const { data, error } = await supabase
+        .from('godowns')
+        .select('*')
+        .order('name');
+      if (error) throw error;
+      setGodowns(data);
     } catch (error) {
-      console.error("Error fetching godowns: ", error);
-      toast({ title: "Error", description: "Failed to fetch godowns.", variant: "destructive" });
+      logError(error, "Error fetching godowns");
+      handleSupabaseError(error, toast);
     } finally {
       setIsLoading(false);
     }
@@ -174,24 +177,24 @@ export default function GodownsPage() {
     const godownDataPayload: GodownFormDataCallable = { ...formData };
 
     try {
-      let result: HttpsCallableResult<{success: boolean; id: string; message: string}>;
+      let result;
       if (editingGodown) {
         result = await updateGodownFn({ godownId: editingGodown.id, ...godownDataPayload });
       } else {
         result = await createGodownFn(godownDataPayload);
       }
 
-      if (result.data.success) {
-        toast({ title: "Success", description: result.data.message });
+      if (result.success) {
+        toast({ title: "Success", description: result.message });
         fetchGodowns();
         setIsFormDialogOpen(false);
         setEditingGodown(null);
       } else {
-        toast({ title: "Error", description: result.data.message, variant: "destructive" });
+        toast({ title: "Error", description: result.message, variant: "destructive" });
       }
-    } catch (error: any) {
-      console.error("Error saving godown:", error);
-      toast({ title: "Error", description: error.message || "Failed to save godown.", variant: "destructive" });
+    } catch (error) {
+      logError(error, "Error saving godown");
+      handleSupabaseError(error, toast);
     } finally {
       setIsSubmitting(false);
     }
@@ -207,15 +210,15 @@ export default function GodownsPage() {
       setIsSubmitting(true);
       try {
         const result = await deleteGodownFn({ godownId: godownToDelete.id });
-        if (result.data.success) {
-          toast({ title: "Success", description: result.data.message});
+        if (result.success) {
+          toast({ title: "Success", description: result.message});
           fetchGodowns();
         } else {
-          toast({ title: "Error", description: result.data.message, variant: "destructive" });
+          toast({ title: "Error", description: result.message, variant: "destructive" });
         }
-      } catch (error: any) {
-        console.error("Error deleting godown: ", error);
-        toast({ title: "Error", description: error.message || "Failed to delete godown.", variant: "destructive" });
+      } catch (error) {
+        logError(error, "Error deleting godown");
+        handleSupabaseError(error, toast);
       } finally {
         setIsSubmitting(false);
         setIsDeleteDialogOpen(false);
@@ -260,15 +263,15 @@ export default function GodownsPage() {
       <div className="flex flex-col md:flex-row justify-between items-center gap-4">
         <div>
           <h1 className="text-3xl font-headline font-bold text-foreground flex items-center"><Warehouse className="mr-3 h-8 w-8 text-primary"/>Manage Godowns</h1>
-          <p className="text-muted-foreground ml-11">Add, edit, and view godown details and their linked branches.</p>
+          <p className="text-muted-foreground ml-11">Add, edit, and view godown details for GorkhaTrans.</p>
         </div>
         <Dialog open={isFormDialogOpen} onOpenChange={setIsFormDialogOpen}>
           <DialogTrigger asChild>
-            <Button onClick={openAddForm} disabled={isSubmitting || isLoadingBranches || branches.length === 0}>
+            <Button onClick={openAddForm} disabled={isSubmitting || isLoading}>
               <PlusCircle className="mr-2 h-4 w-4" /> Add New Godown
             </Button>
           </DialogTrigger>
-          <DialogContent className="sm:max-w-md">
+          <DialogContent className="sm:max-w-lg">
             <DialogHeader>
               <DialogTitle>{editingGodown ? "Edit Godown" : "Add New Godown"}</DialogTitle>
               <DialogDescription>
@@ -282,31 +285,51 @@ export default function GodownsPage() {
               </div>
               <div className="grid grid-cols-4 items-center gap-4">
                 <Label htmlFor="branchId" className="text-right">Linked Branch</Label>
-                <Select value={formData.branchId} onValueChange={handleSelectChange('branchId') as (value: string) => void} required disabled={isLoadingBranches || branches.length === 0}>
+                <Select value={formData.branchId} onValueChange={handleSelectChange('branchId')}>
                   <SelectTrigger className="col-span-3">
-                    <SelectValue placeholder={isLoadingBranches ? "Loading branches..." : (branches.length === 0 ? "No branches found" : "Select branch")} />
+                    <SelectValue placeholder="Select branch" />
                   </SelectTrigger>
                   <SelectContent>
-                    {branches.map(branch => <SelectItem key={branch.id} value={branch.id}>{branch.name}</SelectItem>)}
+                    {branches.map(branch => (
+                      <SelectItem key={branch.id} value={branch.id}>
+                        {branch.name}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
-              <div className="grid grid-cols-4 items-start gap-4">
-                <Label htmlFor="location" className="text-right pt-2">Location/Address</Label>
-                <Textarea id="location" name="location" value={formData.location} onChange={handleInputChange} className="col-span-3" required rows={3}/>
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="location" className="text-right">Location</Label>
+                <Input id="location" name="location" value={formData.location} onChange={handleInputChange} className="col-span-3" required />
               </div>
               <div className="grid grid-cols-4 items-center gap-4">
                 <Label htmlFor="status" className="text-right">Status</Label>
                 <Select value={formData.status} onValueChange={handleSelectChange('status') as (value: FirestoreGodown["status"]) => void}>
-                  <SelectTrigger className="col-span-3"><SelectValue placeholder="Select status" /></SelectTrigger>
-                  <SelectContent>{godownStatuses.map(status => <SelectItem key={status} value={status}>{status}</SelectItem>)}</SelectContent>
+                  <SelectTrigger className="col-span-3">
+                    <SelectValue placeholder="Select status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {godownStatuses.map(status => (
+                      <SelectItem key={status} value={status}>
+                        {status}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
                 </Select>
               </div>
               <DialogFooter>
-                <DialogClose asChild><Button type="button" variant="outline" disabled={isSubmitting}>Cancel</Button></DialogClose>
-                <Button type="submit" disabled={isSubmitting || isLoadingBranches || branches.length === 0}>
-                  {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                  Save Godown
+                <DialogClose asChild>
+                  <Button type="button" variant="outline">Cancel</Button>
+                </DialogClose>
+                <Button type="submit" disabled={isSubmitting}>
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      {editingGodown ? "Updating..." : "Creating..."}
+                    </>
+                  ) : (
+                    editingGodown ? "Update Godown" : "Create Godown"
+                  )}
                 </Button>
               </DialogFooter>
             </form>
@@ -314,63 +337,105 @@ export default function GodownsPage() {
         </Dialog>
       </div>
 
-      <Card className="shadow-lg">
+      <Card>
         <CardHeader>
-          <CardTitle className="font-headline text-xl">Godown List</CardTitle>
-          <CardDescription>View, edit, or add new godowns.</CardDescription>
-          <div className="relative mt-4">
-            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-            <Input placeholder="Search by Name, Location, Branch..." className="pl-8" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
+          <CardTitle>Godowns List</CardTitle>
+          <CardDescription>
+            View and manage all godowns in the system.
+          </CardDescription>
+          <div className="flex items-center space-x-2">
+            <div className="relative flex-1">
+              <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search godowns..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-8"
+              />
+            </div>
           </div>
         </CardHeader>
         <CardContent>
           {isLoading ? (
-            <div className="flex justify-center items-center h-24"><Loader2 className="h-8 w-8 animate-spin text-primary" /><p className="ml-2 text-muted-foreground">Loading godowns...</p></div>
+            <div className="flex justify-center items-center h-64">
+              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            </div>
           ) : (
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>ID</TableHead>
                   <TableHead>Name</TableHead>
-                  <TableHead>Linked Branch</TableHead>
+                  <TableHead>Branch</TableHead>
                   <TableHead>Location</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead>Actions</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredGodowns.length === 0 && !isLoading && (
-                  <TableRow><TableCell colSpan={6} className="text-center h-24">No godowns found.</TableCell></TableRow>
-                )}
-                {filteredGodowns.map((godown) => (
-                  <TableRow key={godown.id}>
-                    <TableCell className="font-medium">{godown.id}</TableCell>
-                    <TableCell>{godown.name}</TableCell>
-                    <TableCell>{getBranchNameById(godown.branchId)}</TableCell>
-                    <TableCell>{godown.location}</TableCell>
-                    <TableCell><Badge variant={getStatusBadgeVariant(godown.status)} className={(godown.status === "Active" || godown.status === "Operational") ? "bg-accent text-accent-foreground" : ""}>{godown.status}</Badge></TableCell>
-                    <TableCell>
-                      <div className="flex gap-2">
-                        <Button variant="outline" size="icon" aria-label="Edit Godown" onClick={() => openEditForm(godown)} disabled={isSubmitting}><Edit className="h-4 w-4" /></Button>
-                        <AlertDialog open={isDeleteDialogOpen && godownToDelete?.id === godown.id} onOpenChange={(open) => { if(!open) setGodownToDelete(null); setIsDeleteDialogOpen(open);}}>
+                {filteredGodowns.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={5} className="text-center text-muted-foreground">
+                      No godowns found.
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  filteredGodowns.map((godown) => (
+                    <TableRow key={godown.id}>
+                      <TableCell>{godown.name}</TableCell>
+                      <TableCell>{getBranchNameById(godown.branchId)}</TableCell>
+                      <TableCell>{godown.location}</TableCell>
+                      <TableCell>
+                        <Badge variant={getStatusBadgeVariant(godown.status)}>
+                          {godown.status}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => openEditForm(godown)}
+                          disabled={isSubmitting}
+                        >
+                          <Edit className="h-4 w-4" />
+                        </Button>
+                        <AlertDialog open={isDeleteDialogOpen && godownToDelete?.id === godown.id} onOpenChange={setIsDeleteDialogOpen}>
                           <AlertDialogTrigger asChild>
-                            <Button variant="destructive" size="icon" aria-label="Delete Godown" onClick={() => handleDeleteClick(godown)} disabled={isSubmitting}><Trash2 className="h-4 w-4" /></Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => handleDeleteClick(godown)}
+                              disabled={isSubmitting}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
                           </AlertDialogTrigger>
                           <AlertDialogContent>
-                            <AlertDialogHeader><AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle><AlertDialogDescription>This action cannot be undone. This will permanently delete the godown "{godownToDelete?.name}".</AlertDialogDescription></AlertDialogHeader>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                This action cannot be undone. This will permanently delete the godown
+                                and all associated data.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
                             <AlertDialogFooter>
-                              <AlertDialogCancel onClick={() => {setGodownToDelete(null); setIsDeleteDialogOpen(false);}} disabled={isSubmitting}>Cancel</AlertDialogCancel>
+                              <AlertDialogCancel>Cancel</AlertDialogCancel>
                               <AlertDialogAction onClick={confirmDelete} disabled={isSubmitting}>
-                                {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                                Delete
+                                {isSubmitting ? (
+                                  <>
+                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                    Deleting...
+                                  </>
+                                ) : (
+                                  "Delete"
+                                )}
                               </AlertDialogAction>
                             </AlertDialogFooter>
                           </AlertDialogContent>
                         </AlertDialog>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
               </TableBody>
             </Table>
           )}

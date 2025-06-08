@@ -1,4 +1,3 @@
-
 "use client";
 
 import { Badge } from "@/components/ui/badge";
@@ -24,7 +23,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/contexts/auth-context"; // Import useAuth
 import { useToast } from "@/hooks/use-toast";
-import { db, functions } from "@/lib/firebase";
+import { supabase } from "@/lib/supabase";
+import { db } from "@/lib/supabase-db";
 import { cn } from "@/lib/utils";
 import type {
     CloudFunctionResponse,
@@ -43,13 +43,24 @@ import {
     query,
     where
 } from "firebase/firestore";
-import { httpsCallable } from "firebase/functions";
 import { BadgeAlert, CalendarIcon, Check, CheckCircle2, ChevronsUpDown, FileText, Filter, Loader2, PlusCircle, Printer, XCircle } from "lucide-react";
 import { useRouter } from "next/navigation"; // Import useRouter
 import { useEffect, useMemo, useState, type ChangeEvent, type FormEvent } from "react";
 
-const createManualLedgerEntryFn = httpsCallable<LedgerEntryCreateRequest, CloudFunctionResponse>(functions, 'createManualLedgerEntry');
-const updateLedgerEntryStatusFn = httpsCallable<LedgerEntryUpdateStatusRequest, CloudFunctionResponse>(functions, 'updateLedgerEntryStatus');
+// Replace Firebase Functions calls with Supabase Edge Functions
+const createManualLedgerEntryFn = async (data: LedgerEntryCreateRequest) => {
+  const response = await supabase.functions.invoke('create-manual-ledger-entry', {
+    body: data
+  });
+  return response.data as CloudFunctionResponse;
+};
+
+const updateLedgerEntryStatusFn = async (data: LedgerEntryUpdateStatusRequest) => {
+  const response = await supabase.functions.invoke('update-ledger-entry-status', {
+    body: data
+  });
+  return response.data as CloudFunctionResponse;
+};
 
 type FirestoreLedgerEntryStatus = FirestoreLedgerEntry["status"];
 
