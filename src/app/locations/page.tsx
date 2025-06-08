@@ -57,150 +57,150 @@ const defaultUnitFormData: UnitFormData = { name: "", symbol: "", type: "Other" 
 
 // Countries
 const createCountryFn = async (data: CountryFormData) => {
-  try {
-    const response = await supabase.functions.invoke('create-country', {
-      body: data
-    });
-    return response.data;
-  } catch (error) {
-    console.error("Error calling create-country function:", error);
-    return null;
+  const response = await supabase.functions.invoke('create-country', {
+    body: data
+  });
+  
+  if (response.error) {
+    throw new Error(response.error.message || 'Failed to create country');
   }
+  
+  return response.data;
 };
 
 const updateCountryFn = async (data: {countryId: string} & Partial<CountryFormData>) => {
-  try {
-    const response = await supabase.functions.invoke('update-country', {
-      body: data
-    });
-    return response.data;
-  } catch (error) {
-    console.error("Error calling update-country function:", error);
-    return null;
+  const response = await supabase.functions.invoke('update-country', {
+    body: data
+  });
+  
+  if (response.error) {
+    throw new Error(response.error.message || 'Failed to update country');
   }
+  
+  return response.data;
 };
 
 const deleteCountryFn = async (data: {countryId: string}) => {
-  try {
-    const response = await supabase.functions.invoke('delete-country', {
-      body: data
-    });
-    return response.data;
-  } catch (error) {
-    console.error("Error calling delete-country function:", error);
-    return null;
+  const response = await supabase.functions.invoke('delete-country', {
+    body: data
+  });
+  
+  if (response.error) {
+    throw new Error(response.error.message || 'Failed to delete country');
   }
+  
+  return response.data;
 };
 
 // States
 const createStateFn = async (data: StateFormData) => {
-  try {
-    const response = await supabase.functions.invoke('create-state', {
-      body: data
-    });
-    return response.data;
-  } catch (error) {
-    console.error("Error calling create-state function:", error);
-    return null;
+  const response = await supabase.functions.invoke('create-state', {
+    body: data
+  });
+  
+  if (response.error) {
+    throw new Error(response.error.message || 'Failed to create state');
   }
+  
+  return response.data;
 };
 
 const updateStateFn = async (data: {stateId: string} & Partial<StateFormData>) => {
-  try {
-    const response = await supabase.functions.invoke('update-state', {
-      body: data
-    });
-    return response.data;
-  } catch (error) {
-    console.error("Error calling update-state function:", error);
-    return null;
+  const response = await supabase.functions.invoke('update-state', {
+    body: data
+  });
+  
+  if (response.error) {
+    throw new Error(response.error.message || 'Failed to update state');
   }
+  
+  return response.data;
 };
 
 const deleteStateFn = async (data: {stateId: string}) => {
-  try {
-    const response = await supabase.functions.invoke('delete-state', {
-      body: data
-    });
-    return response.data;
-  } catch (error) {
-    console.error("Error calling delete-state function:", error);
-    return null;
+  const response = await supabase.functions.invoke('delete-state', {
+    body: data
+  });
+  
+  if (response.error) {
+    throw new Error(response.error.message || 'Failed to delete state');
   }
+  
+  return response.data;
 };
 
 // Cities
 const createCityFn = async (data: CityFormData) => {
-  try {
-    const response = await supabase.functions.invoke('create-city', {
-      body: data
-    });
-    return response.data;
-  } catch (error) {
-    console.error("Error calling create-city function:", error);
-    return null;
+  const response = await supabase.functions.invoke('create-city', {
+    body: data
+  });
+  
+  if (response.error) {
+    throw new Error(response.error.message || 'Failed to create city');
   }
+  
+  return response.data;
 };
 
 const updateCityFn = async (data: {cityId: string} & Partial<CityFormData>) => {
-  try {
-    const response = await supabase.functions.invoke('update-city', {
-      body: data
-    });
-    return response.data;
-  } catch (error) {
-    console.error("Error calling update-city function:", error);
-    return null;
+  const response = await supabase.functions.invoke('update-city', {
+    body: data
+  });
+  
+  if (response.error) {
+    throw new Error(response.error.message || 'Failed to update city');
   }
+  
+  return response.data;
 };
 
 const deleteCityFn = async (data: {cityId: string}) => {
-  try {
-    const response = await supabase.functions.invoke('delete-city', {
-      body: data
-    });
-    return response.data;
-  } catch (error) {
-    console.error("Error calling delete-city function:", error);
-    return null;
+  const response = await supabase.functions.invoke('delete-city', {
+    body: data
+  });
+  
+  if (response.error) {
+    throw new Error(response.error.message || 'Failed to delete city');
   }
+  
+  return response.data;
 };
 
 // Units
 const createUnitFn = async (data: UnitFormData) => {
-  try {
-    const response = await supabase.functions.invoke('create-unit', {
-      body: data
-    });
-    return response.data;
-  } catch (error) {
-    console.error("Error calling create-unit function:", error);
-    return null;
+  const response = await supabase.functions.invoke('create-unit', {
+    body: data
+  });
+  
+  if (response.error) {
+    throw new Error(response.error.message || 'Failed to create unit');
   }
+  
+  return response.data;
 };
 
 const updateUnitFn = async (data: {unitId: string} & Partial<UnitFormData>) => {
-  try {
-    const response = await supabase.functions.invoke('update-unit', {
-      body: data
-    });
-    return response.data;
-  } catch (error) {
-    console.error("Error calling update-unit function:", error);
-    return null;
+  const response = await supabase.functions.invoke('update-unit', {
+    body: data
+  });
+  
+  if (response.error) {
+    throw new Error(response.error.message || 'Failed to update unit');
   }
+  
+  return response.data;
 };
 
 const deleteUnitFn = async (data: {unitId: string}) => {
-  try {
-    const response = await supabase.functions.invoke('delete-unit', {
-      body: data
-    });
-    return response.data;
-  } catch (error) {
-    console.error("Error calling delete-unit function:", error);
-    return null;
+  const response = await supabase.functions.invoke('delete-unit', {
+    body: data
+  });
+  
+  if (response.error) {
+    throw new Error(response.error.message || 'Failed to delete unit');
   }
+  
+  return response.data;
 };
 
 
@@ -358,17 +358,11 @@ export default function LocationsPage() {
     }
     setIsSubmitting(true);
     try {
-      let result: {success: boolean; id: string; message: string} | null = null;
+      let result: {success: boolean; id: string; message: string};
       if (editingCountry) {
         result = await updateCountryFn({ countryId: editingCountry.id, ...countryFormData });
       } else {
         result = await createCountryFn(countryFormData);
-      }
-      
-      // Check if result is null or undefined
-      if (!result) {
-        toast({ title: "Error", description: "Failed to save country. The server did not respond properly.", variant: "destructive" });
-        return;
       }
       
       if (result.success) {
@@ -391,12 +385,6 @@ export default function LocationsPage() {
       setIsSubmitting(true);
       try {
         const result = await deleteCountryFn({ countryId: countryToDelete.id });
-        
-        // Check if result is null or undefined
-        if (!result) {
-          toast({ title: "Error", description: "Failed to delete country. The server did not respond properly.", variant: "destructive" });
-          return;
-        }
         
         if (result.success) {
           toast({ title: "Success", description: result.message });
@@ -435,17 +423,11 @@ export default function LocationsPage() {
     }
     setIsSubmitting(true);
     try {
-      let result: {success: boolean; id: string; message: string} | null = null;
+      let result: {success: boolean; id: string; message: string};
       if (editingState) {
         result = await updateStateFn({ stateId: editingState.id, ...stateFormData });
       } else {
         result = await createStateFn(stateFormData);
-      }
-      
-      // Check if result is null or undefined
-      if (!result) {
-        toast({ title: "Error", description: "Failed to save state. The server did not respond properly.", variant: "destructive" });
-        return;
       }
       
        if (result.success) {
@@ -468,12 +450,6 @@ export default function LocationsPage() {
       setIsSubmitting(true);
       try {
         const result = await deleteStateFn({ stateId: stateToDelete.id });
-        
-        // Check if result is null or undefined
-        if (!result) {
-          toast({ title: "Error", description: "Failed to delete state. The server did not respond properly.", variant: "destructive" });
-          return;
-        }
         
         if (result.success) {
           toast({ title: "Success", description: result.message });
@@ -513,17 +489,11 @@ export default function LocationsPage() {
     }
     setIsSubmitting(true);
     try {
-      let result: {success: boolean; id: string; message: string} | null = null;
+      let result: {success: boolean; id: string; message: string};
       if (editingCity) {
         result = await updateCityFn({ cityId: editingCity.id, ...cityFormData });
       } else {
         result = await createCityFn(cityFormData);
-      }
-      
-      // Check if result is null or undefined
-      if (!result) {
-        toast({ title: "Error", description: "Failed to save city. The server did not respond properly.", variant: "destructive" });
-        return;
       }
       
       if (result.success) {
@@ -546,12 +516,6 @@ export default function LocationsPage() {
       setIsSubmitting(true);
       try {
         const result = await deleteCityFn({ cityId: cityToDelete.id });
-        
-        // Check if result is null or undefined
-        if (!result) {
-          toast({ title: "Error", description: "Failed to delete city. The server did not respond properly.", variant: "destructive" });
-          return;
-        }
         
         if (result.success) {
           toast({ title: "Success", description: result.message });
@@ -590,17 +554,11 @@ export default function LocationsPage() {
     }
     setIsSubmitting(true);
     try {
-      let result: {success: boolean; id: string; message: string} | null = null;
+      let result: {success: boolean; id: string; message: string};
       if (editingUnit) {
         result = await updateUnitFn({ unitId: editingUnit.id, ...unitFormData });
       } else {
         result = await createUnitFn(unitFormData);
-      }
-      
-      // Check if result is null or undefined
-      if (!result) {
-        toast({ title: "Error", description: "Failed to save unit. The server did not respond properly.", variant: "destructive" });
-        return;
       }
       
       if (result.success) {
@@ -623,12 +581,6 @@ export default function LocationsPage() {
       setIsSubmitting(true);
       try {
         const result = await deleteUnitFn({ unitId: unitToDelete.id });
-        
-        // Check if result is null or undefined
-        if (!result) {
-          toast({ title: "Error", description: "Failed to delete unit. The server did not respond properly.", variant: "destructive" });
-          return;
-        }
         
         if (result.success) {
           toast({ title: "Success", description: result.message });
