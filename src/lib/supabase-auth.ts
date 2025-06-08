@@ -97,11 +97,17 @@ export const auth = {
           .from('users')
           .select('*')
           .eq('id', userId)
-          .single();
+          .maybeSingle();
 
         if (error) {
           // If table doesn't exist or other error, use auth metadata
           console.warn('Error fetching from users table:', error);
+          return this.createFallbackProfile(userId, user);
+        }
+        
+        // If no data found, create fallback profile
+        if (!data) {
+          console.warn('No user profile found in database, creating fallback');
           return this.createFallbackProfile(userId, user);
         }
         
@@ -154,13 +160,20 @@ export const auth = {
           })
           .eq('id', userId)
           .select()
-          .single();
+          .maybeSingle();
           
         if (error) {
           console.warn("Error updating user profile in database:", error);
           // Fall back to updating auth metadata
           return this.updateUserMetadata(userId, updates);
         }
+        
+        // If no data found, fall back to updating auth metadata
+        if (!data) {
+          console.warn("No user profile found to update, falling back to auth metadata");
+          return this.updateUserMetadata(userId, updates);
+        }
+        
         return {
           id: data.id,
           email: data.email,

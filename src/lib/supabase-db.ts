@@ -183,11 +183,25 @@ export const db = {
           .from('users')
           .select('*')
           .eq('id', userId)
-          .single();
+          .maybeSingle();
 
         if (error) {
           // If table doesn't exist or other error, use auth metadata
           console.warn('Error fetching from users table:', error);
+          return {
+            id: userId,
+            email: userData?.email || `${userId}@placeholder.com`,
+            role: 'operator',
+            displayName: userData?.user_metadata?.displayName || 'User',
+            status: 'active' as const,
+            assignedBranchIds: [],
+            createdAt: new Date().toISOString()
+          };
+        }
+        
+        // If no data found, create fallback profile
+        if (!data) {
+          console.warn('No user profile found in database, creating fallback');
           return {
             id: userId,
             email: userData?.email || `${userId}@placeholder.com`,
@@ -232,7 +246,7 @@ export const db = {
         .update(updates)
         .eq('id', userId)
         .select()
-        .single();
+        .maybeSingle();
       if (error) {
         console.warn("Error updating user profile:", error);
         // Return the updates anyway to prevent UI issues
@@ -245,6 +259,20 @@ export const db = {
           createdAt: new Date().toISOString()
         } as User;
       }
+      
+      // If no data found, return the updates anyway to prevent UI issues
+      if (!data) {
+        console.warn("No user profile found to update");
+        return { 
+          id: userId, 
+          ...updates,
+          email: updates.email || `${userId}@placeholder.com`,
+          role: updates.role || 'operator',
+          status: updates.status || 'active' as const,
+          createdAt: new Date().toISOString()
+        } as User;
+      }
+      
       return data;
     } catch (error) {
       console.error("Error in updateUserProfile:", error);
