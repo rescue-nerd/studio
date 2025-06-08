@@ -114,11 +114,11 @@ export default function BranchManagementPage() {
     setEditingBranch(branch);
     setFormData({
       name: branch.name,
-      location: branch.location,
+      location: branch.address || "",
       managerName: branch.managerName || "",
-      status: branch.status || "Active",
-      contactEmail: branch.contactEmail,
-      contactPhone: branch.contactPhone,
+      status: branch.isActive ? "Active" : "Inactive",
+      contactEmail: branch.email,
+      contactPhone: branch.contactNo,
       managerUserId: branch.managerUserId,
     });
     setIsFormDialogOpen(true);
@@ -139,10 +139,26 @@ export default function BranchManagementPage() {
 
     try {
       if (editingBranch) {
-        const updatedBranch = await db.updateBranch(editingBranch.id, formData);
+        const updatedBranch = await db.updateBranch(editingBranch.id, {
+          name: formData.name,
+          address: formData.location,
+          managerName: formData.managerName,
+          isActive: formData.status === "Active",
+          email: formData.contactEmail,
+          contactNo: formData.contactPhone,
+          managerUserId: formData.managerUserId
+        });
         toast({ title: "Success", description: "Branch updated successfully" });
       } else {
-        const newBranch = await db.createBranch(formData);
+        const newBranch = await db.createBranch({
+          name: formData.name,
+          address: formData.location,
+          managerName: formData.managerName,
+          isActive: formData.status === "Active",
+          email: formData.contactEmail,
+          contactNo: formData.contactPhone,
+          managerUserId: formData.managerUserId
+        });
         toast({ title: "Success", description: "Branch created successfully" });
       }
       setIsFormDialogOpen(false);
@@ -181,7 +197,7 @@ export default function BranchManagementPage() {
 
   const filteredBranches = branches.filter(branch =>
     branch.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    branch.location.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (branch.address && branch.address.toLowerCase().includes(searchTerm.toLowerCase())) ||
     (branch.managerName && branch.managerName.toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
@@ -234,32 +250,51 @@ export default function BranchManagementPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
+                {filteredBranches.length === 0 && !isLoading && (
+                    <TableRow>
+                        <TableCell colSpan={5} className="text-center h-24">
+                            No branches found. Add one to get started!
+                        </TableCell>
+                    </TableRow>
+                )}
                 {filteredBranches.map((branch) => (
                   <TableRow key={branch.id}>
-                    <TableCell>{branch.name}</TableCell>
-                    <TableCell>{branch.location}</TableCell>
-                    <TableCell>{branch.managerName || "-"}</TableCell>
+                    <TableCell className="font-medium">{branch.name}</TableCell>
+                    <TableCell>{branch.address || branch.location || 'N/A'}</TableCell>
+                    <TableCell>{branch.managerName || 'N/A'}</TableCell>
                     <TableCell>
-                      <Badge variant={branch.status === "Active" ? "default" : "secondary"}>
-                        {branch.status}
+                      <Badge variant={branch.isActive ? "default" : "destructive"} className={branch.isActive ? "bg-accent text-accent-foreground" : ""}>
+                        {branch.isActive ? "Active" : "Inactive"}
                       </Badge>
                     </TableCell>
                     <TableCell>
-                      <div className="flex space-x-2">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => openEditForm(branch)}
-                        >
+                      <div className="flex gap-2">
+                        <Button variant="outline" size="icon" aria-label="Edit Branch" onClick={() => openEditForm(branch)} disabled={isSubmittingForm || isDeleting}>
                           <Edit className="h-4 w-4" />
                         </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleDeleteClick(branch)}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
+                        <AlertDialog open={isDeleteDialogOpen && branchToDelete?.id === branch.id} onOpenChange={(open) => { if(!open) setBranchToDelete(null); setIsDeleteDialogOpen(open);}}>
+                          <AlertDialogTrigger asChild>
+                            <Button variant="destructive" size="icon" aria-label="Delete Branch" onClick={() => handleDeleteClick(branch)} disabled={isSubmittingForm || isDeleting}>
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                This action cannot be undone. This will permanently delete the branch
+                                "{branchToDelete?.name}".
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel onClick={() => {setBranchToDelete(null); setIsDeleteDialogOpen(false);}} disabled={isDeleting}>Cancel</AlertDialogCancel>
+                              <AlertDialogAction onClick={confirmDelete} disabled={isDeleting}>
+                                {isDeleting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                                Delete
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
                       </div>
                     </TableCell>
                   </TableRow>
@@ -276,7 +311,7 @@ export default function BranchManagementPage() {
             <DialogTitle>{editingBranch ? "Edit Branch" : "Add Branch"}</DialogTitle>
             <DialogDescription>
               {editingBranch
-                ? "Update the branch details below."
+                ? "Update the details of the branch."
                 : "Fill in the branch details below."}
             </DialogDescription>
           </DialogHeader>
@@ -307,7 +342,7 @@ export default function BranchManagementPage() {
                 <Input
                   id="managerName"
                   name="managerName"
-                  value={formData.managerName}
+                  value={formData.managerName || ''}
                   onChange={handleInputChange}
                 />
               </div>
@@ -317,7 +352,7 @@ export default function BranchManagementPage() {
                   value={formData.status}
                   onValueChange={handleStatusChange}
                 >
-                  <SelectTrigger>
+                  <SelectTrigger id="status">
                     <SelectValue placeholder="Select status" />
                   </SelectTrigger>
                   <SelectContent>

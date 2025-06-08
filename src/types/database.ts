@@ -9,9 +9,9 @@ export interface User {
   displayName?: string;
   role: UserRole;
   assignedBranchIds: string[];
-  enableEmailNotifications: boolean;
-  darkModeEnabled: boolean;
-  autoDataSyncEnabled: boolean;
+  enableEmailNotifications?: boolean;
+  darkModeEnabled?: boolean;
+  autoDataSyncEnabled?: boolean;
   status: UserStatus;
   createdAt: string;
   updatedAt?: string;
@@ -20,11 +20,14 @@ export interface User {
 export interface Branch {
   id: string;
   name: string;
-  code: string;
+  code?: string;
   address?: string;
+  location?: string;
   contactNo?: string;
   email?: string;
   isActive: boolean;
+  managerName?: string;
+  managerUserId?: string;
   createdAt: string;
   updatedAt?: string;
 }
@@ -180,4 +183,4 @@ export interface Unit {
   isActive: boolean;
   createdAt: string;
   updatedAt?: string;
-} 
+}

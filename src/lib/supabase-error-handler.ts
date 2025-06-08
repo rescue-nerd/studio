@@ -65,7 +65,7 @@ export function getDatabaseErrorMessage(error: unknown): string {
       case '23503': // foreign_key_violation
         return 'This operation would violate database constraints.';
       case '42P01': // undefined_table
-        return 'The requested table does not exist.';
+        return 'The requested table does not exist. The database schema may need to be initialized.';
       case '42703': // undefined_column
         return 'The requested column does not exist.';
       default:
@@ -80,7 +80,7 @@ export function getDatabaseErrorMessage(error: unknown): string {
       case '23503': // foreign_key_violation
         return 'This operation would violate database constraints.';
       case '42P01': // undefined_table
-        return 'The requested table does not exist.';
+        return 'The requested table does not exist. The database schema may need to be initialized.';
       case '42703': // undefined_column
         return 'The requested column does not exist.';
       default:
