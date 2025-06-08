@@ -188,8 +188,8 @@ export const db = {
       if (error) {
         // If profile doesn't exist, create one
         if (error.code === 'PGRST116') {
-          const { data: userData } = await supabase.auth.getUser();
-          if (!userData.user) {
+          const userData = await auth.getCurrentUser();
+          if (!userData) {
             throw new Error('User not found');
           }
           const { data: newProfile, error: createError } = await supabase
@@ -197,7 +197,7 @@ export const db = {
             .insert([
               {
                 id: userId,
-                email: userData.user.email || `${userId}@placeholder.com`,
+                email: userData.email || `${userId}@placeholder.com`,
                 role: 'operator',
                 status: 'active',
                 assignedBranchIds: []
@@ -370,79 +370,3 @@ export const db = {
 };
 
 export default db;
-
-// Sign in
-await auth.signIn(email, password);
-
-// Sign up
-await auth.signUp(email, password, {
-  role: 'operator',
-  displayName: 'John Doe',
-  assignedBranchIds: ['branch1', 'branch2']
-});
-
-// Get current user
-const user = await auth.getCurrentUser();
-
-// Update profile
-await auth.updateUserProfile(userId, {
-  displayName: 'New Name',
-  assignedBranchIds: ['branch3']
-});
-
-// Create a new bilti
-const bilti = await db.create('biltis', {
-  miti: new Date(),
-  nepaliMiti: '2080-12-15',
-  consignorId: 'party1',
-  consigneeId: 'party2',
-  // ... other fields
-});
-
-// Query biltis
-const biltis = await db.query('biltis', {
-  filters: { branchId: 'branch1', status: 'pending' },
-  orderBy: { column: 'created_at', ascending: false },
-  limit: 10
-});
-
-// Subscribe to real-time updates
-const unsubscribe = db.subscribe('biltis', (payload) => {
-  console.log('Bilti updated:', payload.new);
-}, {
-  filters: { branchId: 'branch1' },
-  event: 'UPDATE'
-});
-
-// Upload an attachment
-const attachment = await storage.uploadAttachment(
-  'bilti',
-  biltiId,
-  file,
-  { description: 'Delivery receipt' }
-);
-
-// Get document attachments
-const attachments = await storage.getDocumentAttachments('bilti', biltiId);
-
-// Delete an attachment
-await storage.deleteAttachment(attachmentId);
-
-// Call the document number generation function
-const response = await fetch(
-  `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/generate-document-number`,
-  {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY}`,
-    },
-    body: JSON.stringify({
-      documentType: 'bilti',
-      branchId: 'branch1',
-      fiscalYear: '2080-81'
-    })
-  }
-);
-
-const { documentNumber } = await response.json(); 
