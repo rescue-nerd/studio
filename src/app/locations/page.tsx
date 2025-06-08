@@ -57,90 +57,150 @@ const defaultUnitFormData: UnitFormData = { name: "", symbol: "", type: "Other" 
 
 // Countries
 const createCountryFn = async (data: CountryFormData) => {
-  const response = await supabase.functions.invoke('create-country', {
-    body: data
-  });
-  return response.data as {success: boolean, id: string, message: string};
+  try {
+    const response = await supabase.functions.invoke('create-country', {
+      body: data
+    });
+    return response.data;
+  } catch (error) {
+    console.error("Error calling create-country function:", error);
+    return null;
+  }
 };
 
 const updateCountryFn = async (data: {countryId: string} & Partial<CountryFormData>) => {
-  const response = await supabase.functions.invoke('update-country', {
-    body: data
-  });
-  return response.data as {success: boolean, id: string, message: string};
+  try {
+    const response = await supabase.functions.invoke('update-country', {
+      body: data
+    });
+    return response.data;
+  } catch (error) {
+    console.error("Error calling update-country function:", error);
+    return null;
+  }
 };
 
 const deleteCountryFn = async (data: {countryId: string}) => {
-  const response = await supabase.functions.invoke('delete-country', {
-    body: data
-  });
-  return response.data as {success: boolean, id: string, message: string};
+  try {
+    const response = await supabase.functions.invoke('delete-country', {
+      body: data
+    });
+    return response.data;
+  } catch (error) {
+    console.error("Error calling delete-country function:", error);
+    return null;
+  }
 };
 
 // States
 const createStateFn = async (data: StateFormData) => {
-  const response = await supabase.functions.invoke('create-state', {
-    body: data
-  });
-  return response.data as {success: boolean, id: string, message: string};
+  try {
+    const response = await supabase.functions.invoke('create-state', {
+      body: data
+    });
+    return response.data;
+  } catch (error) {
+    console.error("Error calling create-state function:", error);
+    return null;
+  }
 };
 
 const updateStateFn = async (data: {stateId: string} & Partial<StateFormData>) => {
-  const response = await supabase.functions.invoke('update-state', {
-    body: data
-  });
-  return response.data as {success: boolean, id: string, message: string};
+  try {
+    const response = await supabase.functions.invoke('update-state', {
+      body: data
+    });
+    return response.data;
+  } catch (error) {
+    console.error("Error calling update-state function:", error);
+    return null;
+  }
 };
 
 const deleteStateFn = async (data: {stateId: string}) => {
-  const response = await supabase.functions.invoke('delete-state', {
-    body: data
-  });
-  return response.data as {success: boolean, id: string, message: string};
+  try {
+    const response = await supabase.functions.invoke('delete-state', {
+      body: data
+    });
+    return response.data;
+  } catch (error) {
+    console.error("Error calling delete-state function:", error);
+    return null;
+  }
 };
 
 // Cities
 const createCityFn = async (data: CityFormData) => {
-  const response = await supabase.functions.invoke('create-city', {
-    body: data
-  });
-  return response.data as {success: boolean, id: string, message: string};
+  try {
+    const response = await supabase.functions.invoke('create-city', {
+      body: data
+    });
+    return response.data;
+  } catch (error) {
+    console.error("Error calling create-city function:", error);
+    return null;
+  }
 };
 
 const updateCityFn = async (data: {cityId: string} & Partial<CityFormData>) => {
-  const response = await supabase.functions.invoke('update-city', {
-    body: data
-  });
-  return response.data as {success: boolean, id: string, message: string};
+  try {
+    const response = await supabase.functions.invoke('update-city', {
+      body: data
+    });
+    return response.data;
+  } catch (error) {
+    console.error("Error calling update-city function:", error);
+    return null;
+  }
 };
 
 const deleteCityFn = async (data: {cityId: string}) => {
-  const response = await supabase.functions.invoke('delete-city', {
-    body: data
-  });
-  return response.data as {success: boolean, id: string, message: string};
+  try {
+    const response = await supabase.functions.invoke('delete-city', {
+      body: data
+    });
+    return response.data;
+  } catch (error) {
+    console.error("Error calling delete-city function:", error);
+    return null;
+  }
 };
 
 // Units
 const createUnitFn = async (data: UnitFormData) => {
-  const response = await supabase.functions.invoke('create-unit', {
-    body: data
-  });
-  return response.data as {success: boolean, id: string, message: string};
+  try {
+    const response = await supabase.functions.invoke('create-unit', {
+      body: data
+    });
+    return response.data;
+  } catch (error) {
+    console.error("Error calling create-unit function:", error);
+    return null;
+  }
 };
 
 const updateUnitFn = async (data: {unitId: string} & Partial<UnitFormData>) => {
-  const response = await supabase.functions.invoke('update-unit', {
-    body: data
-  });
-  return response.data as {success: boolean, id: string, message: string};
+  try {
+    const response = await supabase.functions.invoke('update-unit', {
+      body: data
+    });
+    return response.data;
+  } catch (error) {
+    console.error("Error calling update-unit function:", error);
+    return null;
+  }
 };
 
 const deleteUnitFn = async (data: {unitId: string}) => {
-  const response = await supabase.functions.invoke('delete-unit', {
-    body: data
-  });
-  return response.data as {success: boolean, id: string, message: string};
+  try {
+    const response = await supabase.functions.invoke('delete-unit', {
+      body: data
+    });
+    return response.data;
+  } catch (error) {
+    console.error("Error calling delete-unit function:", error);
+    return null;
+  }
 };
 
 

@@ -16,6 +16,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
+  const [authChecked, setAuthChecked] = useState(false);
 
   useEffect(() => {
     // Initial auth check
@@ -49,42 +50,51 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         setProfile(null);
       } finally {
         setLoading(false);
+        setAuthChecked(true);
       }
     };
 
     checkAuth();
 
-    // Set up auth state change listener
-    const { data: { subscription } } = auth.onAuthStateChange(async (event, session) => {
-      console.log("Auth state changed:", event, session);
-      if (session?.user) {
-        setUser(session.user);
-        try {
-          const profile = await auth.getUserProfile(session.user.id);
-          setProfile(profile);
-        } catch (error) {
-          console.error("Error fetching user profile:", error);
-          // Create a fallback profile
-          setProfile({
-            id: session.user.id,
-            email: session.user.email,
-            displayName: session.user.user_metadata?.displayName || 'User',
-            role: 'operator',
-            status: 'active',
-            assignedBranchIds: []
-          });
+    // Set up auth state change listener only after initial check
+    let subscription: { unsubscribe: () => void } | null = null;
+    
+    if (!subscription && authChecked) {
+      const { data } = auth.onAuthStateChange(async (event, session) => {
+        console.log("Auth state changed:", event, session);
+        if (session?.user) {
+          setUser(session.user);
+          try {
+            const profile = await auth.getUserProfile(session.user.id);
+            setProfile(profile);
+          } catch (error) {
+            console.error("Error fetching user profile:", error);
+            // Create a fallback profile
+            setProfile({
+              id: session.user.id,
+              email: session.user.email,
+              displayName: session.user.user_metadata?.displayName || 'User',
+              role: 'operator',
+              status: 'active',
+              assignedBranchIds: []
+            });
+          }
+        } else {
+          setUser(null);
+          setProfile(null);
         }
-      } else {
-        setUser(null);
-        setProfile(null);
-      }
-      setLoading(false);
-    });
+        setLoading(false);
+      });
+      
+      subscription = data.subscription;
+    }
 
     return () => {
-      subscription.unsubscribe();
+      if (subscription) {
+        subscription.unsubscribe();
+      }
     };
-  }, []);
+  }, [authChecked]);
 
   return (
     <AuthContext.Provider value={{ user, profile, loading }}>

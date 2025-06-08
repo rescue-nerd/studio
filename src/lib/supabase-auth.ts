@@ -74,11 +74,12 @@ export const auth = {
       const { data: { user }, error } = await supabase.auth.getUser();
       if (error) {
         // Return null instead of throwing error when session is missing
+        console.log("Auth session missing or invalid");
         return null;
       }
       return user;
     } catch (error) {
-      // Return null instead of logging error and throwing
+      console.log("Error getting current user:", error);
       return null;
     }
   },
@@ -90,7 +91,7 @@ export const auth = {
       const { data: { user }, error: authError } = await supabase.auth.getUser();
       
       if (authError) {
-        console.error('Error getting auth user:', authError);
+        console.log('Error getting auth user:', authError);
         return this.createFallbackProfile(userId);
       }
       
@@ -104,13 +105,13 @@ export const auth = {
 
         if (error) {
           // If table doesn't exist or other error, use auth metadata
-          console.warn('Error fetching from users table:', error);
+          console.log('Error fetching from users table:', error);
           return this.createFallbackProfile(userId, user);
         }
         
         // If no data found, create fallback profile
         if (!data) {
-          console.warn('No user profile found in database, creating fallback');
+          console.log('No user profile found in database, creating fallback');
           return this.createFallbackProfile(userId, user);
         }
         
@@ -123,11 +124,11 @@ export const auth = {
           status: data.status,
         };
       } catch (dbError) {
-        console.error('Database error in getUserProfile:', dbError);
+        console.log('Database error in getUserProfile:', dbError);
         return this.createFallbackProfile(userId, user);
       }
     } catch (error) {
-      console.error('Error in getUserProfile:', error);
+      console.log('Error in getUserProfile:', error);
       return this.createFallbackProfile(userId);
     }
   },
@@ -166,14 +167,14 @@ export const auth = {
           .maybeSingle();
           
         if (error) {
-          console.warn("Error updating user profile in database:", error);
+          console.log("Error updating user profile in database:", error);
           // Fall back to updating auth metadata
           return this.updateUserMetadata(userId, updates);
         }
         
         // If no data found, fall back to updating auth metadata
         if (!data) {
-          console.warn("No user profile found to update, falling back to auth metadata");
+          console.log("No user profile found to update, falling back to auth metadata");
           return this.updateUserMetadata(userId, updates);
         }
         
@@ -186,11 +187,11 @@ export const auth = {
           status: data.status,
         };
       } catch (dbError) {
-        console.error("Database error in updateUserProfile:", dbError);
+        console.log("Database error in updateUserProfile:", dbError);
         return this.updateUserMetadata(userId, updates);
       }
     } catch (error) {
-      console.error("Error in updateUserProfile:", error);
+      console.log("Error in updateUserProfile:", error);
       // Return the updates anyway to prevent UI issues
       return { id: userId, ...updates } as AuthUser;
     }
@@ -205,7 +206,7 @@ export const auth = {
       if (error) throw error;
       return { ...data.user.user_metadata, id: userId, email: data.user.email } as AuthUser;
     } catch (error) {
-      console.error("Error updating user metadata:", error);
+      console.log("Error updating user metadata:", error);
       // Return the updates anyway to prevent UI issues
       return { id: userId, ...metadata } as AuthUser;
     }
