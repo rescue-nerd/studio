@@ -78,76 +78,86 @@ export const auth = {
   // Get user profile from users table
   async getUserProfile(userId: string) {
     try {
-      const { data, error } = await supabase
-        .from('users')
-        .select('*')
-        .eq('id', userId)
-        .single();
-
-      if (error) {
-        // If profile doesn't exist, create one with minimal data
-        // This handles the case where the users table might not exist yet
-        if (error.code === 'PGRST116' || error.code === '42P01') {
-          const userData = await this.getCurrentUser();
-          if (!userData) {
-            throw new Error('User not found');
-          }
-          
-          // Return a minimal profile without trying to create it in the database
-          // This prevents errors when the table doesn't exist
-          return {
-            id: userId,
-            email: userData.email || `${userId}@placeholder.com`,
-            role: 'operator',
-            status: 'active',
-            assignedBranchIds: []
-          };
-        }
-        throw error;
+      // First try to get from auth metadata as a fallback
+      const { data: { user }, error: authError } = await supabase.auth.getUser();
+      
+      if (authError) {
+        console.error('Error getting auth user:', authError);
+        return this.createFallbackProfile(userId);
       }
-      return data as AuthUser;
+      
+      // Try to get from users table
+      try {
+        const { data, error } = await supabase
+          .from('users')
+          .select('*')
+          .eq('id', userId)
+          .single();
+
+        if (error) {
+          // If table doesn't exist or other error, use auth metadata
+          console.warn('Error fetching from users table:', error);
+          return this.createFallbackProfile(userId, user);
+        }
+        
+        return data as AuthUser;
+      } catch (dbError) {
+        console.error('Database error in getUserProfile:', dbError);
+        return this.createFallbackProfile(userId, user);
+      }
     } catch (error) {
       console.error('Error in getUserProfile:', error);
-      // Return a minimal profile to prevent infinite loops
-      return {
-        id: userId,
-        email: `${userId}@placeholder.com`,
-        role: 'operator',
-        status: 'active' as const,
-        assignedBranchIds: []
-      };
+      return this.createFallbackProfile(userId);
     }
+  },
+
+  // Create a fallback profile when the users table doesn't exist
+  createFallbackProfile(userId: string, authUser?: any): AuthUser {
+    return {
+      id: userId,
+      email: authUser?.email || `${userId}@placeholder.com`,
+      role: 'operator',
+      displayName: authUser?.user_metadata?.displayName || 'User',
+      status: 'active' as const,
+      assignedBranchIds: []
+    };
   },
 
   // Update user profile
   async updateUserProfile(userId: string, updates: Partial<AuthUser>) {
     try {
-      const { data, error } = await supabase
-        .from('users')
-        .update({
-          display_name: updates.displayName,
-          enable_email_notifications: updates.enableEmailNotifications,
-          dark_mode_enabled: updates.darkModeEnabled,
-          auto_data_sync_enabled: updates.autoDataSyncEnabled,
-          status: updates.status,
-          role: updates.role,
-          assigned_branch_ids: updates.assignedBranchIds,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', userId)
-        .select()
-        .single();
-        
-      if (error) {
-        console.error("Error updating user profile:", error);
-        // Return the updates anyway to prevent UI issues
-        return { id: userId, ...updates };
+      // Try to update in users table
+      try {
+        const { data, error } = await supabase
+          .from('users')
+          .update({
+            display_name: updates.displayName,
+            enable_email_notifications: updates.enableEmailNotifications,
+            dark_mode_enabled: updates.darkModeEnabled,
+            auto_data_sync_enabled: updates.autoDataSyncEnabled,
+            status: updates.status,
+            role: updates.role,
+            assigned_branch_ids: updates.assignedBranchIds,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', userId)
+          .select()
+          .single();
+          
+        if (error) {
+          console.warn("Error updating user profile in database:", error);
+          // Fall back to updating auth metadata
+          return this.updateUserMetadata(userId, updates);
+        }
+        return data;
+      } catch (dbError) {
+        console.error("Database error in updateUserProfile:", dbError);
+        return this.updateUserMetadata(userId, updates);
       }
-      return data;
     } catch (error) {
       console.error("Error in updateUserProfile:", error);
       // Return the updates anyway to prevent UI issues
-      return { id: userId, ...updates };
+      return { id: userId, ...updates } as AuthUser;
     }
   },
 
@@ -158,10 +168,11 @@ export const auth = {
         data: metadata
       });
       if (error) throw error;
-      return data;
+      return { ...data.user.user_metadata, id: userId, email: data.user.email } as AuthUser;
     } catch (error) {
       console.error("Error updating user metadata:", error);
-      throw error;
+      // Return the updates anyway to prevent UI issues
+      return { id: userId, ...metadata } as AuthUser;
     }
   },
 
