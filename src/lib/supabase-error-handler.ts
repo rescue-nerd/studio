@@ -57,6 +57,22 @@ export function getAuthErrorMessage(error: unknown): string {
  * @returns A user-friendly error message
  */
 export function getDatabaseErrorMessage(error: unknown): string {
+  if (typeof error === 'object' && error !== null && 'code' in error) {
+    const code = (error as ErrorWithCode).code;
+    switch (code) {
+      case '23505': // unique_violation
+        return 'This record already exists.';
+      case '23503': // foreign_key_violation
+        return 'This operation would violate database constraints.';
+      case '42P01': // undefined_table
+        return 'The requested table does not exist.';
+      case '42703': // undefined_column
+        return 'The requested column does not exist.';
+      default:
+        return `Database error: ${(error as ErrorWithCode).message}`;
+    }
+  }
+  
   if (error instanceof PostgrestError) {
     switch (error.code) {
       case '23505': // unique_violation
@@ -113,9 +129,18 @@ export function handleSupabaseError(
   customMessages: Record<string, string> = {}
 ): void {
   const message = getSupabaseErrorMessage(error);
-  const customMessage = error instanceof Error && error.message in customMessages
-    ? customMessages[error.message]
-    : null;
+  
+  // Check if there's a custom message for this error
+  let customMessage = null;
+  if (error instanceof Error) {
+    const errorMessage = error.message.toLowerCase();
+    for (const [key, value] of Object.entries(customMessages)) {
+      if (errorMessage.includes(key.toLowerCase())) {
+        customMessage = value;
+        break;
+      }
+    }
+  }
 
   toast({
     title: "Error",
@@ -131,4 +156,4 @@ export function handleSupabaseError(
  */
 export function logError(error: unknown, context: string): void {
   console.error(`Error in ${context}:`, error);
-} 
+}

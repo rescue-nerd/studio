@@ -18,6 +18,35 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // Initial auth check
+    const checkAuth = async () => {
+      try {
+        const currentUser = await auth.getCurrentUser();
+        if (currentUser) {
+          setUser(currentUser);
+          try {
+            const userProfile = await auth.getUserProfile(currentUser.id);
+            setProfile(userProfile);
+          } catch (error) {
+            console.error("Error fetching user profile:", error);
+            // Don't set profile to null here to avoid infinite loop
+          }
+        } else {
+          setUser(null);
+          setProfile(null);
+        }
+      } catch (error) {
+        console.error("Auth check error:", error);
+        setUser(null);
+        setProfile(null);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    checkAuth();
+
+    // Set up auth state change listener
     const { data: { subscription } } = auth.onAuthStateChange(async (event, session) => {
       if (session?.user) {
         setUser(session.user);
@@ -26,7 +55,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           setProfile(profile);
         } catch (error) {
           console.error("Error fetching user profile:", error);
-          setProfile(null);
+          // Don't set profile to null here to avoid infinite loop
         }
       } else {
         setUser(null);
