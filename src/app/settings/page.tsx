@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { useAuth } from "@/contexts/auth-context";
 import { useToast } from "@/hooks/use-toast";
-import { handleSupabaseError } from "@/lib/firebase-error-handler";
+import { handleSupabaseError } from "@/lib/supabase-error-handler";
 import auth from "@/lib/supabase-auth";
 import { Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";

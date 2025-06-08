@@ -33,7 +33,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/contexts/auth-context";
 import { useToast } from "@/hooks/use-toast";
-import { handleFirebaseError, logError } from "@/lib/firebase-error-handler";
+import { handleSupabaseError, logError } from "@/lib/supabase-error-handler";
 import { supabase } from "@/lib/supabase";
 import { db } from "@/lib/supabase-db";
 import { cn } from "@/lib/utils";
@@ -178,7 +178,7 @@ export default function DriversPage() {
       }
     } catch (error) {
       logError(error, `Error ${editingDriver ? 'updating' : 'creating'} driver`);
-      handleFirebaseError(error, toast, {
+      handleSupabaseError(error, toast, {
         default: `Failed to ${editingDriver ? 'update' : 'create'} driver. Please try again.`
       });
     } finally {
@@ -204,7 +204,7 @@ export default function DriversPage() {
         }
       } catch (error) {
         logError(error, "Error deleting driver");
-        handleFirebaseError(error, toast, {
+        handleSupabaseError(error, toast, {
           default: "Failed to delete driver. Please try again."
         });
       } finally {

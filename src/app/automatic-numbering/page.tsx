@@ -34,7 +34,7 @@ import type {
     UpdateDocumentNumberingConfigPayload
 } from "@/functions/src/types";
 import { useToast } from "@/hooks/use-toast";
-import { getFirebaseErrorMessage } from "@/lib/firebase-error-handler";
+import { getSupabaseErrorMessage } from "@/lib/supabase-error-handler";
 import { db } from "@/lib/supabase-db";
 import type { Branch as FirestoreBranch, DocumentNumberingConfig as FirestoreDocumentNumberingConfig } from "@/types/firestore";
 import {
@@ -103,7 +103,7 @@ export default function AutomaticNumberingPage() {
       setBranches([{ id: "Global", name: "Global (Non-Branch Specific)" } as Branch, ...fetchedBranches]);
     } catch (error) {
       console.error("Error fetching branches: ", error);
-      toast({ title: "Error", description: getFirebaseErrorMessage(error), variant: "destructive" });
+      toast({ title: "Error", description: getSupabaseErrorMessage(error), variant: "destructive" });
     }
   };
 
@@ -117,7 +117,7 @@ export default function AutomaticNumberingPage() {
       setConfigs(fetchedConfigs);
     } catch (error) {
       console.error("Error fetching numbering configs: ", error);
-      toast({ title: "Error", description: getFirebaseErrorMessage(error), variant: "destructive" });
+      toast({ title: "Error", description: getSupabaseErrorMessage(error), variant: "destructive" });
     }
   };
   
@@ -218,7 +218,7 @@ export default function AutomaticNumberingPage() {
       console.error("Error saving config: ", error);
       toast({ 
         title: "Error", 
-        description: getFirebaseErrorMessage(error),
+        description: getSupabaseErrorMessage(error),
         variant: "destructive" 
       });
     } finally {
@@ -251,7 +251,7 @@ export default function AutomaticNumberingPage() {
       console.error("Error deleting config: ", error);
       toast({ 
         title: "Error", 
-        description: getFirebaseErrorMessage(error),
+        description: getSupabaseErrorMessage(error),
         variant: "destructive" 
       });
     } finally {

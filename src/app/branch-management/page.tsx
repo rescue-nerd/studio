@@ -28,7 +28,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useAuth } from "@/contexts/auth-context";
 import { useToast } from "@/hooks/use-toast";
-import { handleSupabaseError } from "@/lib/firebase-error-handler";
+import { handleSupabaseError } from "@/lib/supabase-error-handler";
 import { db } from "@/lib/supabase-db";
 import type { Branch } from "@/types/database";
 import { Edit, Loader2, PlusCircle, Search, Trash2 } from "lucide-react";

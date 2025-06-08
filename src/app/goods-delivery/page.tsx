@@ -32,7 +32,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { handleFirebaseError, logError } from "@/lib/firebase-error-handler";
+import { handleSupabaseError, logError } from "@/lib/supabase-error-handler";
 import { db } from "@/lib/supabase-db";
 import { cn } from "@/lib/utils";
 import type {
@@ -132,7 +132,7 @@ export default function GoodsDeliveryPage() {
 
     } catch (error) {
       logError(error, "Error fetching master data for goods delivery");
-      handleFirebaseError(error, toast, {
+      handleSupabaseError(error, toast, {
         "permission-denied": "You don't have permission to access this data."
       });
     }
@@ -160,7 +160,7 @@ export default function GoodsDeliveryPage() {
       setGoodsDeliveries(fetchedDeliveries);
     } catch (error) {
       logError(error, "Error fetching goods deliveries");
-      handleFirebaseError(error, toast, {
+      handleSupabaseError(error, toast, {
         "permission-denied": "You don't have permission to view goods deliveries."
       });
     }
@@ -307,7 +307,7 @@ export default function GoodsDeliveryPage() {
       }
     } catch (error) {
       logError(error, `Error with goods delivery ${editingDelivery ? 'update' : 'create'} operation`);
-      handleFirebaseError(error, toast, {
+      handleSupabaseError(error, toast, {
         "permission-denied": `You don't have permission to ${editingDelivery ? 'update' : 'create'} goods deliveries.`,
         "unauthenticated": "Please log in to continue."
       });
@@ -344,7 +344,7 @@ export default function GoodsDeliveryPage() {
         }
       } catch (error) {
         logError(error, "Error deleting goods delivery");
-        handleFirebaseError(error, toast, {
+        handleSupabaseError(error, toast, {
           "permission-denied": "You don't have permission to delete goods deliveries.",
           "unauthenticated": "Please log in to continue."
         });
@@ -575,5 +575,3 @@ export default function GoodsDeliveryPage() {
     </div>
   );
 }
-
-    

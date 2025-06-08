@@ -30,7 +30,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useAuth } from "@/contexts/auth-context";
 import { useToast } from "@/hooks/use-toast";
-import { handleFirebaseError, logError } from "@/lib/firebase-error-handler";
+import { handleSupabaseError, logError } from "@/lib/supabase-error-handler";
 import { supabase } from "@/lib/supabase";
 import { db } from "@/lib/supabase-db";
 import type { Truck as FirestoreTruck } from "@/types/firestore";
@@ -103,7 +103,7 @@ export default function TrucksPage() {
       setTrucks(data);
     } catch (error) {
       logError(error, "Error fetching trucks");
-      handleFirebaseError(error, toast, {
+      handleSupabaseError(error, toast, {
         "permission-denied": "You don't have permission to view trucks."
       });
     } finally {
