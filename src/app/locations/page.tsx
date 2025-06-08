@@ -298,12 +298,19 @@ export default function LocationsPage() {
     }
     setIsSubmitting(true);
     try {
-      let result: {success: boolean; id: string; message: string};
+      let result: {success: boolean; id: string; message: string} | null = null;
       if (editingCountry) {
         result = await updateCountryFn({ countryId: editingCountry.id, ...countryFormData });
       } else {
         result = await createCountryFn(countryFormData);
       }
+      
+      // Check if result is null or undefined
+      if (!result) {
+        toast({ title: "Error", description: "Failed to save country. The server did not respond properly.", variant: "destructive" });
+        return;
+      }
+      
       if (result.success) {
         toast({ title: "Success", description: result.message });
         fetchCountries();
@@ -324,6 +331,13 @@ export default function LocationsPage() {
       setIsSubmitting(true);
       try {
         const result = await deleteCountryFn({ countryId: countryToDelete.id });
+        
+        // Check if result is null or undefined
+        if (!result) {
+          toast({ title: "Error", description: "Failed to delete country. The server did not respond properly.", variant: "destructive" });
+          return;
+        }
+        
         if (result.success) {
           toast({ title: "Success", description: result.message });
           fetchCountries();
@@ -361,12 +375,19 @@ export default function LocationsPage() {
     }
     setIsSubmitting(true);
     try {
-      let result: {success: boolean; id: string; message: string};
+      let result: {success: boolean; id: string; message: string} | null = null;
       if (editingState) {
         result = await updateStateFn({ stateId: editingState.id, ...stateFormData });
       } else {
         result = await createStateFn(stateFormData);
       }
+      
+      // Check if result is null or undefined
+      if (!result) {
+        toast({ title: "Error", description: "Failed to save state. The server did not respond properly.", variant: "destructive" });
+        return;
+      }
+      
        if (result.success) {
         toast({ title: "Success", description: result.message });
         fetchStates();
@@ -387,6 +408,13 @@ export default function LocationsPage() {
       setIsSubmitting(true);
       try {
         const result = await deleteStateFn({ stateId: stateToDelete.id });
+        
+        // Check if result is null or undefined
+        if (!result) {
+          toast({ title: "Error", description: "Failed to delete state. The server did not respond properly.", variant: "destructive" });
+          return;
+        }
+        
         if (result.success) {
           toast({ title: "Success", description: result.message });
           fetchStates();
@@ -425,18 +453,25 @@ export default function LocationsPage() {
     }
     setIsSubmitting(true);
     try {
-      let result: {success: boolean; id: string; message: string};
+      let result: {success: boolean; id: string; message: string} | null = null;
       if (editingCity) {
         result = await updateCityFn({ cityId: editingCity.id, ...cityFormData });
       } else {
         result = await createCityFn(cityFormData);
       }
-      if (result.data.success) {
-        toast({ title: "Success", description: result.data.message });
+      
+      // Check if result is null or undefined
+      if (!result) {
+        toast({ title: "Error", description: "Failed to save city. The server did not respond properly.", variant: "destructive" });
+        return;
+      }
+      
+      if (result.success) {
+        toast({ title: "Success", description: result.message });
         fetchCities();
         setIsCityFormOpen(false);
       } else {
-        toast({ title: "Error", description: result.data.message, variant: "destructive" });
+        toast({ title: "Error", description: result.message, variant: "destructive" });
       }
     } catch (error: any) {
       console.error("Error saving city: ", error);
@@ -451,11 +486,18 @@ export default function LocationsPage() {
       setIsSubmitting(true);
       try {
         const result = await deleteCityFn({ cityId: cityToDelete.id });
-        if (result.data.success) {
-          toast({ title: "Success", description: result.data.message });
+        
+        // Check if result is null or undefined
+        if (!result) {
+          toast({ title: "Error", description: "Failed to delete city. The server did not respond properly.", variant: "destructive" });
+          return;
+        }
+        
+        if (result.success) {
+          toast({ title: "Success", description: result.message });
           fetchCities();
         } else {
-          toast({ title: "Error", description: result.data.message, variant: "destructive" });
+          toast({ title: "Error", description: result.message, variant: "destructive" });
         }
       } catch (error: any) {
         console.error("Error deleting city:", error);
@@ -488,18 +530,25 @@ export default function LocationsPage() {
     }
     setIsSubmitting(true);
     try {
-      let result: HttpsCallableResult<{success: boolean; id: string; message: string}>;
+      let result: {success: boolean; id: string; message: string} | null = null;
       if (editingUnit) {
         result = await updateUnitFn({ unitId: editingUnit.id, ...unitFormData });
       } else {
         result = await createUnitFn(unitFormData);
       }
-      if (result.data.success) {
-        toast({ title: "Success", description: result.data.message });
+      
+      // Check if result is null or undefined
+      if (!result) {
+        toast({ title: "Error", description: "Failed to save unit. The server did not respond properly.", variant: "destructive" });
+        return;
+      }
+      
+      if (result.success) {
+        toast({ title: "Success", description: result.message });
         fetchUnits();
         setIsUnitFormOpen(false);
       } else {
-        toast({ title: "Error", description: result.data.message, variant: "destructive" });
+        toast({ title: "Error", description: result.message, variant: "destructive" });
       }
     } catch (error: any) {
       console.error("Error saving unit: ", error);
@@ -514,11 +563,18 @@ export default function LocationsPage() {
       setIsSubmitting(true);
       try {
         const result = await deleteUnitFn({ unitId: unitToDelete.id });
-        if (result.data.success) {
-          toast({ title: "Success", description: result.data.message });
+        
+        // Check if result is null or undefined
+        if (!result) {
+          toast({ title: "Error", description: "Failed to delete unit. The server did not respond properly.", variant: "destructive" });
+          return;
+        }
+        
+        if (result.success) {
+          toast({ title: "Success", description: result.message });
           fetchUnits();
         } else {
-          toast({ title: "Error", description: result.data.message, variant: "destructive" });
+          toast({ title: "Error", description: result.message, variant: "destructive" });
         }
       } catch (error: any) {
         console.error("Error deleting unit:", error);
@@ -557,7 +613,7 @@ export default function LocationsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-headline font-bold text-foreground">Locations &amp; Unit Management</h1>
+        <h1 className="text-3xl font-headline font-bold text-foreground">Locations & Unit Management</h1>
         <p className="text-muted-foreground">Manage countries, states, cities, and measurement units.</p>
       </div>
 
