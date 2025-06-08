@@ -16,6 +16,13 @@ extra_search_path = ["public", "extensions"]
 # The maximum number of rows returns from a view, table, or stored procedure. Limits payload size
 # for accidental or malicious requests.
 max_rows = 1000
+<<<<<<< HEAD
+=======
+# Comma-separated list of allowed origins for CORS requests.
+cors_allowed_origins = [
+  "https://turbo-guide-5g5xpx6jpxwjcvjrj-3000.app.github.dev"
+]
+>>>>>>> c6ea085 (Refactor Supabase configuration for local development, update CORS settings, and enhance SQL migration with conditional index creation.)
 
 [api.tls]
 # Enable HTTPS endpoints locally using a self-signed certificate.

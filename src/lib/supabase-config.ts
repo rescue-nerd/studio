@@ -19,21 +19,9 @@ const DEFAULT_SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3Mi
  * Gets the appropriate Supabase config based on environment
  */
 export function getSupabaseConfig(): SupabaseConfig {
-  // Check if we should use local development
-  const useLocal = useSupabaseLocal();
-  
-  let supabaseUrl: string;
-  let supabaseAnonKey: string;
-  
-  if (useLocal) {
-    // Use local Supabase configuration
-    supabaseUrl = 'http://127.0.0.1:54321';
-    supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxvY2FsIiwicm9sZSI6ImFub24iLCJpYXQiOjE2OTQ3MDA4MDAsImV4cCI6MjAwOTI3NjgwMH0.h_2jkHO5A3-0Zj6mF2gEUqByeP5K0Wjz_G4GqPKRp7k';
-  } else {
-    // Use environment variables or defaults for production
-    supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || DEFAULT_SUPABASE_URL;
-    supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || DEFAULT_SUPABASE_ANON_KEY;
-  }
+  // For development, use the default values if environment variables are not set
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || DEFAULT_SUPABASE_URL;
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || DEFAULT_SUPABASE_ANON_KEY;
 
   return {
     supabaseUrl,
@@ -45,7 +33,5 @@ export function getSupabaseConfig(): SupabaseConfig {
  * Determines if Supabase should use local development
  */
 export function useSupabaseLocal(): boolean {
-  // Temporarily force production mode until Docker is fixed
-  return false;
-  // return process.env.NEXT_PUBLIC_USE_SUPABASE_LOCAL === 'true';
+  return process.env.NEXT_PUBLIC_USE_SUPABASE_LOCAL === 'true';
 }

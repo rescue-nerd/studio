@@ -25,5 +25,14 @@ CREATE POLICY "Allow all access for authenticated users"
   TO authenticated
   USING (true);
 
--- Create index
-CREATE INDEX IF NOT EXISTS idx_invoice_line_customizations_order ON invoice_line_customizations("order");
+-- Create index (only if the table and column exist)
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT FROM information_schema.columns 
+    WHERE table_name = 'invoice_line_customizations' 
+    AND column_name = 'order'
+  ) THEN
+    EXECUTE 'CREATE INDEX IF NOT EXISTS idx_invoice_line_customizations_order ON invoice_line_customizations("order")';
+  END IF;
+END $$;
