@@ -1,93 +1,128 @@
-import { createClient } from 'npm:@supabase/supabase-js@2'
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Allow-Methods': 'PUT, OPTIONS',
 }
 
-interface RequestBody {
-  countryId: string;
-  name?: string;
-  code?: string;
+interface UpdateCountryRequest {
+  id: string;
+  name: string;
+  code: string;
 }
 
-Deno.serve(async (req) => {
+serve(async (req) => {
+  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders })
+    return new Response('ok', { headers: corsHeaders })
   }
 
   try {
+    // Get authorization header
+    const authHeader = req.headers.get('Authorization')
+    if (!authHeader) {
+      return new Response(
+        JSON.stringify({ success: false, error: { message: 'No authorization header' } }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    // Create Supabase client
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+      { global: { headers: { Authorization: authHeader } } }
     )
 
-    const authHeader = req.headers.get('Authorization')!
-    const token = authHeader.replace('Bearer ', '')
-    const { data: { user } } = await supabaseClient.auth.getUser(token)
-
-    if (!user) {
+    // Get user session
+    const { data: { user }, error: userError } = await supabaseClient.auth.getUser()
+    if (userError || !user) {
       return new Response(
-        JSON.stringify({ success: false, message: 'Unauthorized' }),
-        { 
-          status: 401, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        }
+        JSON.stringify({ success: false, error: { message: 'Unauthorized' } }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
 
-    const body: RequestBody = await req.json()
-    
-    if (!body.countryId) {
+    // Get request body
+    const { id, name, code } = await req.json() as UpdateCountryRequest
+
+    // Validate request body
+    if (!id || !name || !code) {
       return new Response(
-        JSON.stringify({ success: false, message: 'Country ID is required' }),
-        { 
-          status: 400, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        }
+        JSON.stringify({ success: false, error: { message: 'ID, name, and code are required' } }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
 
-    const updateData: any = { updated_by: user.id, updated_at: new Date().toISOString() }
-    if (body.name) updateData.name = body.name
-    if (body.code) updateData.code = body.code
-
-    const { data, error } = await supabaseClient
+    // Check if country exists
+    const { data: existingCountry, error: checkError } = await supabaseClient
       .from('countries')
-      .update(updateData)
-      .eq('id', body.countryId)
+      .select('id')
+      .eq('id', id)
+      .single()
+
+    if (checkError) {
+      return new Response(
+        JSON.stringify({ success: false, error: { message: 'Error checking country existence' } }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    if (!existingCountry) {
+      return new Response(
+        JSON.stringify({ success: false, error: { message: 'Country not found' } }),
+        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    // Check if new code conflicts with existing country
+    const { data: codeConflict, error: codeError } = await supabaseClient
+      .from('countries')
+      .select('id')
+      .eq('code', code)
+      .neq('id', id)
+      .single()
+
+    if (codeError && codeError.code !== 'PGRST116') {
+      return new Response(
+        JSON.stringify({ success: false, error: { message: 'Error checking code uniqueness' } }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    if (codeConflict) {
+      return new Response(
+        JSON.stringify({ success: false, error: { message: 'Country code already exists' } }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    // Update country
+    const { data: country, error: updateError } = await supabaseClient
+      .from('countries')
+      .update({ name, code })
+      .eq('id', id)
       .select()
       .single()
 
-    if (error) {
+    if (updateError) {
       return new Response(
-        JSON.stringify({ success: false, message: error.message }),
-        { 
-          status: 400, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        }
+        JSON.stringify({ success: false, error: { message: 'Error updating country' } }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
 
     return new Response(
-      JSON.stringify({ 
-        success: true, 
-        id: data.id, 
-        message: 'Country updated successfully' 
-      }),
-      { 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-      }
+      JSON.stringify({ success: true, data: country }),
+      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
 
   } catch (error) {
     return new Response(
-      JSON.stringify({ success: false, message: error.message }),
-      { 
-        status: 500, 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-      }
+      JSON.stringify({ success: false, error: { message: 'Internal server error' } }),
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
   }
 })

@@ -1,95 +1,129 @@
-import { createClient } from 'npm:@supabase/supabase-js@2'
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Allow-Methods': 'PUT, OPTIONS',
 }
 
-interface RequestBody {
-  unitId: string;
-  name?: string;
-  symbol?: string;
-  type?: string;
+interface UpdateUnitRequest {
+  id: string;
+  name: string;
+  symbol: string;
+  type: "Weight" | "Distance" | "Volume" | "Other";
 }
 
-Deno.serve(async (req) => {
+serve(async (req) => {
+  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders })
+    return new Response('ok', { headers: corsHeaders })
   }
 
   try {
+    // Get authorization header
+    const authHeader = req.headers.get('Authorization')
+    if (!authHeader) {
+      return new Response(
+        JSON.stringify({ success: false, error: { message: 'No authorization header' } }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    // Create Supabase client
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+      { global: { headers: { Authorization: authHeader } } }
     )
 
-    const authHeader = req.headers.get('Authorization')!
-    const token = authHeader.replace('Bearer ', '')
-    const { data: { user } } = await supabaseClient.auth.getUser(token)
-
-    if (!user) {
+    // Get user session
+    const { data: { user }, error: userError } = await supabaseClient.auth.getUser()
+    if (userError || !user) {
       return new Response(
-        JSON.stringify({ success: false, message: 'Unauthorized' }),
-        { 
-          status: 401, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        }
+        JSON.stringify({ success: false, error: { message: 'Unauthorized' } }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
 
-    const body: RequestBody = await req.json()
-    
-    if (!body.unitId) {
+    // Get request body
+    const { id, name, symbol, type } = await req.json() as UpdateUnitRequest
+
+    // Validate request body
+    if (!id || !name || !symbol || !type) {
       return new Response(
-        JSON.stringify({ success: false, message: 'Unit ID is required' }),
-        { 
-          status: 400, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        }
+        JSON.stringify({ success: false, error: { message: 'ID, name, symbol, and type are required' } }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
 
-    const updateData: any = { updated_by: user.id, updated_at: new Date().toISOString() }
-    if (body.name) updateData.name = body.name
-    if (body.symbol) updateData.symbol = body.symbol
-    if (body.type) updateData.type = body.type
-
-    const { data, error } = await supabaseClient
+    // Check if unit exists
+    const { data: existingUnit, error: checkError } = await supabaseClient
       .from('units')
-      .update(updateData)
-      .eq('id', body.unitId)
+      .select('id')
+      .eq('id', id)
+      .single()
+
+    if (checkError) {
+      return new Response(
+        JSON.stringify({ success: false, error: { message: 'Error checking unit existence' } }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    if (!existingUnit) {
+      return new Response(
+        JSON.stringify({ success: false, error: { message: 'Unit not found' } }),
+        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    // Check if new symbol conflicts with existing unit
+    const { data: symbolConflict, error: symbolError } = await supabaseClient
+      .from('units')
+      .select('id')
+      .eq('symbol', symbol)
+      .neq('id', id)
+      .single()
+
+    if (symbolError && symbolError.code !== 'PGRST116') {
+      return new Response(
+        JSON.stringify({ success: false, error: { message: 'Error checking symbol uniqueness' } }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    if (symbolConflict) {
+      return new Response(
+        JSON.stringify({ success: false, error: { message: 'Unit symbol already exists' } }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    // Update unit
+    const { data: unit, error: updateError } = await supabaseClient
+      .from('units')
+      .update({ name, symbol, type })
+      .eq('id', id)
       .select()
       .single()
 
-    if (error) {
+    if (updateError) {
       return new Response(
-        JSON.stringify({ success: false, message: error.message }),
-        { 
-          status: 400, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        }
+        JSON.stringify({ success: false, error: { message: 'Error updating unit' } }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
 
     return new Response(
-      JSON.stringify({ 
-        success: true, 
-        id: data.id, 
-        message: 'Unit updated successfully' 
-      }),
-      { 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-      }
+      JSON.stringify({ success: true, data: unit }),
+      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
 
   } catch (error) {
     return new Response(
-      JSON.stringify({ success: false, message: error.message }),
-      { 
-        status: 500, 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-      }
+      JSON.stringify({ success: false, error: { message: 'Internal server error' } }),
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
   }
 })

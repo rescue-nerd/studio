@@ -1,57 +1,82 @@
 {
-    "IDX.aI.enableInlineCompletion": true,
-    "IDX.aI.enableCodebaseIndexing": true,
-    "typescript.suggest.autoImports": true,
-    "typescript.updateImportsOnFileMove.enabled": "always",
-    "editor.formatOnSave": true,
-    "editor.codeActionsOnSave": {
-        "source.fixAll.eslint": "explicit",
-        "source.organizeImports": "explicit"
-    },
-    "files.associations": {
-        "*.tsx": "typescriptreact",
-        "*.ts": "typescript"
-    },
-    "emmet.includeLanguages": {
-        "typescriptreact": "html"
-    },
-    "tailwindCSS.includeLanguages": {
-        "typescript": "typescript",
-        "typescriptreact": "typescriptreact"
-    },
-    "tailwindCSS.experimental.classRegex": [
-        ["cva\\(([^)]*)\\)", "[\"'`]([^\"'`]*).*?[\"'`]"],
-        ["cx\\(([^)]*)\\)", "(?:'|\"|`)([^']*)(?:'|\"|`)"]
+  "IDX.aI.enableCodebaseIndexing": true,
+  "IDX.aI.enableInlineCompletion": true,
+  "[json]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[typescript]": {
+    "editor.defaultFormatter": "denoland.vscode-deno"
+  },
+  "[typescriptreact]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "deno.enablePaths": [
+    "supabase/functions"
+  ],
+  "deno.lint": true,
+  "deno.unstable": [
+    "bare-node-builtins",
+    "byonm",
+    "sloppy-imports",
+    "unsafe-proto",
+    "webgpu",
+    "broadcast-channel",
+    "worker-options",
+    "cron",
+    "kv",
+    "ffi",
+    "fs",
+    "http",
+    "net"
+  ],
+  "editor.codeActionsOnSave": {
+    "source.fixAll.eslint": "explicit",
+    "source.organizeImports": "explicit"
+  },
+  "editor.formatOnSave": true,
+  "emmet.includeLanguages": {
+    "typescriptreact": "html"
+  },
+  "files.associations": {
+    "*.ts": "typescript",
+    "*.tsx": "typescriptreact"
+  },
+  "files.exclude": {
+    "**/.DS_Store": true,
+    "**/.firebase": true,
+    "**/.git": true,
+    "**/.next": true,
+    "**/firebase-data": true,
+    "**/firebase-data-backup": true,
+    "**/functions/lib": true,
+    "**/node_modules": true
+  },
+  "firebase.emulators": true,
+  "firebase.firestore.rules": true,
+  "firebase.functions": true,
+  "firebase.hosting": true,
+  "search.exclude": {
+    "**/.firebase": true,
+    "**/.next": true,
+    "**/firebase-data": true,
+    "**/firebase-data-backup": true,
+    "**/functions/lib": true,
+    "**/node_modules": true
+  },
+  "tailwindCSS.experimental.classRegex": [
+    [
+      "cva\\(([^)]*)\\)",
+      "[\"'`]([^\"'`]*).*?[\"'`]"
     ],
-    "files.exclude": {
-        "**/node_modules": true,
-        "**/.git": true,
-        "**/.DS_Store": true,
-        "**/firebase-data": true,
-        "**/firebase-data-backup": true,
-        "**/.firebase": true,
-        "**/functions/lib": true,
-        "**/.next": true
-    },
-    "search.exclude": {
-        "**/node_modules": true,
-        "**/firebase-data": true,
-        "**/firebase-data-backup": true,
-        "**/.firebase": true,
-        "**/functions/lib": true,
-        "**/.next": true
-    },
-    "firebase.firestore.rules": true,
-    "firebase.hosting": true,
-    "firebase.functions": true,
-    "firebase.emulators": true,
-    "[typescript]": {
-        "editor.defaultFormatter": "esbenp.prettier-vscode"
-    },
-    "[typescriptreact]": {
-        "editor.defaultFormatter": "esbenp.prettier-vscode"
-    },
-    "[json]": {
-        "editor.defaultFormatter": "esbenp.prettier-vscode"
-    }
+    [
+      "cx\\(([^)]*)\\)",
+      "(?:'|\"|`)([^']*)(?:'|\"|`)"
+    ]
+  ],
+  "tailwindCSS.includeLanguages": {
+    "typescript": "typescript",
+    "typescriptreact": "typescriptreact"
+  },
+  "typescript.suggest.autoImports": true,
+  "typescript.updateImportsOnFileMove.enabled": "always"
 }

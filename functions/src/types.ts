@@ -1,4 +1,4 @@
-import type {Timestamp} from "firebase-admin/firestore"; // Use admin SDK Timestamp for functions
+import type { Timestamp } from "firebase-admin/firestore"; // Use admin SDK Timestamp for functions
 
 // This file mirrors relevant parts of src/types/firestore.ts but for backend functions.
 // Ensure consistency or share types if possible in a monorepo setup.

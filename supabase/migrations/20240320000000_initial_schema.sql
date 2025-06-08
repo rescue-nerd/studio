@@ -4,10 +4,11 @@ create extension if not exists "pgcrypto";
 
 -- Create enum types
 create type user_role as enum ('super_admin', 'admin', 'manager', 'operator');
+create type user_status as enum ('active', 'inactive', 'disabled');
 create type status as enum ('active', 'inactive', 'disabled');
 create type party_type as enum ('consignor', 'consignee', 'both');
 create type pay_mode as enum ('cash', 'credit', 'bank_transfer');
-create type cash_collection_status as enum ('pending', 'collected', 'partially_collected');
+create type cash_collection_status as enum ('Pending', 'collected', 'partially_collected');
 create type document_type as enum ('bilti', 'manifest', 'goods_receipt', 'goods_delivery', 'daybook');
 create type party_status as enum ('Active', 'Inactive');
 create type truck_status as enum ('Active', 'Inactive', 'Maintenance');

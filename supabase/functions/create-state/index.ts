@@ -1,9 +1,10 @@
-import { createClient } from 'npm:@supabase/supabase-js@2'
+import { createClient } from 'npm:@supabase/supabase-js@2';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Allow-Headers': '*',
+  'Access-Control-Allow-Methods': '*',
+  'Access-Control-Max-Age': '86400',
 }
 
 interface RequestBody {
@@ -11,24 +12,40 @@ interface RequestBody {
   countryId: string;
 }
 
+interface StateData {
+  id: string;
+  name: string;
+  country_id: string;
+  created_by: string;
+  created_at: string;
+  updated_by: string;
+  updated_at: string;
+}
+
 Deno.serve(async (req) => {
+  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders })
+    return new Response(null, { 
+      status: 204,
+      headers: corsHeaders 
+    })
   }
 
   try {
+    // Initialize Supabase client
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     )
 
-    const authHeader = req.headers.get('Authorization')!
-    const token = authHeader.replace('Bearer ', '')
-    const { data: { user } } = await supabaseClient.auth.getUser(token)
-
-    if (!user) {
+    // Verify authentication
+    const authHeader = req.headers.get('Authorization')
+    if (!authHeader) {
       return new Response(
-        JSON.stringify({ success: false, message: 'Unauthorized' }),
+        JSON.stringify({ 
+          success: false, 
+          error: { message: 'Authorization header is required' }
+        }),
         { 
           status: 401, 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
@@ -36,11 +53,31 @@ Deno.serve(async (req) => {
       )
     }
 
+    const token = authHeader.replace('Bearer ', '')
+    const { data: { user }, error: authError } = await supabaseClient.auth.getUser(token)
+
+    if (authError || !user) {
+      return new Response(
+        JSON.stringify({ 
+          success: false, 
+          error: { message: 'Unauthorized' }
+        }),
+        { 
+          status: 401, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      )
+    }
+
+    // Parse and validate request body
     const body: RequestBody = await req.json()
     
     if (!body.name || !body.countryId) {
       return new Response(
-        JSON.stringify({ success: false, message: 'Name and country ID are required' }),
+        JSON.stringify({ 
+          success: false, 
+          error: { message: 'Name and country ID are required' }
+        }),
         { 
           status: 400, 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
@@ -48,7 +85,68 @@ Deno.serve(async (req) => {
       )
     }
 
-    const { data, error } = await supabaseClient
+    // Check if country exists
+    const { data: country, error: countryError } = await supabaseClient
+      .from('countries')
+      .select('id')
+      .eq('id', body.countryId)
+      .single()
+
+    if (countryError || !country) {
+      return new Response(
+        JSON.stringify({ 
+          success: false, 
+          error: { 
+            message: 'Specified country does not exist',
+            details: countryError?.message
+          }
+        }),
+        { 
+          status: 400, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      )
+    }
+
+    // Check if state with same name already exists in the country
+    const { data: existingState, error: checkError } = await supabaseClient
+      .from('states')
+      .select('id')
+      .eq('name', body.name)
+      .eq('country_id', body.countryId)
+      .single()
+
+    if (checkError && checkError.code !== 'PGRST116') { // PGRST116 is "no rows returned"
+      return new Response(
+        JSON.stringify({ 
+          success: false, 
+          error: { 
+            message: 'Error checking state existence',
+            details: checkError.message
+          }
+        }),
+        { 
+          status: 500, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      )
+    }
+
+    if (existingState) {
+      return new Response(
+        JSON.stringify({ 
+          success: false, 
+          error: { message: 'A state with this name already exists in the selected country' }
+        }),
+        { 
+          status: 400, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      )
+    }
+
+    // Create state
+    const { data: newState, error: createError } = await supabaseClient
       .from('states')
       .insert({
         name: body.name,
@@ -59,9 +157,16 @@ Deno.serve(async (req) => {
       .select()
       .single()
 
-    if (error) {
+    if (createError) {
+      console.error('Error creating state:', createError);
       return new Response(
-        JSON.stringify({ success: false, message: error.message }),
+        JSON.stringify({ 
+          success: false, 
+          error: { 
+            message: 'Failed to create state',
+            details: createError.message
+          }
+        }),
         { 
           status: 400, 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
@@ -69,11 +174,16 @@ Deno.serve(async (req) => {
       )
     }
 
+    // Return success response with camelCase field names
     return new Response(
       JSON.stringify({ 
         success: true, 
-        id: data.id, 
-        message: 'State created successfully' 
+        data: {
+          id: newState.id,
+          name: newState.name,
+          countryId: newState.country_id,
+          createdAt: newState.created_at
+        }
       }),
       { 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
@@ -81,8 +191,15 @@ Deno.serve(async (req) => {
     )
 
   } catch (error) {
+    console.error('Error creating state:', error)
     return new Response(
-      JSON.stringify({ success: false, message: error.message }),
+      JSON.stringify({ 
+        success: false, 
+        error: { 
+          message: 'Internal server error',
+          details: error instanceof Error ? error.message : 'Unknown error'
+        }
+      }),
       { 
         status: 500, 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' } 

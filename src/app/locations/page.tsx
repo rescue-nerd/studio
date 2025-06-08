@@ -1,26 +1,27 @@
 "use client";
 
 import {
-    AlertDialog,
-    AlertDialogAction,
-    AlertDialogCancel,
-    AlertDialogContent,
-    AlertDialogDescription,
-    AlertDialogFooter,
-    AlertDialogHeader,
-    AlertDialogTitle,
-    AlertDialogTrigger,
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
-    Dialog,
-    DialogClose,
-    DialogContent,
-    DialogFooter,
-    DialogHeader,
-    DialogTitle,
-    DialogTrigger
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -55,154 +56,305 @@ const defaultStateFormData: StateFormData = { name: "", countryId: "" };
 const defaultCityFormData: CityFormData = { name: "", stateId: "" };
 const defaultUnitFormData: UnitFormData = { name: "", symbol: "", type: "Other" };
 
-// Countries
-const createCountryFn = async (data: CountryFormData) => {
-  const response = await supabase.functions.invoke('create-country', {
-    body: data
-  });
-  
-  if (response.error) {
-    throw new Error(response.error.message || 'Failed to create country');
-  }
-  
-  return response.data;
-};
+interface CountryResponse {
+  success: boolean;
+  error?: { message: string };
+  data?: any;
+}
 
-const updateCountryFn = async (data: {countryId: string} & Partial<CountryFormData>) => {
-  const response = await supabase.functions.invoke('update-country', {
-    body: data
-  });
-  
-  if (response.error) {
-    throw new Error(response.error.message || 'Failed to update country');
-  }
-  
-  return response.data;
-};
+const createCountryFn = async (data: { name: string; code: string }) => {
+  try {
+    const session = await supabase.auth.getSession();
+    const { data: response, error } = await supabase.functions.invoke('create-country', {
+      body: { name: data.name, code: data.code },
+      headers: {
+        'Authorization': `Bearer ${session.data.session?.access_token}`
+      }
+    })
 
-const deleteCountryFn = async (data: {countryId: string}) => {
-  const response = await supabase.functions.invoke('delete-country', {
-    body: data
-  });
-  
-  if (response.error) {
-    throw new Error(response.error.message || 'Failed to delete country');
+    if (error) {
+      throw new Error(error.message || 'Failed to create country')
+    }
+
+    if (response && !response.success) {
+      throw new Error(response.error?.message || 'Failed to create country')
+    }
+
+    return { success: true, data: response?.data }
+  } catch (error) {
+    console.error('Create country error:', error)
+    throw error
   }
-  
-  return response.data;
-};
+}
+
+const updateCountryFn = async (data: { id: string; name: string; code: string }) => {
+  try {
+    const session = await supabase.auth.getSession();
+    const { data: response, error } = await supabase.functions.invoke('update-country', {
+      body: { id: data.id, name: data.name, code: data.code },
+      headers: {
+        'Authorization': `Bearer ${session.data.session?.access_token}`
+      }
+    })
+
+    if (error) {
+      throw new Error(error.message || 'Failed to update country')
+    }
+
+    if (response && !response.success) {
+      throw new Error(response.error?.message || 'Failed to update country')
+    }
+
+    return { success: true, data: response?.data }
+  } catch (error) {
+    console.error('Update country error:', error)
+    throw error
+  }
+}
+
+const deleteCountryFn = async (data: { id: string }) => {
+  try {
+    const session = await supabase.auth.getSession();
+    const { data: response, error } = await supabase.functions.invoke('delete-country', {
+      body: { id: data.id },
+      headers: {
+        'Authorization': `Bearer ${session.data.session?.access_token}`
+      }
+    })
+
+    if (error) {
+      throw new Error(error.message || 'Failed to delete country')
+    }
+
+    if (response && !response.success) {
+      throw new Error(response.error?.message || 'Failed to delete country')
+    }
+
+    return { success: true, data: response?.data }
+  } catch (error) {
+    console.error('Delete country error:', error)
+    throw error
+  }
+}
 
 // States
 const createStateFn = async (data: StateFormData) => {
-  const response = await supabase.functions.invoke('create-state', {
-    body: data
-  });
-  
-  if (response.error) {
-    throw new Error(response.error.message || 'Failed to create state');
+  try {
+    const session = await supabase.auth.getSession();
+    const { data: response, error } = await supabase.functions.invoke('create-state', {
+      body: data,
+      headers: {
+        'Authorization': `Bearer ${session.data.session?.access_token}`
+      }
+    });
+    
+    if (error) {
+      throw new Error(error.message || 'Failed to create state');
+    }
+    
+    if (response && !response.success) {
+      throw new Error(response.error?.message || 'Failed to create state');
+    }
+    
+    return { success: true, data: response?.data };
+  } catch (error) {
+    console.error('Create state error:', error)
+    throw error
   }
-  
-  return response.data;
 };
 
 const updateStateFn = async (data: {stateId: string} & Partial<StateFormData>) => {
-  const response = await supabase.functions.invoke('update-state', {
-    body: data
-  });
-  
-  if (response.error) {
-    throw new Error(response.error.message || 'Failed to update state');
+  try {
+    const session = await supabase.auth.getSession();
+    const { data: response, error } = await supabase.functions.invoke('update-state', {
+      body: {
+        id: data.stateId,
+        name: data.name,
+        countryId: data.countryId
+      },
+      headers: {
+        'Authorization': `Bearer ${session.data.session?.access_token}`,
+        'Content-Type': 'application/json',
+        'x-client-info': 'supabase-js/2.0.0'
+      }
+    });
+    
+    if (error) {
+      throw new Error(error.message || 'Failed to update state');
+    }
+    
+    if (response && !response.success) {
+      throw new Error(response.error?.message || 'Failed to update state');
+    }
+    
+    return { success: true, data: response?.data };
+  } catch (error) {
+    console.error('Update state error:', error)
+    throw error
   }
-  
-  return response.data;
 };
 
 const deleteStateFn = async (data: {stateId: string}) => {
-  const response = await supabase.functions.invoke('delete-state', {
-    body: data
-  });
-  
-  if (response.error) {
-    throw new Error(response.error.message || 'Failed to delete state');
+  try {
+    const { data: response, error } = await supabase.functions.invoke('delete-state', {
+      body: {
+        id: data.stateId
+      }
+    });
+    
+    if (error) {
+      throw new Error(error.message || 'Failed to delete state');
+    }
+    
+    if (response && !response.success) {
+      throw new Error(response.error?.message || 'Failed to delete state');
+    }
+    
+    return { success: true, data: response?.data };
+  } catch (error) {
+    console.error('Delete state error:', error)
+    throw error
   }
-  
-  return response.data;
 };
 
 // Cities
 const createCityFn = async (data: CityFormData) => {
-  const response = await supabase.functions.invoke('create-city', {
-    body: data
-  });
-  
-  if (response.error) {
-    throw new Error(response.error.message || 'Failed to create city');
+  try {
+    const { data: response, error } = await supabase.functions.invoke('create-city', {
+      body: data
+    });
+    
+    if (error) {
+      throw new Error(error.message || 'Failed to create city');
+    }
+    
+    if (response && !response.success) {
+      throw new Error(response.error?.message || 'Failed to create city');
+    }
+    
+    return { success: true, data: response?.data };
+  } catch (error) {
+    console.error('Create city error:', error)
+    throw error
   }
-  
-  return response.data;
 };
 
 const updateCityFn = async (data: {cityId: string} & Partial<CityFormData>) => {
-  const response = await supabase.functions.invoke('update-city', {
-    body: data
-  });
-  
-  if (response.error) {
-    throw new Error(response.error.message || 'Failed to update city');
+  try {
+    const { data: response, error } = await supabase.functions.invoke('update-city', {
+      body: {
+        id: data.cityId,
+        name: data.name,
+        stateId: data.stateId
+      }
+    });
+    
+    if (error) {
+      throw new Error(error.message || 'Failed to update city');
+    }
+    
+    if (response && !response.success) {
+      throw new Error(response.error?.message || 'Failed to update city');
+    }
+    
+    return { success: true, data: response?.data };
+  } catch (error) {
+    console.error('Update city error:', error)
+    throw error
   }
-  
-  return response.data;
 };
 
 const deleteCityFn = async (data: {cityId: string}) => {
-  const response = await supabase.functions.invoke('delete-city', {
-    body: data
-  });
-  
-  if (response.error) {
-    throw new Error(response.error.message || 'Failed to delete city');
+  try {
+    const { data: response, error } = await supabase.functions.invoke('delete-city', {
+      body: {
+        id: data.cityId
+      }
+    });
+    
+    if (error) {
+      throw new Error(error.message || 'Failed to delete city');
+    }
+    
+    if (response && !response.success) {
+      throw new Error(response.error?.message || 'Failed to delete city');
+    }
+    
+    return { success: true, data: response?.data };
+  } catch (error) {
+    console.error('Delete city error:', error)
+    throw error
   }
-  
-  return response.data;
 };
 
-// Units
-const createUnitFn = async (data: UnitFormData) => {
-  const response = await supabase.functions.invoke('create-unit', {
-    body: data
-  });
-  
-  if (response.error) {
-    throw new Error(response.error.message || 'Failed to create unit');
+interface UnitResponse {
+  success: boolean;
+  error?: { message: string };
+  data?: any;
+}
+
+const createUnitFn = async (data: { name: string; symbol: string; type: string }) => {
+  console.log('Creating unit with data:', data);
+  try {
+    const { data: response, error } = await supabase.functions.invoke('create-unit', {
+      body: { name: data.name, symbol: data.symbol, type: data.type }
+    });
+
+    console.log('Create unit response:', response);
+    console.log('Create unit error:', error);
+
+    if (error) {
+      throw new Error(error.message || 'Failed to create unit');
+    }
+
+    return { success: true, data: response?.data };
+  } catch (error: any) {
+    console.error('Error in createUnitFn:', error);
+    throw error;
   }
-  
-  return response.data;
 };
 
-const updateUnitFn = async (data: {unitId: string} & Partial<UnitFormData>) => {
-  const response = await supabase.functions.invoke('update-unit', {
-    body: data
-  });
-  
-  if (response.error) {
-    throw new Error(response.error.message || 'Failed to update unit');
+const updateUnitFn = async (data: { id: string; name: string; symbol: string; type: string }) => {
+  console.log('Updating unit with data:', data);
+  try {
+    const { data: response, error } = await supabase.functions.invoke('update-unit', {
+      body: { id: data.id, name: data.name, symbol: data.symbol, type: data.type }
+    });
+
+    console.log('Update unit response:', response);
+    console.log('Update unit error:', error);
+
+    if (error) {
+      throw new Error(error.message || 'Failed to update unit');
+    }
+
+    return { success: true, data: response?.data };
+  } catch (error: any) {
+    console.error('Error in updateUnitFn:', error);
+    throw error;
   }
-  
-  return response.data;
 };
 
-const deleteUnitFn = async (data: {unitId: string}) => {
-  const response = await supabase.functions.invoke('delete-unit', {
-    body: data
-  });
-  
-  if (response.error) {
-    throw new Error(response.error.message || 'Failed to delete unit');
-  }
-  
-  return response.data;
-};
+const deleteUnitFn = async (data: { id: string }) => {
+  console.log('Deleting unit with id:', data.id);
+  try {
+    const { data: response, error } = await supabase.functions.invoke('delete-unit', {
+      body: { id: data.id }
+    });
 
+    console.log('Delete unit response:', response);
+    console.log('Delete unit error:', error);
+
+    if (error) {
+      throw new Error(error.message || 'Failed to delete unit');
+    }
+
+    return { success: true, data: response?.data };
+  } catch (error: any) {
+    console.error('Error in deleteUnitFn:', error);
+    throw error;
+  }
+};
 
 export default function LocationsPage() {
   const { toast } = useToast();
@@ -219,6 +371,14 @@ export default function LocationsPage() {
   const [isLoadingCities, setIsLoadingCities] = useState(true);
   const [isLoadingUnits, setIsLoadingUnits] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [unitToDelete, setUnitToDelete] = useState<Unit | null>(null);
+  const [isUnitDeleteOpen, setIsUnitDeleteOpen] = useState(false);
+  const [editingUnit, setEditingUnit] = useState<Unit | null>(null);
+  const [unitFormData, setUnitFormData] = useState<UnitFormData>(defaultUnitFormData);
+  const [showUnitDialog, setShowUnitDialog] = useState(false);
+  const [searchTermUnits, setSearchTermUnits] = useState("");
+  const [isUnitFormOpen, setIsUnitFormOpen] = useState(false);
 
   useEffect(() => {
     if (!authLoading && !authUser) {
@@ -332,14 +492,6 @@ export default function LocationsPage() {
   const [isCityDeleteOpen, setIsCityDeleteOpen] = useState(false);
   const [cityToDelete, setCityToDelete] = useState<City | null>(null);
 
-  // State for Units Tab
-  const [searchTermUnits, setSearchTermUnits] = useState("");
-  const [isUnitFormOpen, setIsUnitFormOpen] = useState(false);
-  const [editingUnit, setEditingUnit] = useState<Unit | null>(null);
-  const [unitFormData, setUnitFormData] = useState<UnitFormData>(defaultUnitFormData);
-  const [isUnitDeleteOpen, setIsUnitDeleteOpen] = useState(false);
-  const [unitToDelete, setUnitToDelete] = useState<Unit | null>(null);
-
   // --- Countries Handlers ---
   const handleCountryFormChange = (e: ChangeEvent<HTMLInputElement>) => setCountryFormData(prev => ({ ...prev, [e.target.name]: e.target.value }));
   const openAddCountryForm = () => { setEditingCountry(null); setCountryFormData(defaultCountryFormData); setIsCountryFormOpen(true); };
@@ -358,19 +510,19 @@ export default function LocationsPage() {
     }
     setIsSubmitting(true);
     try {
-      let result: {success: boolean; id: string; message: string};
+      let result: {success: boolean; data: any};
       if (editingCountry) {
-        result = await updateCountryFn({ countryId: editingCountry.id, ...countryFormData });
+        result = await updateCountryFn({ id: editingCountry.id, name: countryFormData.name, code: countryFormData.code });
       } else {
         result = await createCountryFn(countryFormData);
       }
       
       if (result.success) {
-        toast({ title: "Success", description: result.message });
+        toast({ title: "Success", description: `Country ${editingCountry ? 'updated' : 'created'} successfully.` });
         fetchCountries();
         setIsCountryFormOpen(false);
       } else {
-        toast({ title: "Error", description: result.message, variant: "destructive" });
+        toast({ title: "Error", description: "Failed to save country.", variant: "destructive" });
       }
     } catch (error: any) {
       console.error("Error saving country: ", error);
@@ -384,13 +536,13 @@ export default function LocationsPage() {
     if (countryToDelete) {
       setIsSubmitting(true);
       try {
-        const result = await deleteCountryFn({ countryId: countryToDelete.id });
+        const result = await deleteCountryFn({ id: countryToDelete.id });
         
         if (result.success) {
-          toast({ title: "Success", description: result.message });
+          toast({ title: "Success", description: "Country deleted successfully." });
           fetchCountries();
         } else {
-          toast({ title: "Error", description: result.message, variant: "destructive" });
+          toast({ title: "Error", description: "Failed to delete country.", variant: "destructive" });
         }
       } catch (error: any) {
         console.error("Error deleting country:", error);
@@ -423,7 +575,7 @@ export default function LocationsPage() {
     }
     setIsSubmitting(true);
     try {
-      let result: {success: boolean; id: string; message: string};
+      let result: {success: boolean; data: any};
       if (editingState) {
         result = await updateStateFn({ stateId: editingState.id, ...stateFormData });
       } else {
@@ -431,11 +583,11 @@ export default function LocationsPage() {
       }
       
        if (result.success) {
-        toast({ title: "Success", description: result.message });
+        toast({ title: "Success", description: `State ${editingState ? 'updated' : 'created'} successfully.` });
         fetchStates();
         setIsStateFormOpen(false);
       } else {
-        toast({ title: "Error", description: result.message, variant: "destructive" });
+        toast({ title: "Error", description: "Failed to save state.", variant: "destructive" });
       }
     } catch (error: any) {
       console.error("Error saving state: ", error);
@@ -452,10 +604,10 @@ export default function LocationsPage() {
         const result = await deleteStateFn({ stateId: stateToDelete.id });
         
         if (result.success) {
-          toast({ title: "Success", description: result.message });
+          toast({ title: "Success", description: "State deleted successfully." });
           fetchStates();
         } else {
-          toast({ title: "Error", description: result.message, variant: "destructive" });
+          toast({ title: "Error", description: "Failed to delete state.", variant: "destructive" });
         }
       } catch (error: any) {
         console.error("Error deleting state:", error);
@@ -489,7 +641,7 @@ export default function LocationsPage() {
     }
     setIsSubmitting(true);
     try {
-      let result: {success: boolean; id: string; message: string};
+      let result: {success: boolean; data: any};
       if (editingCity) {
         result = await updateCityFn({ cityId: editingCity.id, ...cityFormData });
       } else {
@@ -497,11 +649,11 @@ export default function LocationsPage() {
       }
       
       if (result.success) {
-        toast({ title: "Success", description: result.message });
+        toast({ title: "Success", description: `City ${editingCity ? 'updated' : 'created'} successfully.` });
         fetchCities();
         setIsCityFormOpen(false);
       } else {
-        toast({ title: "Error", description: result.message, variant: "destructive" });
+        toast({ title: "Error", description: "Failed to save city.", variant: "destructive" });
       }
     } catch (error: any) {
       console.error("Error saving city: ", error);
@@ -518,10 +670,10 @@ export default function LocationsPage() {
         const result = await deleteCityFn({ cityId: cityToDelete.id });
         
         if (result.success) {
-          toast({ title: "Success", description: result.message });
+          toast({ title: "Success", description: "City deleted successfully." });
           fetchCities();
         } else {
-          toast({ title: "Error", description: result.message, variant: "destructive" });
+          toast({ title: "Error", description: "Failed to delete city.", variant: "destructive" });
         }
       } catch (error: any) {
         console.error("Error deleting city:", error);
@@ -545,28 +697,30 @@ export default function LocationsPage() {
     setUnitFormData(editableData); 
     setIsUnitFormOpen(true); 
   };
-  const handleUnitSubmit = async (e: FormEvent) => {
+  const handleUnitSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!authUser) return;
-    if (!unitFormData.name || !unitFormData.symbol || !unitFormData.type) {
-      toast({ title: "Validation Error", description: "Unit Name, Symbol, and Type are required.", variant: "destructive" });
-      return;
-    }
     setIsSubmitting(true);
+    setError(null);
+
     try {
-      let result: {success: boolean; id: string; message: string};
+      let result: {success: boolean; data: any};
       if (editingUnit) {
-        result = await updateUnitFn({ unitId: editingUnit.id, ...unitFormData });
+        result = await updateUnitFn({
+          id: editingUnit.id,
+          name: unitFormData.name,
+          symbol: unitFormData.symbol,
+          type: unitFormData.type
+        });
       } else {
         result = await createUnitFn(unitFormData);
       }
-      
+
       if (result.success) {
-        toast({ title: "Success", description: result.message });
+        toast({ title: "Success", description: `Unit ${editingUnit ? 'updated' : 'created'} successfully.` });
         fetchUnits();
         setIsUnitFormOpen(false);
       } else {
-        toast({ title: "Error", description: result.message, variant: "destructive" });
+        toast({ title: "Error", description: "Failed to save unit.", variant: "destructive" });
       }
     } catch (error: any) {
       console.error("Error saving unit: ", error);
@@ -575,26 +729,28 @@ export default function LocationsPage() {
       setIsSubmitting(false);
     }
   };
-  const handleDeleteUnitClick = (unit: Unit) => { setUnitToDelete(unit); setIsUnitDeleteOpen(true); };
-  const confirmDeleteUnit = async () => {
-    if (unitToDelete) {
-      setIsSubmitting(true);
-      try {
-        const result = await deleteUnitFn({ unitId: unitToDelete.id });
-        
-        if (result.success) {
-          toast({ title: "Success", description: result.message });
-          fetchUnits();
-        } else {
-          toast({ title: "Error", description: result.message, variant: "destructive" });
-        }
-      } catch (error: any) {
-        console.error("Error deleting unit:", error);
-        toast({ title: "Error", description: error.message || "Failed to delete unit.", variant: "destructive" });
-      } finally {
-        setIsSubmitting(false);
-        setIsUnitDeleteOpen(false); setUnitToDelete(null);
+  const handleUnitDelete = async () => {
+    if (!unitToDelete) return;
+
+    setIsSubmitting(true);
+    setError(null);
+
+    try {
+      const result = await deleteUnitFn({ id: unitToDelete.id });
+      
+      if (result.success) {
+        toast({ title: "Success", description: "Unit deleted successfully." });
+        fetchUnits();
+      } else {
+        toast({ title: "Error", description: "Failed to delete unit.", variant: "destructive" });
       }
+    } catch (error: any) {
+      console.error("Error deleting unit:", error);
+      toast({ title: "Error", description: error.message || "Failed to delete unit.", variant: "destructive" });
+    } finally {
+      setIsSubmitting(false);
+      setIsUnitDeleteOpen(false);
+      setUnitToDelete(null);
     }
   };
   const filteredUnits = units.filter(u => u.name.toLowerCase().includes(searchTermUnits.toLowerCase()) || u.symbol.toLowerCase().includes(searchTermUnits.toLowerCase()));
@@ -737,6 +893,9 @@ export default function LocationsPage() {
                   <DialogContent>
                     <DialogHeader>
                       <DialogTitle>{editingState ? "Edit State" : "Add New State"}</DialogTitle>
+                      <DialogDescription>
+                        {editingState ? "Update the state's information below." : "Fill in the state's information below."}
+                      </DialogDescription>
                     </DialogHeader>
                     <form onSubmit={handleStateSubmit} className="space-y-4">
                       <div>
@@ -975,13 +1134,13 @@ export default function LocationsPage() {
                           <Button variant="outline" size="icon" aria-label="Edit Unit" onClick={() => openEditUnitForm(unit)} disabled={isSubmitting}><Edit className="h-4 w-4" /></Button>
                            <AlertDialog open={isUnitDeleteOpen && unitToDelete?.id === unit.id} onOpenChange={(open) => { if(!open) setUnitToDelete(null); setIsUnitDeleteOpen(open);}}>
                             <AlertDialogTrigger asChild>
-                              <Button variant="destructive" size="icon" aria-label="Delete Unit" onClick={() => handleDeleteUnitClick(unit)} disabled={isSubmitting}><Trash2 className="h-4 w-4" /></Button>
+                              <Button variant="destructive" size="icon" aria-label="Delete Unit" onClick={() => { setUnitToDelete(unit); setIsUnitDeleteOpen(true); }} disabled={isSubmitting}><Trash2 className="h-4 w-4" /></Button>
                             </AlertDialogTrigger>
                             <AlertDialogContent>
                               <AlertDialogHeader><AlertDialogTitle>Delete Unit?</AlertDialogTitle><AlertDialogDescription>This will delete "{unitToDelete?.name}". This action cannot be undone.</AlertDialogDescription></AlertDialogHeader>
                               <AlertDialogFooter>
                                 <AlertDialogCancel onClick={() => setIsUnitDeleteOpen(false)} disabled={isSubmitting}>Cancel</AlertDialogCancel>
-                                <AlertDialogAction onClick={confirmDeleteUnit} disabled={isSubmitting}>
+                                <AlertDialogAction onClick={handleUnitDelete} disabled={isSubmitting}>
                                   {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}
                                   Delete
                                 </AlertDialogAction>
