@@ -32,7 +32,6 @@ import { useAuth } from "@/contexts/auth-context";
 import { useToast } from "@/hooks/use-toast";
 import { handleSupabaseError, logError } from "@/lib/supabase-error-handler";
 import { supabase } from "@/lib/supabase";
-import { db } from "@/lib/supabase-db";
 import type { Truck as FirestoreTruck } from "@/types/firestore";
 import { Edit, Loader2, PlusCircle, Search, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -98,9 +97,15 @@ export default function TrucksPage() {
     if (!authUser) return;
     setIsLoading(true);
     try {
-      const { data, error } = await db.query('trucks', { select: '*', orderBy: { column: 'truckNo', ascending: true } });
+      const { data, error } = await supabase
+        .from('trucks')
+        .select('*')
+        .order('truck_no', { ascending: true });
+
       if (error) throw error;
-      setTrucks(data);
+      
+      // Initialize trucks as an empty array if data is null
+      setTrucks(data || []);
     } catch (error) {
       logError(error, "Error fetching trucks");
       handleSupabaseError(error, toast, {
@@ -156,9 +161,7 @@ export default function TrucksPage() {
     }
     setIsSubmitting(true);
 
-    const truckDataPayload: TruckFormDataCallable = {
-        ...formData,
-    };
+    const truckDataPayload: TruckFormDataCallable = { ...formData };
 
     try {
       let result: any;
@@ -168,13 +171,17 @@ export default function TrucksPage() {
         result = await createTruckFn(truckDataPayload);
       }
 
-      if (result.success) {
+      if (result && result.success) {
         toast({ title: "Success", description: result.message });
         fetchTrucks();
         setIsFormDialogOpen(false);
         setEditingTruck(null);
       } else {
-        toast({ title: "Error", description: result.message, variant: "destructive" });
+        toast({ 
+          title: "Error", 
+          description: result?.message || (editingTruck ? "Failed to update truck" : "Failed to create truck"), 
+          variant: "destructive" 
+        });
       }
     } catch (error: any) {
         console.error("Error saving truck:", error);
@@ -194,11 +201,15 @@ export default function TrucksPage() {
       setIsSubmitting(true);
       try {
         const result = await deleteTruckFn({ truckId: truckToDelete.id });
-        if (result.success) {
+        if (result && result.success) {
             toast({ title: "Success", description: result.message });
             fetchTrucks();
         } else {
-            toast({ title: "Error", description: result.message, variant: "destructive" });
+            toast({ 
+              title: "Error", 
+              description: result?.message || "Could not delete truck.", 
+              variant: "destructive" 
+            });
         }
       } catch (error: any) {
         console.error("Error deleting truck: ", error);
@@ -211,11 +222,14 @@ export default function TrucksPage() {
     }
   };
 
-  const filteredTrucks = trucks.filter(truck =>
-    truck.truckNo.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    truck.ownerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    truck.type.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  // Ensure trucks is an array before filtering
+  const filteredTrucks = trucks && Array.isArray(trucks) 
+    ? trucks.filter(truck =>
+        truck.truckNo.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        truck.ownerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        truck.type.toLowerCase().includes(searchTerm.toLowerCase())
+      )
+    : [];
 
   const getStatusBadgeVariant = (status: Truck["status"]): "default" | "destructive" | "secondary" => {
     switch (status) {
