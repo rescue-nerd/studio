@@ -2,8 +2,8 @@ import { createClient } from 'npm:@supabase/supabase-js@2';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': '*',
-  'Access-Control-Allow-Methods': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
   'Access-Control-Max-Age': '86400',
 }
 
@@ -70,13 +70,41 @@ Deno.serve(async (req) => {
     }
 
     // Parse and validate request body
-    const body: RequestBody = await req.json()
+    let body: RequestBody;
+    try {
+      body = await req.json()
+    } catch (parseError) {
+      return new Response(
+        JSON.stringify({ 
+          success: false, 
+          error: { message: 'Invalid JSON in request body' }
+        }),
+        { 
+          status: 400, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      )
+    }
     
     if (!body.name || !body.countryId) {
       return new Response(
         JSON.stringify({ 
           success: false, 
           error: { message: 'Name and country ID are required' }
+        }),
+        { 
+          status: 400, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      )
+    }
+
+    // Validate name length
+    if (body.name.trim().length === 0) {
+      return new Response(
+        JSON.stringify({ 
+          success: false, 
+          error: { message: 'State name cannot be empty' }
         }),
         { 
           status: 400, 
@@ -97,7 +125,7 @@ Deno.serve(async (req) => {
         JSON.stringify({ 
           success: false, 
           error: { 
-            message: 'Specified country does not exist',
+            message: 'Country not found',
             details: countryError?.message
           }
         }),
@@ -112,7 +140,7 @@ Deno.serve(async (req) => {
     const { data: existingState, error: checkError } = await supabaseClient
       .from('states')
       .select('id')
-      .eq('name', body.name)
+      .eq('name', body.name.trim())
       .eq('country_id', body.countryId)
       .single()
 
@@ -139,7 +167,7 @@ Deno.serve(async (req) => {
           error: { message: 'A state with this name already exists in the selected country' }
         }),
         { 
-          status: 400, 
+          status: 409, 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
         }
       )
@@ -149,7 +177,7 @@ Deno.serve(async (req) => {
     const { data: newState, error: createError } = await supabaseClient
       .from('states')
       .insert({
-        name: body.name,
+        name: body.name.trim(),
         country_id: body.countryId,
         created_by: user.id,
         updated_by: user.id
@@ -168,7 +196,7 @@ Deno.serve(async (req) => {
           }
         }),
         { 
-          status: 400, 
+          status: 500, 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
         }
       )
@@ -186,6 +214,7 @@ Deno.serve(async (req) => {
         }
       }),
       { 
+        status: 201,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
       }
     )

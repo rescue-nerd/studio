@@ -27,7 +27,7 @@ Deno.serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response(null, { 
-      status: 200,
+      status: 204,
       headers: corsHeaders 
     })
   }
@@ -71,13 +71,41 @@ Deno.serve(async (req) => {
     }
 
     // Parse and validate request body
-    const body: RequestBody = await req.json()
+    let body: RequestBody;
+    try {
+      body = await req.json()
+    } catch (parseError) {
+      return new Response(
+        JSON.stringify({ 
+          success: false, 
+          error: { message: 'Invalid JSON in request body' }
+        }),
+        { 
+          status: 400, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      )
+    }
     
     if (!body.id) {
       return new Response(
         JSON.stringify({ 
           success: false, 
           error: { message: 'State ID is required' }
+        }),
+        { 
+          status: 400, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      )
+    }
+
+    // Validate name if provided
+    if (body.name !== undefined && body.name.trim().length === 0) {
+      return new Response(
+        JSON.stringify({ 
+          success: false, 
+          error: { message: 'State name cannot be empty' }
         }),
         { 
           status: 400, 
@@ -122,12 +150,53 @@ Deno.serve(async (req) => {
           JSON.stringify({ 
             success: false, 
             error: { 
-              message: 'Specified country does not exist',
+              message: 'Country not found',
               details: countryError?.message
             }
           }),
           { 
             status: 400, 
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+          }
+        )
+      }
+    }
+
+    // Check for duplicate name in the same country (if name is being updated)
+    if (body.name) {
+      const targetCountryId = body.countryId || existingState.country_id;
+      const { data: duplicateState, error: duplicateError } = await supabaseClient
+        .from('states')
+        .select('id')
+        .eq('name', body.name.trim())
+        .eq('country_id', targetCountryId)
+        .neq('id', body.id)
+        .single()
+
+      if (duplicateError && duplicateError.code !== 'PGRST116') {
+        return new Response(
+          JSON.stringify({ 
+            success: false, 
+            error: { 
+              message: 'Error checking for duplicate state name',
+              details: duplicateError.message
+            }
+          }),
+          { 
+            status: 500, 
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+          }
+        )
+      }
+
+      if (duplicateState) {
+        return new Response(
+          JSON.stringify({ 
+            success: false, 
+            error: { message: 'A state with this name already exists in the selected country' }
+          }),
+          { 
+            status: 409, 
             headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
           }
         )
@@ -140,7 +209,7 @@ Deno.serve(async (req) => {
       updated_at: new Date().toISOString()
     }
 
-    if (body.name) updateData.name = body.name
+    if (body.name) updateData.name = body.name.trim()
     if (body.countryId) updateData.country_id = body.countryId
 
     // Update state
@@ -162,7 +231,7 @@ Deno.serve(async (req) => {
           }
         }),
         { 
-          status: 400, 
+          status: 500, 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
         }
       )
@@ -181,6 +250,7 @@ Deno.serve(async (req) => {
         message: 'State updated successfully' 
       }),
       { 
+        status: 200,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
       }
     )
