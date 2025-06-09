@@ -57,18 +57,48 @@ const defaultTruckFormData: Omit<Truck, 'id' | 'createdAt' | 'createdBy' | 'upda
 };
 
 const createTruckFn = async (data: TruckFormDataCallable) => {
-  const response = await supabase.functions.invoke('create-truck', { body: data });
-  return response.data;
+  try {
+    const response = await supabase.functions.invoke('create-truck', { 
+      body: data,
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    });
+    return response.data;
+  } catch (error) {
+    console.error("Error calling create-truck function:", error);
+    throw error;
+  }
 };
 
 const updateTruckFn = async (data: UpdateTruckFormDataCallable) => {
-  const response = await supabase.functions.invoke('update-truck', { body: data });
-  return response.data;
+  try {
+    const response = await supabase.functions.invoke('update-truck', { 
+      body: data,
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    });
+    return response.data;
+  } catch (error) {
+    console.error("Error calling update-truck function:", error);
+    throw error;
+  }
 };
 
 const deleteTruckFn = async (data: { truckId: string }) => {
-  const response = await supabase.functions.invoke('delete-truck', { body: data });
-  return response.data;
+  try {
+    const response = await supabase.functions.invoke('delete-truck', { 
+      body: data,
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    });
+    return response.data;
+  } catch (error) {
+    console.error("Error calling delete-truck function:", error);
+    throw error;
+  }
 };
 
 
@@ -118,7 +148,7 @@ export default function TrucksPage() {
 
   useEffect(() => {
     if (authUser) {
-     fetchTrucks();
+      fetchTrucks();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authUser]);
@@ -164,7 +194,7 @@ export default function TrucksPage() {
     const truckDataPayload: TruckFormDataCallable = { ...formData };
 
     try {
-      let result: any;
+      let result;
       if (editingTruck) {
         result = await updateTruckFn({ truckId: editingTruck.id, ...truckDataPayload });
       } else {
@@ -225,9 +255,9 @@ export default function TrucksPage() {
   // Ensure trucks is an array before filtering
   const filteredTrucks = trucks && Array.isArray(trucks) 
     ? trucks.filter(truck =>
-        truck.truckNo.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        truck.ownerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        truck.type.toLowerCase().includes(searchTerm.toLowerCase())
+        truck.truckNo?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        truck.ownerName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        truck.type?.toLowerCase().includes(searchTerm.toLowerCase())
       )
     : [];
 
@@ -272,7 +302,7 @@ export default function TrucksPage() {
             <form onSubmit={handleSubmit} className="grid gap-4 py-4">
               <div className="grid grid-cols-4 items-center gap-4">
                 <Label htmlFor="truckNo" className="text-right">Truck No.</Label>
-                <Input id="truckNo" name="truckNo" value={formData.truckNo} onChange={handleInputChange} className="col-span-3" required />
+                <Input id="truckNo" name="truckNo" value={formData.truckNo || ''} onChange={handleInputChange} className="col-span-3" required />
               </div>
               <div className="grid grid-cols-4 items-center gap-4">
                 <Label htmlFor="type" className="text-right">Type</Label>
@@ -287,7 +317,7 @@ export default function TrucksPage() {
               </div>
               <div className="grid grid-cols-4 items-center gap-4">
                 <Label htmlFor="ownerName" className="text-right">Owner Name</Label>
-                <Input id="ownerName" name="ownerName" value={formData.ownerName} onChange={handleInputChange} className="col-span-3" required />
+                <Input id="ownerName" name="ownerName" value={formData.ownerName || ''} onChange={handleInputChange} className="col-span-3" required />
               </div>
               <div className="grid grid-cols-4 items-center gap-4">
                 <Label htmlFor="ownerPAN" className="text-right">Owner PAN</Label>
@@ -302,7 +332,7 @@ export default function TrucksPage() {
               </div>
               <div className="grid grid-cols-4 items-center gap-4">
                 <Label htmlFor="assignedLedgerId" className="text-right">Ledger A/C ID</Label>
-                <Input id="assignedLedgerId" name="assignedLedgerId" value={formData.assignedLedgerId} onChange={handleInputChange} className="col-span-3" placeholder="e.g., Ledger-TRK001" required />
+                <Input id="assignedLedgerId" name="assignedLedgerId" value={formData.assignedLedgerId || ''} onChange={handleInputChange} className="col-span-3" placeholder="e.g., Ledger-TRK001" required />
               </div>
               <DialogFooter>
                 <DialogClose asChild><Button type="button" variant="outline" disabled={isSubmitting}>Cancel</Button></DialogClose>

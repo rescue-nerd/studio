@@ -1,11 +1,5 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-  'Access-Control-Max-Age': '86400',
-}
+import { corsHeaders } from '../_shared/cors.ts';
 
 interface RequestBody {
   name: string;
@@ -28,7 +22,7 @@ Deno.serve(async (req) => {
     return new Response(null, { 
       status: 204,
       headers: corsHeaders 
-    })
+    });
   }
 
   try {
@@ -36,67 +30,67 @@ Deno.serve(async (req) => {
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-    )
+    );
 
     // Verify authentication
-    const authHeader = req.headers.get('Authorization')
+    const authHeader = req.headers.get('Authorization');
     if (!authHeader) {
       return new Response(
         JSON.stringify({ 
           success: false, 
-          error: { message: 'Authorization header is required' }
+          message: 'Authorization header is required' 
         }),
         { 
           status: 401, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+          headers: corsHeaders
         }
-      )
+      );
     }
 
-    const token = authHeader.replace('Bearer ', '')
-    const { data: { user }, error: authError } = await supabaseClient.auth.getUser(token)
+    const token = authHeader.replace('Bearer ', '');
+    const { data: { user }, error: authError } = await supabaseClient.auth.getUser(token);
 
     if (authError || !user) {
       return new Response(
         JSON.stringify({ 
           success: false, 
-          error: { message: 'Unauthorized' }
+          message: 'Unauthorized' 
         }),
         { 
           status: 401, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+          headers: corsHeaders
         }
-      )
+      );
     }
 
     // Parse and validate request body
     let body: RequestBody;
     try {
-      body = await req.json()
+      body = await req.json();
     } catch (parseError) {
       return new Response(
         JSON.stringify({ 
           success: false, 
-          error: { message: 'Invalid JSON in request body' }
+          message: 'Invalid JSON in request body' 
         }),
         { 
           status: 400, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+          headers: corsHeaders
         }
-      )
+      );
     }
     
     if (!body.name || !body.countryId) {
       return new Response(
         JSON.stringify({ 
           success: false, 
-          error: { message: 'Name and country ID are required' }
+          message: 'Name and country ID are required' 
         }),
         { 
           status: 400, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+          headers: corsHeaders
         }
-      )
+      );
     }
 
     // Validate name length
@@ -104,13 +98,13 @@ Deno.serve(async (req) => {
       return new Response(
         JSON.stringify({ 
           success: false, 
-          error: { message: 'State name cannot be empty' }
+          message: 'State name cannot be empty' 
         }),
         { 
           status: 400, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+          headers: corsHeaders
         }
-      )
+      );
     }
 
     // Check if country exists
@@ -118,22 +112,20 @@ Deno.serve(async (req) => {
       .from('countries')
       .select('id')
       .eq('id', body.countryId)
-      .single()
+      .single();
 
     if (countryError || !country) {
       return new Response(
         JSON.stringify({ 
           success: false, 
-          error: { 
-            message: 'Country not found',
-            details: countryError?.message
-          }
+          message: 'Country not found',
+          details: countryError?.message
         }),
         { 
-          status: 400, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+          status: 404, 
+          headers: corsHeaders
         }
-      )
+      );
     }
 
     // Check if state with same name already exists in the country
@@ -142,35 +134,33 @@ Deno.serve(async (req) => {
       .select('id')
       .eq('name', body.name.trim())
       .eq('country_id', body.countryId)
-      .single()
+      .single();
 
     if (checkError && checkError.code !== 'PGRST116') { // PGRST116 is "no rows returned"
       return new Response(
         JSON.stringify({ 
           success: false, 
-          error: { 
-            message: 'Error checking state existence',
-            details: checkError.message
-          }
+          message: 'Error checking state existence',
+          details: checkError.message
         }),
         { 
           status: 500, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+          headers: corsHeaders
         }
-      )
+      );
     }
 
     if (existingState) {
       return new Response(
         JSON.stringify({ 
           success: false, 
-          error: { message: 'A state with this name already exists in the selected country' }
+          message: 'A state with this name already exists in the selected country' 
         }),
         { 
           status: 409, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+          headers: corsHeaders
         }
-      )
+      );
     }
 
     // Create state
@@ -183,23 +173,21 @@ Deno.serve(async (req) => {
         updated_by: user.id
       })
       .select()
-      .single()
+      .single();
 
     if (createError) {
       console.error('Error creating state:', createError);
       return new Response(
         JSON.stringify({ 
           success: false, 
-          error: { 
-            message: 'Failed to create state',
-            details: createError.message
-          }
+          message: 'Failed to create state',
+          details: createError.message
         }),
         { 
           status: 500, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+          headers: corsHeaders
         }
-      )
+      );
     }
 
     // Return success response with camelCase field names
@@ -211,28 +199,27 @@ Deno.serve(async (req) => {
           name: newState.name,
           countryId: newState.country_id,
           createdAt: newState.created_at
-        }
+        },
+        message: 'State created successfully' 
       }),
       { 
         status: 201,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        headers: corsHeaders
       }
-    )
+    );
 
   } catch (error) {
-    console.error('Error creating state:', error)
+    console.error('Error creating state:', error);
     return new Response(
       JSON.stringify({ 
         success: false, 
-        error: { 
-          message: 'Internal server error',
-          details: error instanceof Error ? error.message : 'Unknown error'
-        }
+        message: 'Internal server error',
+        error: error instanceof Error ? error.message : 'Unknown error'
       }),
       { 
         status: 500, 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        headers: corsHeaders
       }
-    )
+    );
   }
-})
+});
