@@ -40,6 +40,9 @@ export function getAuthErrorMessage(error: unknown): string {
     if (errorMessage.includes('invalid email')) {
       return 'Invalid email address. Please check and try again.';
     }
+    if (errorMessage.includes('failed to fetch')) {
+      return 'Network error. Please check your internet connection and try again.';
+    }
     
     return `Authentication error: ${error.message}`;
   }
@@ -101,6 +104,11 @@ export function getDatabaseErrorMessage(error: unknown): string {
  * @returns A user-friendly error message
  */
 export function getSupabaseErrorMessage(error: unknown): string {
+  // Handle network errors
+  if (error instanceof Error && error.message === 'Failed to fetch') {
+    return 'Network error. Please check your internet connection and try again.';
+  }
+  
   if (error instanceof PostgrestError) {
     return getDatabaseErrorMessage(error);
   }
@@ -128,6 +136,16 @@ export function handleSupabaseError(
   toast: any,
   customMessages: Record<string, string> = {}
 ): void {
+  // Special handling for network errors
+  if (error instanceof Error && error.message === 'Failed to fetch') {
+    toast({
+      title: "Network Error",
+      description: "Unable to connect to the server. Please check your internet connection and try again.",
+      variant: "destructive",
+    });
+    return;
+  }
+  
   const message = getSupabaseErrorMessage(error);
   
   // Check if there's a custom message for this error
