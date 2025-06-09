@@ -159,7 +159,12 @@ const createStateFn = async (data: StateFormData) => {
     });
     
     if (error) {
-      throw new Error(error.message || 'Failed to create state');
+      // Check if the error contains specific error details from the Edge Function
+      if (error.data && error.data.error && error.data.error.message) {
+        throw new Error(error.data.error.message);
+      } else {
+        throw new Error(error.message || 'Failed to create state');
+      }
     }
     
     if (response && !response.success) {
@@ -190,7 +195,12 @@ const updateStateFn = async (data: {stateId: string} & Partial<StateFormData>) =
     });
     
     if (error) {
-      throw new Error(error.message || 'Failed to update state');
+      // Check if the error contains specific error details from the Edge Function
+      if (error.data && error.data.error && error.data.error.message) {
+        throw new Error(error.data.error.message);
+      } else {
+        throw new Error(error.message || 'Failed to update state');
+      }
     }
     
     if (response && !response.success) {
@@ -206,14 +216,23 @@ const updateStateFn = async (data: {stateId: string} & Partial<StateFormData>) =
 
 const deleteStateFn = async (data: {stateId: string}) => {
   try {
+    const session = await supabase.auth.getSession();
     const { data: response, error } = await supabase.functions.invoke('delete-state', {
       body: {
         id: data.stateId
+      },
+      headers: {
+        'Authorization': `Bearer ${session.data.session?.access_token}`
       }
     });
     
     if (error) {
-      throw new Error(error.message || 'Failed to delete state');
+      // Check if the error contains specific error details from the Edge Function
+      if (error.data && error.data.error && error.data.error.message) {
+        throw new Error(error.data.error.message);
+      } else {
+        throw new Error(error.message || 'Failed to delete state');
+      }
     }
     
     if (response && !response.success) {
