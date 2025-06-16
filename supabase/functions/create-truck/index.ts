@@ -1,12 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-  'Access-Control-Max-Age': '86400',
-}
+import { corsHeaders } from '../_shared/cors.ts';
+import { authenticateUser, checkForDuplicates, checkUserPermissions, handleError, validateRequiredFields } from '../_shared/utils.ts';
 
 interface RequestBody {
   truckNo: string;
@@ -34,181 +29,372 @@ interface TruckData {
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders })
+    return new Response('ok', {
+      headers: corsHeaders
+    });
   }
 
   try {
-    // Create a Supabase client with the Auth context of the logged in user
-    const supabaseClient = createClient(
+    // Create Supabase client
+    const supabase = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
       {
         global: {
           headers: { Authorization: req.headers.get('Authorization')! },
         },
       }
-    )
+    );
 
-    // Verify authentication
-    const {
-      data: { user },
-      error: authError,
-    } = await supabaseClient.auth.getUser()
-
+    // Authenticate user
+    const { user, error: authError } = await authenticateUser(req, supabase);
     if (authError || !user) {
       return new Response(
         JSON.stringify({
           success: false,
-          error: {
-            message: 'Unauthorized',
-            details: 'You must be logged in to create a truck'
-          }
+          message: 'Authentication required'
         }),
         {
           status: 401,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+          headers: corsHeaders
         }
-      )
+      );
     }
 
-    // Parse and validate request body
-    const requestData: RequestBody = await req.json()
-    
-    if (!requestData.truckNo || !requestData.type || !requestData.ownerName || !requestData.assignedLedgerId) {
+    // Check user permissions
+    const hasPermission = await checkUserPermissions(user.id, ['superAdmin', 'admin'], supabase);
+    if (!hasPermission) {
       return new Response(
         JSON.stringify({
           success: false,
-          error: {
-            message: 'Missing required fields',
-            details: 'Truck number, type, owner name, and assigned ledger ID are required'
-          }
+          message: 'Only administrators can manage trucks'
         }),
         {
-          status: 400,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+          status: 403,
+          headers: corsHeaders
         }
-      )
+      );
     }
 
-    // Check if truck number already exists
-    const { data: existingTruck, error: checkError } = await supabaseClient
-      .from('trucks')
-      .select('id')
-      .eq('truck_no', requestData.truckNo)
-      .single()
-
-    if (checkError && checkError.code !== 'PGRST116') {
-      return new Response(
-        JSON.stringify({
-          success: false,
-          error: {
-            message: 'Error checking existing truck',
-            details: checkError.message
+    // Handle different HTTP methods
+    switch (req.method) {
+      case 'GET':
+        return await handleGetTrucks(supabase);
+      case 'POST':
+        return await handleCreateTruck(req, supabase, user.id);
+      case 'PUT':
+        return await handleUpdateTruck(req, supabase, user.id);
+      case 'DELETE':
+        return await handleDeleteTruck(req, supabase, user.id);
+      default:
+        return new Response(
+          JSON.stringify({
+            success: false,
+            message: 'Method not allowed'
+          }),
+          {
+            status: 405,
+            headers: corsHeaders
           }
-        }),
-        {
-          status: 500,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-        }
-      )
+        );
     }
-
-    if (existingTruck) {
-      return new Response(
-        JSON.stringify({
-          success: false,
-          error: {
-            message: 'Truck already exists',
-            details: 'A truck with this number already exists'
-          }
-        }),
-        {
-          status: 400,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-        }
-      )
-    }
-
-    // Check if ledger account exists
-    const { data: ledgerAccount, error: ledgerError } = await supabaseClient
-      .from('ledger_accounts')
-      .select('id')
-      .eq('id', requestData.assignedLedgerId)
-      .single()
-
-    if (ledgerError) {
-      return new Response(
-        JSON.stringify({
-          success: false,
-          error: {
-            message: 'Invalid ledger account',
-            details: 'The specified ledger account does not exist'
-          }
-        }),
-        {
-          status: 400,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-        }
-      )
-    }
-
-    // Insert new truck
-    const { data: truck, error: insertError } = await supabaseClient
-      .from('trucks')
-      .insert({
-        truck_no: requestData.truckNo,
-        type: requestData.type,
-        capacity: requestData.capacity,
-        owner_name: requestData.ownerName,
-        owner_pan: requestData.ownerPAN,
-        status: requestData.status || 'Active',
-        assigned_ledger_id: requestData.assignedLedgerId,
-        created_by: user.id
-      })
-      .select()
-      .single()
-
-    if (insertError) {
-      return new Response(
-        JSON.stringify({
-          success: false,
-          error: {
-            message: 'Error creating truck',
-            details: insertError.message
-          }
-        }),
-        {
-          status: 500,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-        }
-      )
-    }
-
-    // Return success response
-    return new Response(
-      JSON.stringify({
-        success: true,
-        data: truck
-      }),
-      {
-        status: 201,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      }
-    )
-
   } catch (error) {
+    console.error('Error in create-truck function:', error);
     return new Response(
       JSON.stringify({
         success: false,
-        error: {
-          message: 'Internal server error',
-          details: error instanceof Error ? error.message : 'Unknown error'
-        }
+        message: error.message || 'Internal server error'
       }),
       {
         status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        headers: corsHeaders
       }
-    )
+    );
   }
-}) 
+});
+
+async function handleGetTrucks(supabase) {
+  try {
+    const { data: trucks, error } = await supabase
+      .from('trucks')
+      .select('*')
+      .order('truckNo');
+
+    if (error) throw error;
+
+    return new Response(
+      JSON.stringify({
+        success: true,
+        data: trucks
+      }),
+      {
+        headers: corsHeaders
+      }
+    );
+  } catch (error) {
+    return handleError(error);
+  }
+}
+
+async function handleCreateTruck(req, supabase, userId) {
+  try {
+    const body = await req.json();
+
+    // Validate required fields
+    const requiredFields = ['truckNo', 'ownerName', 'assignedLedgerId'];
+    const validation = validateRequiredFields(body, requiredFields);
+    if (!validation.isValid) {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          message: validation.message
+        }),
+        {
+          status: 400,
+          headers: corsHeaders
+        }
+      );
+    }
+
+    // Check for duplicate truck number
+    const isDuplicate = await checkForDuplicates(supabase, 'trucks', 'truckNo', body.truckNo);
+    if (isDuplicate) {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          message: 'A truck with this number already exists'
+        }),
+        {
+          status: 409,
+          headers: corsHeaders
+        }
+      );
+    }
+
+    const truckData = {
+      truckNo: body.truckNo,
+      ownerName: body.ownerName,
+      driverName: body.driverName || '',
+      contactNo: body.contactNo || '',
+      capacity: body.capacity || '',
+      truckType: body.type || body.truckType || '',
+      assignedLedgerId: body.assignedLedgerId,
+      status: body.status || 'Active',
+      createdAt: new Date().toISOString(),
+      createdBy: userId
+    };
+
+    const { data, error } = await supabase
+      .from('trucks')
+      .insert([truckData])
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    return new Response(
+      JSON.stringify({
+        success: true,
+        id: data.id,
+        message: 'Truck created successfully'
+      }),
+      {
+        headers: corsHeaders
+      }
+    );
+  } catch (error) {
+    return handleError(error);
+  }
+}
+
+async function handleUpdateTruck(req, supabase, userId) {
+  try {
+    const body = await req.json();
+    const { truckId, ...updateData } = body;
+
+    if (!truckId) {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          message: 'Truck ID is required'
+        }),
+        {
+          status: 400,
+          headers: corsHeaders
+        }
+      );
+    }
+
+    // Check if truck exists
+    const { data: existingTruck, error: fetchError } = await supabase
+      .from('trucks')
+      .select('id')
+      .eq('id', truckId)
+      .single();
+
+    if (fetchError || !existingTruck) {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          message: 'Truck not found'
+        }),
+        {
+          status: 404,
+          headers: corsHeaders
+        }
+      );
+    }
+
+    // Check for duplicate truck number if truckNo is being updated
+    if (updateData.truckNo) {
+      const { data: duplicateCheck } = await supabase
+        .from('trucks')
+        .select('id')
+        .eq('truckNo', updateData.truckNo)
+        .neq('id', truckId)
+        .single();
+
+      if (duplicateCheck) {
+        return new Response(
+          JSON.stringify({
+            success: false,
+            message: 'A truck with this number already exists'
+          }),
+          {
+            status: 409,
+            headers: corsHeaders
+          }
+        );
+      }
+    }
+
+    const truckUpdateData = {
+      ...updateData,
+      truckType: updateData.type || updateData.truckType,
+      updatedAt: new Date().toISOString(),
+      updatedBy: userId
+    };
+
+    delete truckUpdateData.type;
+
+    const { error } = await supabase
+      .from('trucks')
+      .update(truckUpdateData)
+      .eq('id', truckId);
+
+    if (error) throw error;
+
+    return new Response(
+      JSON.stringify({
+        success: true,
+        id: truckId,
+        message: 'Truck updated successfully'
+      }),
+      {
+        headers: corsHeaders
+      }
+    );
+  } catch (error) {
+    return handleError(error);
+  }
+}
+
+async function handleDeleteTruck(req, supabase, userId) {
+  try {
+    const body = await req.json();
+    const { truckId } = body;
+
+    if (!truckId) {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          message: 'Truck ID is required'
+        }),
+        {
+          status: 400,
+          headers: corsHeaders
+        }
+      );
+    }
+
+    // Check if truck exists
+    const { data: existingTruck, error: fetchError } = await supabase
+      .from('trucks')
+      .select('id')
+      .eq('id', truckId)
+      .single();
+
+    if (fetchError || !existingTruck) {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          message: 'Truck not found'
+        }),
+        {
+          status: 404,
+          headers: corsHeaders
+        }
+      );
+    }
+
+    // Check for references in biltis
+    const { data: biltisWithTruck } = await supabase
+      .from('biltis')
+      .select('id')
+      .eq('truckId', truckId)
+      .limit(1);
+
+    if (biltisWithTruck && biltisWithTruck.length > 0) {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          message: 'Cannot delete truck. It is referenced in existing bilti documents.'
+        }),
+        {
+          status: 400,
+          headers: corsHeaders
+        }
+      );
+    }
+
+    // Check for references in manifests
+    const { data: manifestsWithTruck } = await supabase
+      .from('manifests')
+      .select('id')
+      .eq('truckId', truckId)
+      .limit(1);
+
+    if (manifestsWithTruck && manifestsWithTruck.length > 0) {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          message: 'Cannot delete truck. It is referenced in existing manifest documents.'
+        }),
+        {
+          status: 400,
+          headers: corsHeaders
+        }
+      );
+    }
+
+    const { error } = await supabase
+      .from('trucks')
+      .delete()
+      .eq('id', truckId);
+
+    if (error) throw error;
+
+    return new Response(
+      JSON.stringify({
+        success: true,
+        id: truckId,
+        message: 'Truck deleted successfully'
+      }),
+      {
+        headers: corsHeaders
+      }
+    );
+  } catch (error) {
+    return handleError(error);
+  }
+} 

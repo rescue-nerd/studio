@@ -1,0 +1,7 @@
+{
+  "functions": {
+    "create-truck": {
+      "verify_jwt": true
+    }
+  }
+} 
