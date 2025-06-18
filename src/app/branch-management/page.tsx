@@ -21,8 +21,7 @@ import {
     DialogDescription,
     DialogFooter,
     DialogHeader,
-    DialogTitle,
-    DialogTrigger,
+    DialogTitle
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -30,8 +29,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useAuth } from "@/contexts/auth-context";
 import { useToast } from "@/hooks/use-toast";
-import { handleSupabaseError } from "@/lib/supabase-error-handler";
 import { db } from "@/lib/supabase-db";
+import { handleSupabaseError } from "@/lib/supabase-error-handler";
 import type { Branch } from "@/types/database";
 import { Edit, Loader2, PlusCircle, Search, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -39,19 +38,24 @@ import { useEffect, useState, type ChangeEvent, type FormEvent } from "react";
 
 interface BranchFormData {
   name: string;
-  location: string;
-  managerName: string;
-  status: "Active" | "Inactive";
+  location: string; // Matches Branch.location
+  managerName?: string;
+  status: 'Active' | 'Inactive'; // Form handles Active/Inactive
   contactEmail?: string;
   contactPhone?: string;
   managerUserId?: string;
+  code?: string; // Corresponds to Branch.branch_code
 }
 
 const defaultBranchFormData: BranchFormData = {
   name: "",
   location: "",
   managerName: "",
-  status: "Active",
+  status: "Active", // Default to Active
+  contactEmail: "",
+  contactPhone: "",
+  managerUserId: "",
+  code: "",
 };
 
 export default function BranchManagementPage() {
@@ -102,8 +106,8 @@ export default function BranchManagementPage() {
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
-  const handleStatusChange = (value: "Active" | "Inactive") => {
-    setFormData((prev) => ({ ...prev, status: value }));
+  const handleStatusChange = (value: string) => { // Value will be "Active" or "Inactive"
+    setFormData((prev) => ({ ...prev, status: value as 'Active' | 'Inactive' }));
   };
 
   const openAddForm = () => {
@@ -116,12 +120,13 @@ export default function BranchManagementPage() {
     setEditingBranch(branch);
     setFormData({
       name: branch.name,
-      location: branch.address || "",
-      managerName: branch.managerName || "",
-      status: branch.isActive ? "Active" : "Inactive",
-      contactEmail: branch.email,
-      contactPhone: branch.contactNo,
-      managerUserId: branch.managerUserId,
+      location: branch.location, // Use location
+      managerName: branch.manager_name || "",
+      status: branch.status === 'Inactive' ? 'Inactive' : 'Active', // Map DB status to form status
+      contactEmail: branch.contact_email || "",
+      contactPhone: branch.contact_phone || "",
+      managerUserId: branch.manager_user_id || "",
+      code: branch.branch_code || "",
     });
     setIsFormDialogOpen(true);
   };
@@ -139,33 +144,40 @@ export default function BranchManagementPage() {
     
     setIsSubmittingForm(true);
 
+    const branchPayload = {
+        name: formData.name,
+        location: formData.location, // Use location
+        managerName: formData.managerName || null, // camelCase for Edge Function
+        status: formData.status, // Use status
+        contactEmail: formData.contactEmail || null, // camelCase for Edge Function
+        contactPhone: formData.contactPhone || null, // camelCase for Edge Function
+        managerUserId: formData.managerUserId || null, // camelCase for Edge Function
+        branchCode: formData.code || null, // camelCase for Edge Function
+    };
+
+    // Adjust payload for createBranch if its type is more specific
+    const createPayload = {
+      ...branchPayload,
+      name: formData.name, // ensure required fields
+      location: formData.location, // ensure required fields
+      branchCode: formData.code || undefined, // Match expected type for create (if different)
+      status: formData.status as 'Active' | 'Inactive', // Match expected type for create
+    };
+
+
     try {
       if (editingBranch) {
-        const updatedBranch = await db.updateBranch(editingBranch.id, {
-          name: formData.name,
-          address: formData.location,
-          managerName: formData.managerName,
-          isActive: formData.status === "Active",
-          email: formData.contactEmail,
-          contactNo: formData.contactPhone,
-          managerUserId: formData.managerUserId
-        });
+        await db.updateBranch(editingBranch.id, branchPayload as Partial<Branch>);
         toast({ title: "Success", description: "Branch updated successfully" });
       } else {
-        const newBranch = await db.createBranch({
-          name: formData.name,
-          address: formData.location,
-          managerName: formData.managerName,
-          isActive: formData.status === "Active",
-          email: formData.contactEmail,
-          contactNo: formData.contactPhone,
-          managerUserId: formData.managerUserId
-        });
+        // Pass a payload that matches createBranch's expected type
+        // This might need adjustment based on the exact signature of db.createBranch
+        await db.createBranch(createPayload as any); 
         toast({ title: "Success", description: "Branch created successfully" });
       }
       setIsFormDialogOpen(false);
       setEditingBranch(null);
-      fetchBranches();
+      fetchBranches(); // Refresh the list
     } catch (error) {
       console.error("Error saving branch:", error);
       handleSupabaseError(error, toast);
@@ -185,22 +197,28 @@ export default function BranchManagementPage() {
       try {
         await db.deleteBranch(branchToDelete.id);
         toast({ title: "Success", description: "Branch deleted successfully" });
-        fetchBranches();
+        fetchBranches(); // Refresh the list
       } catch (error) {
         console.error("Error deleting branch:", error);
         handleSupabaseError(error, toast);
       } finally {
         setIsDeleting(false);
+        // It's important to close the dialog and clear branchToDelete in both success and error cases
+        // if the operation itself (delete) is done.
+        setIsDeleteDialogOpen(false); 
+        setBranchToDelete(null);
       }
     }
-    setIsDeleteDialogOpen(false);
-    setBranchToDelete(null);
+    // These lines were outside the if block, moved them into finally for safety.
+    // setIsDeleteDialogOpen(false);
+    // setBranchToDelete(null);
   };
 
   const filteredBranches = branches.filter(branch =>
     branch.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (branch.address && branch.address.toLowerCase().includes(searchTerm.toLowerCase())) ||
-    (branch.managerName && branch.managerName.toLowerCase().includes(searchTerm.toLowerCase()))
+    (branch.location && branch.location.toLowerCase().includes(searchTerm.toLowerCase())) || // Use location
+    (branch.manager_name && branch.manager_name.toLowerCase().includes(searchTerm.toLowerCase())) ||
+    (branch.branch_code && branch.branch_code.toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
   if (authLoading || (!authUser && !authLoading)) {
@@ -230,7 +248,7 @@ export default function BranchManagementPage() {
                 className="pl-8"
               />
             </div>
-            <Button onClick={openAddForm}>
+            <Button onClick={openAddForm} disabled={isLoading || isSubmittingForm}>
               <PlusCircle className="mr-2 h-4 w-4" />
               Add Branch
             </Button>
@@ -245,7 +263,8 @@ export default function BranchManagementPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Name</TableHead>
-                  <TableHead>Location</TableHead>
+                  <TableHead>Code</TableHead>
+                  <TableHead>Location/Address</TableHead>
                   <TableHead>Manager</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Actions</TableHead>
@@ -254,7 +273,7 @@ export default function BranchManagementPage() {
               <TableBody>
                 {filteredBranches.length === 0 && !isLoading && (
                     <TableRow>
-                        <TableCell colSpan={5} className="text-center h-24">
+                        <TableCell colSpan={6} className="text-center h-24">
                             No branches found. Add one to get started!
                         </TableCell>
                     </TableRow>
@@ -262,11 +281,17 @@ export default function BranchManagementPage() {
                 {filteredBranches.map((branch) => (
                   <TableRow key={branch.id}>
                     <TableCell className="font-medium">{branch.name}</TableCell>
-                    <TableCell>{branch.address || branch.location || 'N/A'}</TableCell>
-                    <TableCell>{branch.managerName || 'N/A'}</TableCell>
+                    <TableCell>{branch.branch_code || 'N/A'}</TableCell>
+                    <TableCell>{branch.location || 'N/A'}</TableCell> 
+                    <TableCell>{branch.manager_name || 'N/A'}</TableCell>
                     <TableCell>
-                      <Badge variant={branch.isActive ? "default" : "destructive"} className={branch.isActive ? "bg-accent text-accent-foreground" : ""}>
-                        {branch.isActive ? "Active" : "Inactive"}
+                      <Badge 
+                        variant={branch.status === 'Active' ? "default" : "secondary"} 
+                        className={branch.status === 'Active' 
+                                    ? "bg-green-100 text-green-700 dark:bg-green-700 dark:text-green-100" 
+                                    : "bg-red-100 text-red-700 dark:bg-red-700 dark:text-red-100"}
+                      >
+                        {branch.status}
                       </Badge>
                     </TableCell>
                     <TableCell>
@@ -274,7 +299,14 @@ export default function BranchManagementPage() {
                         <Button variant="outline" size="icon" aria-label="Edit Branch" onClick={() => openEditForm(branch)} disabled={isSubmittingForm || isDeleting}>
                           <Edit className="h-4 w-4" />
                         </Button>
-                        <AlertDialog open={isDeleteDialogOpen && branchToDelete?.id === branch.id} onOpenChange={(open) => { if(!open) setBranchToDelete(null); setIsDeleteDialogOpen(open);}}>
+                        {/* AlertDialog for delete confirmation */}
+                        <AlertDialog 
+                            open={isDeleteDialogOpen && branchToDelete?.id === branch.id} 
+                            onOpenChange={(open) => { 
+                                if(!open) setBranchToDelete(null); // Clear selection if dialog is closed
+                                setIsDeleteDialogOpen(open);
+                            }}
+                        >
                           <AlertDialogTrigger asChild>
                             <Button variant="destructive" size="icon" aria-label="Delete Branch" onClick={() => handleDeleteClick(branch)} disabled={isSubmittingForm || isDeleting}>
                               <Trash2 className="h-4 w-4" />
@@ -290,7 +322,7 @@ export default function BranchManagementPage() {
                             </AlertDialogHeader>
                             <AlertDialogFooter>
                               <AlertDialogCancel onClick={() => {setBranchToDelete(null); setIsDeleteDialogOpen(false);}} disabled={isDeleting}>Cancel</AlertDialogCancel>
-                              <AlertDialogAction onClick={confirmDelete} disabled={isDeleting}>
+                              <AlertDialogAction onClick={confirmDelete} disabled={isDeleting} className="bg-destructive hover:bg-destructive/90">
                                 {isDeleting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                                 Delete
                               </AlertDialogAction>
@@ -307,102 +339,81 @@ export default function BranchManagementPage() {
         </CardContent>
       </Card>
 
-      <Dialog open={isFormDialogOpen} onOpenChange={setIsFormDialogOpen}>
-        <DialogContent>
+      {/* Form Dialog */}
+      <Dialog open={isFormDialogOpen} onOpenChange={(open) => {
+          if (!open) {
+              setEditingBranch(null); // Clear editing state when dialog closes
+              setFormData(defaultBranchFormData); // Reset form
+          }
+          setIsFormDialogOpen(open);
+      }}>
+        <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>{editingBranch ? "Edit Branch" : "Add Branch"}</DialogTitle>
+            <DialogTitle>{editingBranch ? "Edit Branch" : "Add New Branch"}</DialogTitle>
             <DialogDescription>
               {editingBranch
-                ? "Update the details of the branch."
-                : "Fill in the branch details below."}
+                ? "Update the details of the existing branch."
+                : "Fill in the details for the new branch."}
             </DialogDescription>
           </DialogHeader>
-          <form onSubmit={handleSubmit}>
-            <div className="grid gap-4 py-4">
-              <div className="grid gap-2">
-                <Label htmlFor="name">Branch Name</Label>
-                <Input
-                  id="name"
-                  name="name"
-                  value={formData.name}
-                  onChange={handleInputChange}
-                  required
-                />
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="location">Location</Label>
-                <Input
-                  id="location"
-                  name="location"
-                  value={formData.location}
-                  onChange={handleInputChange}
-                  required
-                />
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="managerName">Manager Name</Label>
-                <Input
-                  id="managerName"
-                  name="managerName"
-                  value={formData.managerName || ''}
-                  onChange={handleInputChange}
-                />
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="status">Status</Label>
-                <Select
-                  value={formData.status}
-                  onValueChange={handleStatusChange}
-                >
-                  <SelectTrigger id="status">
-                    <SelectValue placeholder="Select status" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Active">Active</SelectItem>
-                    <SelectItem value="Inactive">Inactive</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+          <form onSubmit={handleSubmit} className="grid gap-4 py-4">
+            <div className="grid gap-2">
+              <Label htmlFor="name">Branch Name</Label>
+              <Input id="name" name="name" value={formData.name} onChange={handleInputChange} required />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="code">Branch Code</Label>
+              <Input id="code" name="code" value={formData.code || ''} onChange={handleInputChange} placeholder="(Optional)"/>
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="location">Location/Address</Label>
+              <Input id="location" name="location" value={formData.location} onChange={handleInputChange} required />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="managerName">Manager Name</Label>
+              <Input id="managerName" name="managerName" value={formData.managerName || ''} onChange={handleInputChange} placeholder="(Optional)"/>
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="contactPhone">Contact Phone</Label>
+              <Input id="contactPhone" name="contactPhone" type="tel" value={formData.contactPhone || ''} onChange={handleInputChange} placeholder="(Optional)"/>
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="contactEmail">Contact Email</Label>
+              <Input id="contactEmail" name="contactEmail" type="email" value={formData.contactEmail || ''} onChange={handleInputChange} placeholder="(Optional)"/>
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="managerUserId">Manager User ID</Label>
+              <Input id="managerUserId" name="managerUserId" value={formData.managerUserId || ''} onChange={handleInputChange} placeholder="(Optional, User ID)"/>
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="status">Status</Label>
+              <Select
+                value={formData.status}
+                onValueChange={handleStatusChange}
+              >
+                <SelectTrigger id="status">
+                  <SelectValue placeholder="Select status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Active">Active</SelectItem>
+                  <SelectItem value="Inactive">Inactive</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
             <DialogFooter>
               <DialogClose asChild>
-                <Button type="button" variant="outline">
+                <Button type="button" variant="outline" disabled={isSubmittingForm}>
                   Cancel
                 </Button>
               </DialogClose>
               <Button type="submit" disabled={isSubmittingForm}>
-                {isSubmittingForm && (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                )}
-                {editingBranch ? "Update" : "Create"}
+                {isSubmittingForm && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                {editingBranch ? "Update Branch" : "Create Branch"}
               </Button>
             </DialogFooter>
           </form>
         </DialogContent>
       </Dialog>
-
-      <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This action cannot be undone. This will permanently delete the branch
-              and all associated data.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={confirmDelete}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              disabled={isDeleting}
-            >
-              {isDeleting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Delete
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </div>
   );
 }

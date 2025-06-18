@@ -1,76 +1,115 @@
 "use client";
 
 import {
-    AlertDialog,
-    AlertDialogAction,
-    AlertDialogCancel,
-    AlertDialogContent,
-    AlertDialogDescription,
-    AlertDialogFooter,
-    AlertDialogHeader,
-    AlertDialogTitle,
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger, // Ensure AlertDialogTrigger is imported
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
-    Dialog,
-    DialogClose,
-    DialogContent,
-    DialogDescription,
-    DialogFooter,
-    DialogHeader,
-    DialogTitle,
-    DialogTrigger,
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
-import { useAuth } from "@/contexts/auth-context"; // Import useAuth
-import type {
-    CreateNarrationTemplatePayload,
-    DeleteNarrationTemplatePayload,
-    UpdateNarrationTemplatePayload
-} from "@/functions/src/types";
+import { useAuth } from "@/contexts/auth-context";
 import { useToast } from "@/hooks/use-toast";
-import { db } from "@/lib/supabase-db";
-import type { NarrationTemplate as FirestoreNarrationTemplate } from "@/types/firestore";
-import {
-    collection,
-    getDocs,
-    orderBy,
-    query
-} from "firebase/firestore";
-import { httpsCallable, type HttpsCallableResult } from "firebase/functions";
+import { supabase } from "@/lib/supabase"; // Import Supabase client
 import { Edit, Loader2, PlusCircle, Search, Trash2 } from "lucide-react";
-import { useRouter } from "next/navigation"; // Import useRouter
+import { useRouter } from "next/navigation";
 import { useEffect, useState, type ChangeEvent, type FormEvent } from "react";
 
-interface NarrationTemplate extends FirestoreNarrationTemplate {}
+// Define Supabase-specific types
+interface SupabaseNarrationTemplate {
+  id: string;
+  title: string;
+  template: string;
+  applicableTo: string[]; // Assuming this is an array of strings
+  createdAt: string;
+  createdBy?: string; // Optional, may be handled by Supabase policies/functions
+  updatedAt?: string;
+  updatedBy?: string; // Optional
+}
 
-const defaultFormData: Omit<NarrationTemplate, 'id' | 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy'> = {
-  title: "",
-  template: "",
-  applicableTo: [], 
+interface CreateNarrationTemplatePayload {
+  title: string;
+  template: string;
+  applicableTo: string[];
+}
+
+interface UpdateNarrationTemplatePayload {
+  templateId: string;
+  title?: string;
+  template?: string;
+  applicableTo?: string[];
+}
+
+interface DeleteNarrationTemplatePayload {
+  templateId: string;
+}
+
+// Placeholder for Supabase error message handler
+const getSupabaseErrorMessage = (error: any): string => {
+  if (error && typeof error === 'object' && 'message' in error) {
+    return error.message;
+  }
+  return "An unknown error occurred.";
 };
 
-const createNarrationTemplateFn = httpsCallable<CreateNarrationTemplatePayload, {success: boolean, id: string, message: string}>(functions, 'createNarrationTemplate');
-const updateNarrationTemplateFn = httpsCallable<UpdateNarrationTemplatePayload, {success: boolean, message: string}>(functions, 'updateNarrationTemplate');
-const deleteNarrationTemplateFn = httpsCallable<DeleteNarrationTemplatePayload, {success: boolean, message: string}>(functions, 'deleteNarrationTemplate');
+
+const defaultFormData: Omit<SupabaseNarrationTemplate, 'id' | 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy'> = {
+  title: "",
+  template: "",
+  applicableTo: [],
+};
+
+// Supabase Edge Function wrappers
+const createNarrationTemplateFn = async (data: CreateNarrationTemplatePayload) => {
+  const { data: result, error } = await supabase.functions.invoke('create-narration-template', { body: data });
+  if (error) throw error;
+  return result;
+};
+
+const updateNarrationTemplateFn = async (data: UpdateNarrationTemplatePayload) => {
+  const { data: result, error } = await supabase.functions.invoke('update-narration-template', { body: data });
+  if (error) throw error;
+  return result;
+};
+
+const deleteNarrationTemplateFn = async (data: DeleteNarrationTemplatePayload) => {
+  const { data: result, error } = await supabase.functions.invoke('delete-narration-template', { body: data });
+  if (error) throw error;
+  return result;
+};
 
 
 export default function NarrationSetupPage() {
-  const [templates, setTemplates] = useState<NarrationTemplate[]>([]);
+  const [templates, setTemplates] = useState<SupabaseNarrationTemplate[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isFormOpen, setIsFormOpen] = useState(false);
-  const [editingTemplate, setEditingTemplate] = useState<NarrationTemplate | null>(null);
-  const [formData, setFormData] = useState(defaultFormData);
+  const [editingTemplate, setEditingTemplate] = useState<SupabaseNarrationTemplate | null>(null);
+  const [formData, setFormData] = useState<Omit<SupabaseNarrationTemplate, 'id' | 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy'>>(defaultFormData);
   const [isDeleteAlertOpen, setIsDeleteAlertOpen] = useState(false);
-  const [templateToDelete, setTemplateToDelete] = useState<NarrationTemplate | null>(null);
+  const [templateToDelete, setTemplateToDelete] = useState<SupabaseNarrationTemplate | null>(null);
   const { toast } = useToast();
-  const { user: authUser, loading: authLoading } = useAuth(); // Get authenticated user
+  const { user: authUser, loading: authLoading } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
@@ -83,17 +122,21 @@ export default function NarrationSetupPage() {
     if (!authUser) return;
     setIsLoading(true);
     try {
-      const templatesCollectionRef = collection(db, "narrationTemplates");
-      const q = query(templatesCollectionRef, orderBy("title"));
-      const querySnapshot = await getDocs(q);
-      const fetchedTemplates: NarrationTemplate[] = querySnapshot.docs.map(docSnap => {
-        const data = docSnap.data() as FirestoreNarrationTemplate;
-        return { ...data, id: docSnap.id };
-      });
-      setTemplates(fetchedTemplates);
+      const { data, error } = await supabase
+        .from('narration_templates')
+        .select('*') // Selects all columns
+        .order('title');
+      
+      if (error) throw error;
+      // Ensure data conforms to SupabaseNarrationTemplate, especially applicableTo
+      const fetchedTemplates = (data || []).map(t => ({
+        ...t,
+        applicableTo: Array.isArray(t.applicableTo) ? t.applicableTo : [],
+      }));
+      setTemplates(fetchedTemplates as SupabaseNarrationTemplate[]);
     } catch (error) {
       console.error("Error fetching narration templates: ", error);
-      toast({ title: "Error", description: "Failed to fetch narration templates.", variant: "destructive" });
+      toast({ title: "Error", description: getSupabaseErrorMessage(error), variant: "destructive" });
     } finally {
       setIsLoading(false);
     }
@@ -110,6 +153,11 @@ export default function NarrationSetupPage() {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
   };
+  
+  // Example for handling array input if applicableTo needs UI, e.g. multi-select or tags
+  // const handleApplicableToChange = (newApplicableTo: string[]) => {
+  //   setFormData(prev => ({ ...prev, applicableTo: newApplicableTo }));
+  // };
 
   const openAddForm = () => {
     setEditingTemplate(null);
@@ -117,10 +165,13 @@ export default function NarrationSetupPage() {
     setIsFormOpen(true);
   };
 
-  const openEditForm = (template: NarrationTemplate) => {
+  const openEditForm = (template: SupabaseNarrationTemplate) => {
     setEditingTemplate(template);
     const { id, createdAt, createdBy, updatedAt, updatedBy, ...editableData } = template;
-    setFormData(editableData);
+    setFormData({
+        ...editableData,
+        applicableTo: Array.isArray(editableData.applicableTo) ? editableData.applicableTo : [],
+    });
     setIsFormOpen(true);
   };
 
@@ -138,31 +189,33 @@ export default function NarrationSetupPage() {
 
     try {
       if (editingTemplate) {
-        // Update existing template
         const payload: UpdateNarrationTemplatePayload = {
           templateId: editingTemplate.id,
-          ...formData,
+          title: formData.title,
+          template: formData.template,
+          applicableTo: formData.applicableTo, // Ensure this is correctly formatted if needed
         };
 
-        const result: HttpsCallableResult<{success: boolean, message: string}> = await updateNarrationTemplateFn(payload);
+        const result: any = await updateNarrationTemplateFn(payload);
         
-        if (result.data.success) {
-          toast({ title: "Success", description: result.data.message || "Narration template updated." });
+        if (result.success) {
+          toast({ title: "Success", description: result.message || "Narration template updated." });
         } else {
-          throw new Error(result.data.message || "Failed to update template");
+          throw new Error(result.message || "Failed to update template");
         }
       } else {
-        // Create new template
         const payload: CreateNarrationTemplatePayload = {
-          ...formData,
+          title: formData.title,
+          template: formData.template,
+          applicableTo: formData.applicableTo, // Ensure this is correctly formatted
         };
 
-        const result: HttpsCallableResult<{success: boolean, id: string, message: string}> = await createNarrationTemplateFn(payload);
+        const result: any = await createNarrationTemplateFn(payload);
         
-        if (result.data.success) {
-          toast({ title: "Success", description: result.data.message || "Narration template added." });
+        if (result.success) {
+          toast({ title: "Success", description: result.message || "Narration template added." });
         } else {
-          throw new Error(result.data.message || "Failed to create template");
+          throw new Error(result.message || "Failed to create template");
         }
       }
       
@@ -172,7 +225,7 @@ export default function NarrationSetupPage() {
       console.error("Error saving template: ", error);
       toast({ 
         title: "Error", 
-        description: error instanceof Error ? error.message : "Failed to save template.", 
+        description: error instanceof Error ? error.message : getSupabaseErrorMessage(error), 
         variant: "destructive" 
       });
     } finally {
@@ -180,7 +233,7 @@ export default function NarrationSetupPage() {
     }
   };
 
-  const handleDeleteClick = (template: NarrationTemplate) => {
+  const handleDeleteClick = (template: SupabaseNarrationTemplate) => {
     setTemplateToDelete(template);
     setIsDeleteAlertOpen(true);
   };
@@ -193,19 +246,19 @@ export default function NarrationSetupPage() {
         templateId: templateToDelete.id
       };
 
-      const result: HttpsCallableResult<{success: boolean, message: string}> = await deleteNarrationTemplateFn(payload);
+      const result: any = await deleteNarrationTemplateFn(payload);
       
-      if (result.data.success) {
-        toast({ title: "Success", description: result.data.message || `Template "${templateToDelete.title}" deleted.` });
+      if (result.success) {
+        toast({ title: "Success", description: result.message || `Template "${templateToDelete.title}" deleted.` });
         fetchTemplates();
       } else {
-        throw new Error(result.data.message || "Failed to delete template");
+        throw new Error(result.message || "Failed to delete template");
       }
     } catch (error) {
       console.error("Error deleting template: ", error);
       toast({ 
         title: "Error", 
-        description: error instanceof Error ? error.message : "Failed to delete template.", 
+        description: error instanceof Error ? error.message : getSupabaseErrorMessage(error), 
         variant: "destructive" 
       });
     } finally {
@@ -220,7 +273,7 @@ export default function NarrationSetupPage() {
     template.template.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  if (authLoading || (!authUser && !authLoading) || (isLoading && !templates.length)) {
+  if (authLoading || (!authUser && !authLoading) || (isLoading && !templates.length && !searchTerm)) {
     return (
       <div className="flex justify-center items-center h-64">
         <Loader2 className="h-12 w-12 animate-spin text-primary" />
@@ -259,8 +312,9 @@ export default function NarrationSetupPage() {
               <div>
                 <Label htmlFor="template">Template Text</Label>
                 <Textarea id="template" name="template" value={formData.template} onChange={handleInputChange} placeholder="Enter narration text. Use {{variable_name}} for placeholders." rows={4} required />
-                <p className="text-xs text-muted-foreground mt-1">Example: Being charges for shipment {{shipment_id}}.</p>
+                <p className="text-xs text-muted-foreground mt-1">Example: Being charges for shipment {"{{shipment_id}}"}.</p>
               </div>
+              {/* Add UI for formData.applicableTo if needed here */}
               <DialogFooter>
                 <DialogClose asChild><Button type="button" variant="outline" disabled={isSubmitting}>Cancel</Button></DialogClose>
                 <Button type="submit" disabled={isSubmitting}>
@@ -283,7 +337,7 @@ export default function NarrationSetupPage() {
           </div>
         </CardHeader>
         <CardContent>
-          {isLoading ? (
+          {isLoading && templates.length === 0 ? (
             <div className="flex justify-center items-center h-24"><Loader2 className="h-8 w-8 animate-spin text-primary" /><p className="ml-2 text-muted-foreground">Loading templates...</p></div>
           ) : (
             <Table>
@@ -296,7 +350,7 @@ export default function NarrationSetupPage() {
               </TableHeader>
               <TableBody>
                 {filteredTemplates.length === 0 && !isLoading && (
-                  <TableRow><TableCell colSpan={3} className="text-center h-24">No narration templates found.</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={3} className="text-center h-24">No narration templates found{searchTerm ? ` for "${searchTerm}"` : ""}.</TableCell></TableRow>
                 )}
                 {filteredTemplates.map((template) => (
                   <TableRow key={template.id}>

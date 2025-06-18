@@ -5,14 +5,14 @@ import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import {
-    Dialog,
-    DialogClose,
-    DialogContent,
-    DialogDescription,
-    DialogFooter,
-    DialogHeader,
-    DialogTitle,
-    DialogTrigger,
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -24,26 +24,17 @@ import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/contexts/auth-context"; // Import useAuth
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/lib/supabase";
-import { db } from "@/lib/supabase-db";
 import { cn } from "@/lib/utils";
 import type {
-    CloudFunctionResponse,
-    LedgerAccount as FirestoreLedgerAccount,
-    LedgerEntry as FirestoreLedgerEntry,
-    LedgerEntryCreateRequest,
-    LedgerEntryUpdateStatusRequest,
-    LedgerTransactionType
+  CloudFunctionResponse,
+  LedgerAccount as FirestoreLedgerAccount,
+  LedgerEntry as FirestoreLedgerEntry,
+  LedgerEntryCreateRequest,
+  LedgerEntryUpdateStatusRequest,
+  LedgerTransactionType
 } from "@/types/firestore";
 import { Command, CommandEmpty, CommandInput, CommandItem, CommandList } from "cmdk";
 import { endOfDay, format, startOfDay } from "date-fns";
-import {
-    collection,
-    getDocs,
-    orderBy,
-    query,
-    where
-} from "firebase/firestore";
-import { BadgeAlert, CalendarIcon, Check, CheckCircle2, ChevronsUpDown, FileText, Filter, Loader2, PlusCircle, Printer, XCircle } from "lucide-react";
 import { useRouter } from "next/navigation"; // Import useRouter
 import { useEffect, useMemo, useState, type ChangeEvent, type FormEvent } from "react";
 
@@ -122,55 +113,45 @@ export default function LedgersPage() {
   }, [authUser, authLoading, router]);
 
   const fetchLedgerAccounts = async () => {
-    if(!authUser) return;
-    setIsLoadingAccounts(true);
     try {
-      const q = query(collection(db, "ledgerAccounts"), orderBy("accountName"));
-      const querySnapshot = await getDocs(q);
-      const fetchedAccounts = querySnapshot.docs.map(docSnap => {
-        const data = docSnap.data() as FirestoreLedgerAccount;
-        return {
-          ...data,
-          id: docSnap.id,
-          createdAt: data.createdAt.toDate(),
-          updatedAt: data.updatedAt?.toDate(),
-          lastTransactionAt: data.lastTransactionAt?.toDate(),
-        } as LedgerAccount;
-      });
-      setAllLedgerAccounts(fetchedAccounts);
+      const { data, error } = await supabase
+        .from('ledger_accounts')
+        .select('*')
+        .order('account_name');
+      
+      if (error) throw error;
+      setAllLedgerAccounts(data || []);
     } catch (error) {
-      console.error("Error fetching ledger accounts:", error);
-      toast({ title: "Error", description: "Failed to fetch ledger accounts.", variant: "destructive"});
-    } finally {
-      setIsLoadingAccounts(false);
+      console.error("Error fetching ledger accounts: ", error);
+      toast({ title: "Error", description: error.message, variant: "destructive" });
     }
   };
 
-  const fetchLedgerEntries = async (accountId: string) => {
-    if (!accountId || !authUser) return;
-    setIsLoadingEntries(true);
+  const fetchLedgerEntries = async () => {
     try {
-      const q = query(collection(db, "ledgerEntries"), where("accountId", "==", accountId), orderBy("miti", "asc"), orderBy("createdAt", "asc"));
-      const querySnapshot = await getDocs(q);
-      const fetchedEntries = querySnapshot.docs.map(docSnap => {
-        const data = docSnap.data() as FirestoreLedgerEntry;
-        return {
-          ...data,
-          id: docSnap.id,
-          miti: data.miti.toDate(),
-          createdAt: data.createdAt.toDate(),
-          approvedAt: data.approvedAt?.toDate(),
-        } as LedgerEntry;
-      });
-      setAllLedgerEntries(prev => {
-        const otherAccountEntries = prev.filter(e => e.accountId !== accountId);
-        return [...otherAccountEntries, ...fetchedEntries];
-      });
+      let query = supabase
+        .from('ledger_entries')
+        .select('*');
+
+      // Apply filters
+      if (selectedAccountId) {
+        query = query.eq('account_id', selectedAccountId);
+      }
+      if (filterStartDate) {
+        query = query.gte('miti', filterStartDate.toISOString());
+      }
+      if (filterEndDate) {
+        query = query.lte('miti', filterEndDate.toISOString());
+      }
+
+      query = query.order('miti', { ascending: false });
+
+      const { data, error } = await query;
+      if (error) throw error;
+      setAllLedgerEntries(data || []);
     } catch (error) {
-      console.error(`Error fetching entries for account ${accountId}:`, error);
-      toast({ title: "Error", description: `Failed to fetch entries for account ${accountId}.`, variant: "destructive"});
-    } finally {
-      setIsLoadingEntries(false);
+      console.error("Error fetching ledger entries: ", error);
+      toast({ title: "Error", description: error.message, variant: "destructive" });
     }
   };
   
@@ -183,7 +164,7 @@ export default function LedgersPage() {
 
   useEffect(() => {
     if (selectedAccountId && authUser) {
-      fetchLedgerEntries(selectedAccountId);
+      fetchLedgerEntries();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedAccountId, authUser]);
@@ -329,7 +310,7 @@ export default function LedgersPage() {
         const result = await createManualLedgerEntryFn(entryPayload);
         if (result.data.success) {
             // Refresh entries for the selected account
-            await fetchLedgerEntries(selectedAccountId);
+            await fetchLedgerEntries();
             toast({ title: "Manual Entry Submitted", description: result.data.message });
             setIsManualEntryDialogOpen(false);
             setManualEntryFormData({...defaultManualEntryFormData, miti: new Date()}); 
@@ -369,7 +350,7 @@ export default function LedgersPage() {
         const result = await updateLedgerEntryStatusFn(updatePayload);
         if (result.data.success) {
             // Refresh entries for the selected account to get the updated data
-            await fetchLedgerEntries(selectedAccountId);
+            await fetchLedgerEntries();
             toast({ title: `Entry ${newStatus}`, description: result.data.message });
         } else {
             toast({ title: "Update Failed", description: result.data.message || "Failed to update entry status.", variant: "destructive"});

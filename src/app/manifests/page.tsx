@@ -1,29 +1,29 @@
 "use client";
 
 import {
-    AlertDialog,
-    AlertDialogAction,
-    AlertDialogCancel,
-    AlertDialogContent,
-    AlertDialogDescription,
-    AlertDialogFooter,
-    AlertDialogHeader,
-    AlertDialogTitle,
-    AlertDialogTrigger,
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
-    Dialog,
-    DialogClose,
-    DialogContent,
-    DialogDescription,
-    DialogFooter,
-    DialogHeader,
-    DialogTitle,
-    DialogTrigger,
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -33,30 +33,18 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useAuth } from "@/contexts/auth-context";
 import { useToast } from "@/hooks/use-toast";
-import { db } from "@/lib/supabase-db";
+import { supabase } from "@/lib/supabase";
+import { getSupabaseErrorMessage } from "@/lib/supabase-error-handler";
 import { cn } from "@/lib/utils";
 import type {
-    Bilti as FirestoreBilti,
-    Branch as FirestoreBranch,
-    Driver as FirestoreDriver,
-    Manifest as FirestoreManifest,
-    Party as FirestoreParty,
-    Truck as FirestoreTruck
+  Bilti as FirestoreBilti,
+  Branch as FirestoreBranch,
+  Driver as FirestoreDriver,
+  Manifest as FirestoreManifest,
+  Party as FirestoreParty,
+  Truck as FirestoreTruck
 } from "@/types/firestore";
 import { format } from "date-fns";
-import {
-    collection,
-    getDocs,
-    orderBy,
-    query,
-    // addDoc, // Replaced by callable
-    // doc, // Replaced by callable
-    // updateDoc, // Replaced by callable
-    // deleteDoc, // Replaced by callable
-    // writeBatch, // Logic moved to backend
-    Timestamp,
-} from "firebase/firestore";
-import { httpsCallable, type HttpsCallableResult } from "firebase/functions";
 import { CalendarIcon, ClipboardList, Edit, Loader2, PlusCircle, Search, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, type ChangeEvent, type FormEvent } from "react";
@@ -65,14 +53,14 @@ import { useEffect, useState, type ChangeEvent, type FormEvent } from "react";
 interface Manifest extends Omit<FirestoreManifest, 'miti' | 'createdAt' | 'updatedAt'> {
   id: string;
   miti: Date;
-  createdAt?: Date | Timestamp;
-  updatedAt?: Date | Timestamp;
+  createdAt?: Date | string;
+  updatedAt?: Date | string;
 }
 interface Bilti extends Omit<FirestoreBilti, 'miti' | 'createdAt' | 'updatedAt'> {
   id: string;
   miti: Date;
-  createdAt?: Date | Timestamp;
-  updatedAt?: Date | Timestamp;
+  createdAt?: Date | string;
+  updatedAt?: Date | string;
 }
 interface Truck extends FirestoreTruck {}
 interface Driver extends FirestoreDriver {}
@@ -90,10 +78,21 @@ const defaultManifestFormData: Omit<Manifest, 'id' | 'status' | 'createdAt' | 'c
   remarks: "",
 };
 
-// Use the functions instance from the central firebase.ts file
-const createManifestFn = httpsCallable<any, {success: boolean, id: string, message: string}>(functions, 'createManifest');
-const updateManifestFn = httpsCallable<any, {success: boolean, id: string, message: string}>(functions, 'updateManifest');
-const deleteManifestFn = httpsCallable<{manifestId: string}, {success: boolean, id: string, message: string}>(functions, 'deleteManifest');
+// Supabase Edge Functions calls
+const createManifestFn = async (data: any) => {
+  const response = await supabase.functions.invoke('create-manifest', { body: data });
+  return response.data;
+};
+
+const updateManifestFn = async (data: any) => {
+  const response = await supabase.functions.invoke('update-manifest', { body: data });
+  return response.data;
+};
+
+const deleteManifestFn = async (data: any) => {
+  const response = await supabase.functions.invoke('delete-manifest', { body: data });
+  return response.data;
+};
 
 
 export default function ManifestsPage() {
@@ -130,23 +129,36 @@ export default function ManifestsPage() {
   const fetchMasterData = async () => {
     if (!authUser) return;
     try {
-      const [trucksSnap, driversSnap, branchesSnap, partiesSnap, biltisSnap] = await Promise.all([
-        getDocs(query(collection(db, "trucks"), orderBy("truckNo"))),
-        getDocs(query(collection(db, "drivers"), orderBy("name"))),
-        getDocs(query(collection(db, "branches"), orderBy("name"))),
-        getDocs(query(collection(db, "parties"), orderBy("name"))),
-        getDocs(query(collection(db, "biltis"))),
+      const [trucksRes, driversRes, branchesRes, partiesRes] = await Promise.all([
+        supabase.from('trucks').select('*').order('truck_no'),
+        supabase.from('drivers').select('*').order('name'),
+        supabase.from('branches').select('*').order('name'),
+        supabase.from('parties').select('*').order('name')
       ]);
 
-      setTrucks(trucksSnap.docs.map(d => ({ ...d.data(), id: d.id } as Truck)));
-      setDrivers(driversSnap.docs.map(d => ({ ...d.data(), id: d.id } as Driver)));
-      setBranches(branchesSnap.docs.map(d => ({ ...d.data(), id: d.id } as Branch)));
-      setParties(partiesSnap.docs.map(d => ({ ...d.data(), id: d.id } as Party)));
+      if (trucksRes.error) throw trucksRes.error;
+      if (driversRes.error) throw driversRes.error;
+      if (branchesRes.error) throw branchesRes.error;
+      if (partiesRes.error) throw partiesRes.error;
+
+      setTrucks(trucksRes.data || []);
+      setDrivers(driversRes.data || []);
+      setBranches(branchesRes.data || []);
+      setParties(partiesRes.data || []);
       
-      const allFetchedBiltis = biltisSnap.docs.map(d => {
-        const data = d.data() as FirestoreBilti;
-        return { ...data, id: d.id, miti: data.miti.toDate() } as Bilti;
-      });
+      // Fetch biltis using Supabase
+      const { data: biltisData, error } = await supabase
+        .from('biltis')
+        .select('*')
+        .order('created_at');
+      
+      if (error) throw error;
+      
+      const allFetchedBiltis = (biltisData || []).map(bilti => ({
+        ...bilti,
+        miti: new Date(bilti.miti)
+      })) as Bilti[];
+      
       setAllBiltisMaster(allFetchedBiltis);
       setAvailableBiltis(allFetchedBiltis.filter(b => b.status === "Pending"));
 
@@ -159,17 +171,22 @@ export default function ManifestsPage() {
   const fetchManifests = async () => {
     if (!authUser) return;
     try {
-      const manifestsCollectionRef = collection(db, "manifests");
-      const q = query(manifestsCollectionRef, orderBy("createdAt", "desc"));
-      const querySnapshot = await getDocs(q);
-      const fetchedManifests: Manifest[] = querySnapshot.docs.map(docSnap => {
-        const data = docSnap.data() as FirestoreManifest;
-        return { ...data, id: docSnap.id, miti: data.miti.toDate() };
-      });
+      const { data, error } = await supabase
+        .from('manifests')
+        .select('*')
+        .order('created_at', { ascending: false });
+      
+      if (error) throw error;
+      
+      const fetchedManifests: Manifest[] = (data || []).map(manifest => ({
+        ...manifest,
+        miti: new Date(manifest.miti)
+      }));
+      
       setManifests(fetchedManifests);
     } catch (error) {
       console.error("Error fetching manifests: ", error);
-      toast({ title: "Error", description: "Failed to fetch manifests.", variant: "destructive" });
+      toast({ title: "Error", description: getSupabaseErrorMessage(error), variant: "destructive" });
     }
   };
   
@@ -263,20 +280,20 @@ export default function ManifestsPage() {
     };
     
     try {
-      let result: HttpsCallableResult<{success: boolean; id: string; message: string}>;
+      let result: any;
       if (editingManifest) {
         result = await updateManifestFn({ manifestId: editingManifest.id, ...payload });
       } else {
         result = await createManifestFn(payload);
       }
 
-      if (result.data.success) {
-        toast({ title: "Success", description: result.data.message });
+      if (result.success) {
+        toast({ title: "Success", description: result.message });
         fetchManifests();
         fetchMasterData(); // Re-fetch to update bilti statuses for selection
         setIsFormDialogOpen(false);
       } else {
-        toast({ title: "Error", description: result.data.message, variant: "destructive" });
+        toast({ title: "Error", description: result.message, variant: "destructive" });
       }
     } catch (error: any) {
         console.error("Error saving manifest:", error);
@@ -296,12 +313,12 @@ export default function ManifestsPage() {
     setIsSubmitting(true);
     try {
       const result = await deleteManifestFn({ manifestId: manifestToDelete.id });
-      if (result.data.success) {
-        toast({ title: "Success", description: result.data.message });
+      if (result.success) {
+        toast({ title: "Success", description: result.message });
         fetchManifests();
         fetchMasterData(); // Re-fetch biltis
       } else {
-        toast({ title: "Error", description: result.data.message, variant: "destructive" });
+        toast({ title: "Error", description: result.message, variant: "destructive" });
       }
     } catch (error: any) {
       console.error("Error deleting manifest: ", error);
@@ -436,7 +453,7 @@ export default function ManifestsPage() {
                                 checked={selectedBiltiIdsInForm.has(bilti.id)}
                                 onCheckedChange={(checked) => handleBiltiSelectionChange(bilti.id, !!checked)}
                                 id={`bilti-${bilti.id}`}
-                                disabled={editingManifest && bilti.status === "Manifested" && !editingManifest.attachedBiltiIds.includes(bilti.id)}
+                                disabled={!!(editingManifest && bilti.status === "Manifested" && !editingManifest.attachedBiltiIds.includes(bilti.id))}
                               />
                             </TableCell>
                             <TableCell>{bilti.id}</TableCell>
@@ -554,6 +571,6 @@ export default function ManifestsPage() {
     </div>
   );
 }
-    
 
-    
+
+

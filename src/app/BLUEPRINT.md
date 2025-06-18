@@ -10,11 +10,11 @@ This document provides an architectural overview of the GorkhaTrans Transportati
 *   **Frontend Framework:** Next.js (App Router) with React and TypeScript
 *   **UI Components:** ShadCN UI
 *   **Styling:** Tailwind CSS
-*   **Backend Services:** Firebase
-    *   **Database:** Firestore
-    *   **Authentication:** Firebase Authentication
-    *   **Serverless Logic:** Firebase Cloud Functions for Node.js (HTTPS Callable Functions & Triggers)
-*   **AI Toolkit (Setup Exists):** Genkit (Smart Route Optimization feature removed, but Genkit setup remains)
+*   **Backend Services:** Supabase
+    *   **Database:** Supabase (PostgreSQL)
+    *   **Authentication:** Supabase Authentication
+    *   **Serverless Logic:** Supabase Edge Functions
+
 
 ## 3. Application Structure
 

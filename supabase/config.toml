@@ -16,13 +16,13 @@ extra_search_path = ["public", "extensions"]
 # The maximum number of rows returns from a view, table, or stored procedure. Limits payload size
 # for accidental or malicious requests.
 max_rows = 1000
-<<<<<<< HEAD
-=======
-# Comma-separated list of allowed origins for CORS requests.
-cors_allowed_origins = [
-  "https://turbo-guide-5g5xpx6jpxwjcvjrj-3000.app.github.dev"
-]
->>>>>>> c6ea085 (Refactor Supabase configuration for local development, update CORS settings, and enhance SQL migration with conditional index creation.)
+
+# [http.cors] # Changed from [api] to [http.cors]
+# # Comma-separated list of allowed origins for CORS requests.
+# cors_allowed_origins = [
+#  "https://turbo-guide-5g5xpx6jpxwjcvjrj-3000.app.github.dev",
+#  "http://localhost:3000" # Added for local development
+# ]
 
 [api.tls]
 # Enable HTTPS endpoints locally using a self-signed certificate.
@@ -77,8 +77,8 @@ enabled = true
 port = 54323
 # External URL of the API server that frontend connects to.
 api_url = "http://127.0.0.1"
-# OpenAI API Key to use for Supabase AI in the Supabase Studio.
-openai_api_key = "env(OPENAI_API_KEY)"
+# Supabase AI configuration (optional)
+# Remove if not using AI features
 
 # Email testing server. Emails sent with the local dev setup are not actually sent - rather, they
 # are monitored, and you can view the emails that would have been sent from the web interface.
@@ -299,8 +299,9 @@ inspector_port = 8083
 # The Deno major version to use.
 deno_version = 1
 
-# [edge_runtime.secrets]
-# secret_key = "env(SECRET_VALUE)"
+# [functions]
+#  [functions.cors]
+#    allowed_origins = ["http://localhost:3000", "https://turbo-guide-5g5xpx6jpxwjcvjrj-3000.app.github.dev"]
 
 [analytics]
 enabled = true

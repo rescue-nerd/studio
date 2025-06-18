@@ -3,28 +3,28 @@
 import SmartBranchSelectDialog from "@/components/shared/smart-branch-select-dialog";
 import SmartManifestSelectDialog from "@/components/shared/smart-manifest-select-dialog";
 import {
-    AlertDialog,
-    AlertDialogAction,
-    AlertDialogCancel,
-    AlertDialogContent,
-    AlertDialogDescription,
-    AlertDialogFooter,
-    AlertDialogHeader,
-    AlertDialogTitle,
-    AlertDialogTrigger,
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
-    Dialog,
-    DialogClose,
-    DialogContent,
-    DialogDescription,
-    DialogFooter,
-    DialogHeader,
-    DialogTitle,
-    DialogTrigger,
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -32,17 +32,17 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { db } from "@/lib/supabase-db";
 import { supabase } from "@/lib/supabase";
+import { db } from "@/lib/supabase-db";
 import { cn } from "@/lib/utils";
 import type {
-    CloudFunctionResponse,
-    Branch as FirestoreBranch,
-    GoodsReceipt as FirestoreGoodsReceipt,
-    Manifest as FirestoreManifest,
-    GoodsReceiptCreateRequest,
-    GoodsReceiptDeleteRequest,
-    GoodsReceiptUpdateRequest
+  CloudFunctionResponse,
+  Branch as FirestoreBranch,
+  GoodsReceipt as FirestoreGoodsReceipt,
+  Manifest as FirestoreManifest,
+  GoodsReceiptCreateRequest,
+  GoodsReceiptDeleteRequest,
+  GoodsReceiptUpdateRequest
 } from "@/types/firestore";
 import { format } from "date-fns";
 import { ArchiveRestore, CalendarIcon, Edit, Loader2, PlusCircle, Search, Trash2 } from "lucide-react";
@@ -142,14 +142,31 @@ export default function GoodsReceiptPage() {
 
   const fetchGoodsReceipts = async () => {
     try {
-      const receipts = await db.query<GoodsReceipt>('goodsReceipts', {
-        select: '*',
-        orderBy: { column: 'createdAt', ascending: false }
-      });
-      setGoodsReceipts(receipts);
+      const { data, error } = await supabase
+        .from('goods_receipts')
+        .select('*')
+        .order('miti', { ascending: false });
+      
+      if (error) throw error;
+      setGoodsReceipts(data || []);
     } catch (error) {
-      console.error("Error fetching goods receipts:", error);
-      toast({ title: "Error", description: "Failed to fetch goods receipts.", variant: "destructive" });
+      console.error("Error fetching goods receipts: ", error);
+      toast({ title: "Error", description: handleSupabaseError(error), variant: "destructive" });
+    }
+  };
+
+  const fetchManifests = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('manifests')
+        .select('*')
+        .order('miti', { ascending: false });
+      
+      if (error) throw error;
+      setManifests(data || []);
+    } catch (error) {
+      console.error("Error fetching manifests: ", error);
+      toast({ title: "Error", description: handleSupabaseError(error), variant: "destructive" });
     }
   };
 

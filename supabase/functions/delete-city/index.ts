@@ -1,85 +1,150 @@
-import { createClient } from 'npm:@supabase/supabase-js@2'
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Allow-Methods': 'DELETE, OPTIONS',
 }
 
-interface RequestBody {
-  cityId: string;
-}
-
-Deno.serve(async (req) => {
+serve(async (req) => {
   if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders })
+    return new Response('ok', { headers: corsHeaders })
+  }
+
+  if (req.method !== 'DELETE') {
+    return new Response(JSON.stringify({ error: 'Method not allowed' }), {
+      status: 405,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    })
   }
 
   try {
-    const supabaseClient = createClient(
+    const supabase = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-    )
-
-    const authHeader = req.headers.get('Authorization')!
-    const token = authHeader.replace('Bearer ', '')
-    const { data: { user } } = await supabaseClient.auth.getUser(token)
-
-    if (!user) {
-      return new Response(
-        JSON.stringify({ success: false, message: 'Unauthorized' }),
-        { 
-          status: 401, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        }
-      )
-    }
-
-    const body: RequestBody = await req.json()
-    
-    if (!body.cityId) {
-      return new Response(
-        JSON.stringify({ success: false, message: 'City ID is required' }),
-        { 
-          status: 400, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        }
-      )
-    }
-
-    const { error } = await supabaseClient
-      .from('cities')
-      .delete()
-      .eq('id', body.cityId)
-
-    if (error) {
-      return new Response(
-        JSON.stringify({ success: false, message: error.message }),
-        { 
-          status: 400, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        }
-      )
-    }
-
-    return new Response(
-      JSON.stringify({ 
-        success: true, 
-        id: body.cityId, 
-        message: 'City deleted successfully' 
-      }),
-      { 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+      {
+        global: {
+          headers: { Authorization: req.headers.get('Authorization')! },
+        },
       }
     )
+
+    // Get the authenticated user
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    if (authError || !user) {
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+        status: 401,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      })
+    }
+
+    const { id } = await req.json()
+
+    // Validate required fields
+    if (!id) {
+      return new Response(JSON.stringify({ 
+        error: 'Missing required field: id' 
+      }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      })
+    }
+
+    // Check if city exists
+    const { data: existingCity, error: cityError } = await supabase
+      .from('locations')
+      .select('id, name, type, status')
+      .eq('id', id)
+      .eq('type', 'city')
+      .single()
+
+    if (cityError || !existingCity) {
+      return new Response(JSON.stringify({ 
+        error: 'City not found' 
+      }), {
+        status: 404,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      })
+    }
+
+    if (existingCity.status !== 'active') {
+      return new Response(JSON.stringify({ 
+        error: 'City is already inactive' 
+      }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      })
+    }
+
+    // Check for dependent units
+    const { data: units, error: unitsError } = await supabase
+      .from('units')
+      .select('id, name')
+      .eq('city_id', id)
+      .eq('status', 'active')
+      .limit(5)
+
+    if (unitsError) {
+      throw unitsError
+    }
+
+    if (units && units.length > 0) {
+      const unitNames = units.map((u: any) => u.name).join(', ')
+      return new Response(JSON.stringify({ 
+        error: `Cannot delete city. It has ${units.length} active units: ${unitNames}${units.length === 5 ? '...' : ''}` 
+      }), {
+        status: 409,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      })
+    }
+
+    // Soft delete the city
+    const { data: deletedCity, error: deleteError } = await supabase
+      .from('locations')
+      .update({
+        status: 'inactive',
+        updated_by: user.id,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', id)
+      .select(`
+        id,
+        name,
+        type,
+        parent_id,
+        status,
+        created_at,
+        updated_at,
+        created_by,
+        updated_by
+      `)
+      .single()
+
+    if (deleteError) {
+      console.error('Delete city error:', deleteError)
+      return new Response(JSON.stringify({ 
+        error: 'Failed to delete city' 
+      }), {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      })
+    }
+
+    return new Response(JSON.stringify({
+      success: true,
+      data: deletedCity
+    }), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    })
 
   } catch (error) {
-    return new Response(
-      JSON.stringify({ success: false, message: error.message }),
-      { 
-        status: 500, 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-      }
-    )
+    console.error('Error deleting city:', error)
+    return new Response(JSON.stringify({ 
+      error: 'Internal server error' 
+    }), {
+      status: 500,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    })
   }
 })

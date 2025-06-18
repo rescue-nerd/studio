@@ -1,28 +1,28 @@
 "use client";
 
 import {
-    AlertDialog,
-    AlertDialogAction,
-    AlertDialogCancel,
-    AlertDialogContent,
-    AlertDialogDescription,
-    AlertDialogFooter,
-    AlertDialogHeader,
-    AlertDialogTitle,
-    AlertDialogTrigger,
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
-    Dialog,
-    DialogClose,
-    DialogContent,
-    DialogDescription,
-    DialogFooter,
-    DialogHeader,
-    DialogTitle,
-    DialogTrigger,
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -30,33 +30,44 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useAuth } from "@/contexts/auth-context";
 import { useToast } from "@/hooks/use-toast";
-import { handleSupabaseError, logError } from "@/lib/supabase-error-handler";
 import { supabase } from "@/lib/supabase";
-import type { Truck as FirestoreTruck } from "@/types/firestore";
+import { handleSupabaseError } from "@/lib/supabase-error-handler";
+import type { Truck as CanonicalTruck } from "@/types/database"; // Import specific types
 import { Edit, Loader2, PlusCircle, Search, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, type ChangeEvent, type FormEvent } from "react";
 
+// Define Truck using the canonical type from database.ts
+type Truck = CanonicalTruck;
 
-interface Truck extends FirestoreTruck {}
-type TruckFormDataCallable = Omit<FirestoreTruck, 'id' | 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy'>;
-type UpdateTruckFormDataCallable = Partial<TruckFormDataCallable> & { truckId: string };
+// Define form data types based on the canonical Truck type
+// Manually define Insert and Update types if not exported from database.ts
+type TruckInsert = Omit<Truck, 'id' | 'createdAt' | 'updatedAt'> & { created_by?: string }; // created_by might be handled by db
+type TruckUpdate = Partial<Omit<Truck, 'id' | 'createdAt' | 'updatedAt'>> & { updated_by?: string }; // updated_by might be handled by db
 
+type TruckFormDataCallable = Omit<Truck, 'id' | 'createdAt' | 'updatedAt'>;
+type UpdateTruckFormDataCallable = Partial<Omit<Truck, 'id' | 'createdAt' | 'updatedAt'>> & { truck_id: string };
 
-const truckTypes = ["6-Wheeler", "10-Wheeler", "12-Wheeler", "Trailer", "Container Truck", "Tanker", "Tipper"];
-const truckStatuses: FirestoreTruck["status"][] = ["Active", "Inactive", "Maintenance"];
+// Fields like 'type', 'capacity', 'owner_pan', 'status' are not in the canonical Truck type.
+// These will be removed or commented out. If they are needed, the database.ts schema must be updated.
 
-const defaultTruckFormData: Omit<Truck, 'id' | 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy'> = {
+// const truckTypes = ["6-Wheeler", "10-Wheeler", "12-Wheeler", "Trailer", "Container Truck", "Tanker", "Tipper"];
+// const truckStatuses: Array<Truck['status'] | null> = ["Active", "Inactive", "Maintenance", null];
+
+const defaultTruckFormData: TruckFormDataCallable = {
   truckNo: "",
-  type: truckTypes[0],
-  capacity: "",
+  // type: truckTypes[0], // Not in canonical Truck
+  // capacity: null, // Not in canonical Truck
   ownerName: "",
-  ownerPAN: "",
-  status: "Active",
+  // owner_pan: null, // Not in canonical Truck
+  // status: "Active", // Not in canonical Truck. Use isActive from canonical type.
+  isActive: true, // Default to active
   assignedLedgerId: "",
+  branchId: "", // Assuming branchId is required, add a default or fetch from context
+  // created_by will be set by the backend or a Supabase function trigger
 };
 
-const createTruckFn = async (data: TruckFormDataCallable) => {
+const createTruckFn = async (data: TruckInsert) => {
   try {
     const response = await supabase.functions.invoke('create-truck', { 
       body: data,
@@ -71,10 +82,11 @@ const createTruckFn = async (data: TruckFormDataCallable) => {
   }
 };
 
-const updateTruckFn = async (data: UpdateTruckFormDataCallable) => {
+const updateTruckFn = async (data: { truck_id: string } & TruckUpdate) => {
   try {
+    const { truck_id, ...updateData } = data;
     const response = await supabase.functions.invoke('update-truck', { 
-      body: data,
+      body: { truckId: truck_id, ...updateData }, // Ensure payload matches function expectation
       headers: {
         'Content-Type': 'application/json'
       }
@@ -107,7 +119,7 @@ export default function TrucksPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [isFormDialogOpen, setIsFormDialogOpen] = useState(false);
   const [editingTruck, setEditingTruck] = useState<Truck | null>(null);
-  const [formData, setFormData] = useState<Omit<Truck, 'id' | 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy'>>(defaultTruckFormData);
+  const [formData, setFormData] = useState<TruckFormDataCallable>(defaultTruckFormData);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [truckToDelete, setTruckToDelete] = useState<Truck | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -124,25 +136,23 @@ export default function TrucksPage() {
 
 
   const fetchTrucks = async () => {
-    if (!authUser) return;
-    setIsLoading(true);
+    setIsLoading(true); // Start loading
     try {
-      const { data, error } = await supabase
-        .from('trucks')
+      const { data, error, statusText } = await supabase
+        .from('trucks') 
         .select('*')
-        .order('truck_no', { ascending: true });
-
-      if (error) throw error;
+        .order('truck_no'); // Changed from truckNo to truck_no
       
-      // Initialize trucks as an empty array if data is null
-      setTrucks(data || []);
+      if (error) {
+        // Throw a new error with more context if Supabase error object is not informative
+        throw new Error(`Supabase error fetching trucks: ${error.message || statusText || 'Unknown error'}`);
+      }
+      setTrucks((data as Truck[]) || []); 
     } catch (error) {
-      logError(error, "Error fetching trucks");
-      handleSupabaseError(error, toast, {
-        "permission-denied": "You don't have permission to view trucks."
-      });
+      console.error("Error fetching trucks: ", error); // Now error should have a message
+      handleSupabaseError(error, toast);
     } finally {
-      setIsLoading(false);
+      setIsLoading(false); // Stop loading
     }
   };
 
@@ -158,12 +168,14 @@ export default function TrucksPage() {
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
-  const handleSelectChange = (name: keyof Omit<Truck, 'id' | 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy'>) => (value: string) => {
-     if (name === 'status') {
-        setFormData((prev) => ({ ...prev, [name]: value as FirestoreTruck['status'] }));
-     } else {
-        setFormData((prev) => ({ ...prev, [name]: value }));
-     }
+  const handleSelectChange = (name: keyof TruckFormDataCallable) => (value: string | boolean) => {
+    // Removed 'status' and 'type' handling as they are not in canonical Truck
+    // For isActive (boolean)
+    if (name === 'isActive') {
+        setFormData(prev => ({ ...prev, [name]: value as boolean }));
+    } else {
+        setFormData(prev => ({ ...prev, [name]: value as string }));
+    }
   };
 
   const openAddForm = () => {
@@ -174,8 +186,18 @@ export default function TrucksPage() {
 
   const openEditForm = (truck: Truck) => {
     setEditingTruck(truck);
-    const { id, createdAt, createdBy, updatedAt, updatedBy, ...editableData } = truck;
-    setFormData(editableData);
+    // Adjust destructuring to match canonical Truck type
+    const { id, createdAt, updatedAt, ...editableData } = truck;
+    // Ensure all fields in editableData exist in TruckFormDataCallable
+    const currentFormData: TruckFormDataCallable = {
+        truckNo: editableData.truckNo,
+        ownerName: editableData.ownerName,
+        ownerContactNo: editableData.ownerContactNo || undefined, // Handle optional fields
+        assignedLedgerId: editableData.assignedLedgerId,
+        isActive: editableData.isActive,
+        branchId: editableData.branchId,
+    };
+    setFormData(currentFormData);
     setIsFormDialogOpen(true);
   };
 
@@ -185,20 +207,25 @@ export default function TrucksPage() {
         toast({ title: "Authentication Error", description: "You must be logged in.", variant: "destructive"});
         return;
     }
-    if (!formData.truckNo || !formData.ownerName || !formData.assignedLedgerId) {
-        toast({ title: "Validation Error", description: "Truck No., Owner Name, and Ledger A/C are required.", variant: "destructive"});
+    // Update validation to match canonical Truck type fields
+    if (!formData.truckNo || !formData.ownerName || !formData.assignedLedgerId || !formData.branchId) {
+        toast({ title: "Validation Error", description: "Truck No., Owner Name, Ledger A/C, and Branch ID are required.", variant: "destructive"});
         return;
     }
     setIsSubmitting(true);
 
-    const truckDataPayload: TruckFormDataCallable = { ...formData };
+    // Ensure payload matches TruckInsert or TruckUpdate type
+    const truckDataPayload: TruckInsert | TruckUpdate = {
+        ...formData,
+        // created_by and updated_by should be handled by Supabase functions or triggers if needed
+    };
 
     try {
       let result;
       if (editingTruck) {
-        result = await updateTruckFn({ truckId: editingTruck.id, ...truckDataPayload });
+        result = await updateTruckFn({ truck_id: editingTruck.id, ...(truckDataPayload as TruckUpdate) });
       } else {
-        result = await createTruckFn(truckDataPayload);
+        result = await createTruckFn(truckDataPayload as TruckInsert);
       }
 
       if (result && result.success) {
@@ -255,19 +282,16 @@ export default function TrucksPage() {
   // Ensure trucks is an array before filtering
   const filteredTrucks = trucks && Array.isArray(trucks) 
     ? trucks.filter(truck =>
-        truck.truckNo?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        truck.ownerName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        truck.type?.toLowerCase().includes(searchTerm.toLowerCase())
+        truck.truckNo?.toLowerCase().includes(searchTerm.toLowerCase()) || // Use truckNo
+        truck.ownerName?.toLowerCase().includes(searchTerm.toLowerCase()) // Use ownerName
+        // Removed truck.type filter as it's not in canonical Truck
       )
     : [];
 
-  const getStatusBadgeVariant = (status: Truck["status"]): "default" | "destructive" | "secondary" => {
-    switch (status) {
-      case "Active": return "default";
-      case "Inactive": return "destructive";
-      case "Maintenance": return "secondary";
-      default: return "default";
-    }
+  // Removed getStatusBadgeVariant as 'status' field is not in canonical Truck.
+  // Use 'isActive' field for similar logic if needed.
+  const getIsActiveBadgeVariant = (isActive: boolean | undefined): "default" | "secondary" => {
+    return isActive ? "default" : "secondary";
   };
 
   if (authLoading || (!authUser && !authLoading)) {
@@ -304,9 +328,10 @@ export default function TrucksPage() {
                 <Label htmlFor="truckNo" className="text-right">Truck No.</Label>
                 <Input id="truckNo" name="truckNo" value={formData.truckNo || ''} onChange={handleInputChange} className="col-span-3" required />
               </div>
-              <div className="grid grid-cols-4 items-center gap-4">
+              {/* Removed Type and Capacity fields as they are not in canonical Truck */}
+              {/* <div className="grid grid-cols-4 items-center gap-4">
                 <Label htmlFor="type" className="text-right">Type</Label>
-                <Select value={formData.type} onValueChange={handleSelectChange('type')}>
+                <Select value={formData.type || undefined} onValueChange={handleSelectChange('type') as (value: string) => void}>
                   <SelectTrigger className="col-span-3"><SelectValue placeholder="Select type" /></SelectTrigger>
                   <SelectContent>{truckTypes.map(type => <SelectItem key={type} value={type}>{type}</SelectItem>)}</SelectContent>
                 </Select>
@@ -314,20 +339,33 @@ export default function TrucksPage() {
               <div className="grid grid-cols-4 items-center gap-4">
                 <Label htmlFor="capacity" className="text-right">Capacity</Label>
                 <Input id="capacity" name="capacity" value={formData.capacity || ""} onChange={handleInputChange} className="col-span-3" placeholder="e.g., 10 Ton (Optional)" />
-              </div>
+              </div> */}
               <div className="grid grid-cols-4 items-center gap-4">
                 <Label htmlFor="ownerName" className="text-right">Owner Name</Label>
                 <Input id="ownerName" name="ownerName" value={formData.ownerName || ''} onChange={handleInputChange} className="col-span-3" required />
               </div>
-              <div className="grid grid-cols-4 items-center gap-4">
+              {/* Removed Owner PAN field as it's not in canonical Truck */}
+              {/* <div className="grid grid-cols-4 items-center gap-4">
                 <Label htmlFor="ownerPAN" className="text-right">Owner PAN</Label>
-                <Input id="ownerPAN" name="ownerPAN" value={formData.ownerPAN || ""} onChange={handleInputChange} className="col-span-3" placeholder="(Optional)" />
+                <Input id="ownerPAN" name="owner_pan" value={formData.owner_pan || ""} onChange={handleInputChange} className="col-span-3" placeholder="(Optional)" />
+              </div> */}
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="ownerContactNo" className="text-right">Owner Contact</Label>
+                <Input id="ownerContactNo" name="ownerContactNo" value={formData.ownerContactNo || ""} onChange={handleInputChange} className="col-span-3" placeholder="(Optional)" />
               </div>
               <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="status" className="text-right">Status</Label>
-                <Select value={formData.status} onValueChange={handleSelectChange('status') as (value: FirestoreTruck["status"]) => void}>
+                <Label htmlFor="branchId" className="text-right">Branch ID</Label>
+                <Input id="branchId" name="branchId" value={formData.branchId || ''} onChange={handleInputChange} className="col-span-3" placeholder="e.g., Branch-XYZ" required />
+              </div>
+              {/* Removed Status field, using isActive instead */}
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="isActive" className="text-right">Active</Label>
+                <Select value={formData.isActive ? "true" : "false"} onValueChange={(value) => handleSelectChange('isActive')(value === "true")}>
                   <SelectTrigger className="col-span-3"><SelectValue placeholder="Select status" /></SelectTrigger>
-                  <SelectContent>{truckStatuses.map(status => <SelectItem key={status} value={status}>{status}</SelectItem>)}</SelectContent>
+                  <SelectContent>
+                    <SelectItem value="true">Active</SelectItem>
+                    <SelectItem value="false">Inactive</SelectItem>
+                  </SelectContent>
                 </Select>
               </div>
               <div className="grid grid-cols-4 items-center gap-4">
@@ -364,10 +402,12 @@ export default function TrucksPage() {
                 <TableRow>
                   <TableHead>ID</TableHead>
                   <TableHead>Truck No.</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead>Capacity</TableHead>
+                  {/* <TableHead>Type</TableHead> */}
+                  {/* <TableHead>Capacity</TableHead> */}
                   <TableHead>Owner</TableHead>
-                  <TableHead>Status</TableHead>
+                  <TableHead>Owner Contact</TableHead>
+                  <TableHead>Branch ID</TableHead>
+                  <TableHead>Status</TableHead> {/* Changed from Status to Is Active */} 
                   <TableHead>Ledger A/C ID</TableHead>
                   <TableHead>Actions</TableHead>
                 </TableRow>
@@ -377,13 +417,15 @@ export default function TrucksPage() {
                     <TableRow><TableCell colSpan={8} className="text-center h-24">No trucks found.</TableCell></TableRow>
                 )}
                 {filteredTrucks.map((truck) => (
-                  <TableRow key={truck.id}>
+                  <TableRow key={truck.id}>{/* Removed newline and whitespace here */}
                     <TableCell className="font-medium">{truck.id}</TableCell>
                     <TableCell>{truck.truckNo}</TableCell>
-                    <TableCell>{truck.type}</TableCell>
-                    <TableCell>{truck.capacity || 'N/A'}</TableCell>
+                    {/* <TableCell>{truck.type}</TableCell> */}
+                    {/* <TableCell>{truck.capacity || \'N/A\'}</TableCell> */}
                     <TableCell>{truck.ownerName}</TableCell>
-                    <TableCell><Badge variant={getStatusBadgeVariant(truck.status)} className={truck.status === "Active" ? "bg-accent text-accent-foreground" : ""}>{truck.status}</Badge></TableCell>
+                    <TableCell>{truck.ownerContactNo || 'N/A'}</TableCell>
+                    <TableCell>{truck.branchId}</TableCell>
+                    <TableCell><Badge variant={getIsActiveBadgeVariant(truck.isActive)} className={truck.isActive ? "bg-accent text-accent-foreground" : ""}>{truck.isActive ? "Active" : "Inactive"}</Badge></TableCell>
                     <TableCell>{truck.assignedLedgerId}</TableCell>
                     <TableCell>
                       <div className="flex gap-2">
@@ -393,7 +435,7 @@ export default function TrucksPage() {
                             <Button variant="destructive" size="icon" aria-label="Delete Truck" onClick={() => handleDeleteClick(truck)} disabled={isSubmitting}><Trash2 className="h-4 w-4" /></Button>
                           </AlertDialogTrigger>
                           <AlertDialogContent>
-                            <AlertDialogHeader><AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle><AlertDialogDescription>This action cannot be undone. This will permanently delete the truck "{truckToDelete?.truckNo}".</AlertDialogDescription></AlertDialogHeader>
+                            <AlertDialogHeader><AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle><AlertDialogDescription>This action cannot be undone. This will permanently delete the truck \"{truckToDelete?.truckNo}\".</AlertDialogDescription></AlertDialogHeader>
                             <AlertDialogFooter>
                               <AlertDialogCancel onClick={() => {setTruckToDelete(null); setIsDeleteDialogOpen(false);}} disabled={isSubmitting}>Cancel</AlertDialogCancel>
                               <AlertDialogAction onClick={confirmDelete} disabled={isSubmitting}>

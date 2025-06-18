@@ -1,17 +1,14 @@
-import { createClient } from '@supabase/supabase-js';
-import { getSupabaseConfig } from './supabase-config';
-
-const supabase = createClient(
-  getSupabaseConfig().supabaseUrl,
-  getSupabaseConfig().supabaseAnonKey
-);
+import { supabase } from '../lib/supabase';
 
 export interface AuthUser {
   id: string;
   email: string;
   role: 'super_admin' | 'admin' | 'manager' | 'operator';
   displayName?: string;
-  assignedBranchIds?: string[];
+  assignedBranchIds?: string[]; // Assuming this is managed here, if not, it might belong in the public.users profile
+  enableEmailNotifications?: boolean; // Added
+  darkModeEnabled?: boolean; // Added
+  autoDataSyncEnabled?: boolean; // Added
   status: 'active' | 'inactive' | 'disabled';
 }
 

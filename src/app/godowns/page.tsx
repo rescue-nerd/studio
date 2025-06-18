@@ -1,28 +1,28 @@
 "use client";
 
 import {
-    AlertDialog,
-    AlertDialogAction,
-    AlertDialogCancel,
-    AlertDialogContent,
-    AlertDialogDescription,
-    AlertDialogFooter,
-    AlertDialogHeader,
-    AlertDialogTitle,
-    AlertDialogTrigger,
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
-    Dialog,
-    DialogClose,
-    DialogContent,
-    DialogDescription,
-    DialogFooter,
-    DialogHeader,
-    DialogTitle,
-    DialogTrigger,
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -32,33 +32,43 @@ import { useAuth } from "@/contexts/auth-context";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/lib/supabase";
 import { handleSupabaseError, logError } from "@/lib/supabase-error-handler";
-import type { Branch as FirestoreBranch, Godown as FirestoreGodown } from "@/types/firestore";
+import type { Branch as CanonicalBranch, Godown as CanonicalGodown } from "@/types/database";
 import { Edit, Loader2, PlusCircle, Search, Trash2, Warehouse } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, type ChangeEvent, type FormEvent } from "react";
 
-interface Godown extends FirestoreGodown {}
-interface Branch extends FirestoreBranch {} 
+// Use canonical types
+interface Godown extends CanonicalGodown {}
+interface Branch extends CanonicalBranch {} 
 
-type GodownFormDataCallable = Omit<FirestoreGodown, 'id' | 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy'>;
+// Define form data types based on the canonical Godown type
+// Manually define Insert and Update types if not exported from database.ts
+type GodownInsert = Omit<Godown, 'id' | 'createdAt' | 'updatedAt'>;
+type GodownUpdate = Partial<Omit<Godown, 'id' | 'createdAt' | 'updatedAt'>>;
+
+type GodownFormDataCallable = Omit<Godown, 'id' | 'createdAt' | 'updatedAt'>;
 type UpdateGodownFormDataCallable = Partial<GodownFormDataCallable> & { godownId: string };
 
-const godownStatuses: FirestoreGodown["status"][] = ["Active", "Inactive", "Operational"];
+// const godownStatuses: Godown["status"][] = ["Active", "Inactive", "Operational"]; // Status field not in canonical Godown, use isActive
 
-const defaultGodownFormData: Omit<Godown, 'id' | 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy'> = {
+const defaultGodownFormData: GodownFormDataCallable = {
   name: "",
   branchId: "", 
-  location: "",
-  status: "Active",
+  // location: "", // location field not in canonical Godown, use address
+  address: "", // Use address from canonical Godown
+  // status: "Active", // status field not in canonical Godown, use isActive
+  isActive: true, // Use isActive from canonical Godown
+  contactNo: "", // Added contactNo as it is in canonical Godown
 };
 
-const createGodownFn = async (data: GodownFormDataCallable) => {
+const createGodownFn = async (data: GodownInsert) => {
   const response = await supabase.functions.invoke('create-godown', { body: data });
   return response.data as {success: boolean, id: string, message: string};
 };
 
-const updateGodownFn = async (data: UpdateGodownFormDataCallable) => {
-  const response = await supabase.functions.invoke('update-godown', { body: data });
+const updateGodownFn = async (data: { godownId: string } & GodownUpdate) => {
+  const { godownId, ...updateData } = data;
+  const response = await supabase.functions.invoke('update-godown', { body: { godownId, ...updateData } });
   return response.data as {success: boolean, id: string, message: string};
 };
 
@@ -73,7 +83,7 @@ export default function GodownsPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [isFormDialogOpen, setIsFormDialogOpen] = useState(false);
   const [editingGodown, setEditingGodown] = useState<Godown | null>(null);
-  const [formData, setFormData] = useState<Omit<Godown, 'id' | 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy'>>(defaultGodownFormData);
+  const [formData, setFormData] = useState<GodownFormDataCallable>(defaultGodownFormData);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [godownToDelete, setGodownToDelete] = useState<Godown | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -94,12 +104,12 @@ export default function GodownsPage() {
     setIsLoadingBranches(true);
     try {
       const { data, error } = await supabase
-        .from('branches')
+        .from('branches') // Correct table name
         .select('*')
         .order('name');
       if (error) throw error;
-      setBranches(data);
-      if (data.length > 0 && !formData.branchId) {
+      setBranches((data as Branch[]) || []); // Cast to Branch[]
+      if (data && data.length > 0 && !formData.branchId) {
         setFormData(prev => ({...prev, branchId: data[0].id}));
       }
     } catch (error) {
@@ -111,20 +121,17 @@ export default function GodownsPage() {
   };
   
   const fetchGodowns = async () => {
-    if (!authUser) return;
-    setIsLoading(true);
     try {
       const { data, error } = await supabase
-        .from('godowns')
+        .from('godowns') // Correct table name
         .select('*')
         .order('name');
+      
       if (error) throw error;
-      setGodowns(data);
+      setGodowns((data as Godown[]) || []); // Cast to Godown[]
     } catch (error) {
-      logError(error, "Error fetching godowns");
+      console.error("Error fetching godowns: ", error);
       handleSupabaseError(error, toast);
-    } finally {
-      setIsLoading(false);
     }
   };
 
@@ -141,11 +148,13 @@ export default function GodownsPage() {
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
   
-  const handleSelectChange = (name: keyof Omit<Godown, 'id' | 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy'>) => (value: string) => {
-    if (name === 'status') {
-        setFormData((prev) => ({ ...prev, [name]: value as FirestoreGodown['status'] }));
+  const handleSelectChange = (name: keyof GodownFormDataCallable) => (value: string | boolean) => {
+    // Removed 'status' handling as it is not in canonical Godown
+    // For isActive (boolean)
+    if (name === 'isActive') {
+        setFormData(prev => ({ ...prev, [name]: value as boolean }));
     } else {
-        setFormData((prev) => ({ ...prev, [name]: value }));
+        setFormData(prev => ({ ...prev, [name]: value as string }));
     }
   };
 
@@ -157,8 +166,16 @@ export default function GodownsPage() {
 
   const openEditForm = (godown: Godown) => {
     setEditingGodown(godown);
-    const { id, createdAt, createdBy, updatedAt, updatedBy, ...editableData } = godown;
-    setFormData(editableData);
+    const { id, createdAt, updatedAt, ...editableData } = godown;
+    // Ensure all fields in editableData exist in GodownFormDataCallable
+    const currentFormData: GodownFormDataCallable = {
+        name: editableData.name,
+        branchId: editableData.branchId,
+        address: editableData.address || "", // Use address
+        contactNo: editableData.contactNo || "",
+        isActive: editableData.isActive,
+    };
+    setFormData(currentFormData);
     setIsFormDialogOpen(true);
   };
 
@@ -168,20 +185,21 @@ export default function GodownsPage() {
       toast({ title: "Authentication Error", description: "You must be logged in.", variant: "destructive"});
       return;
     }
-    if (!formData.name || !formData.branchId || !formData.location) {
-        toast({ title: "Validation Error", description: "Name, Linked Branch, and Location are required.", variant: "destructive"});
+    // Update validation to match canonical Godown type fields
+    if (!formData.name || !formData.branchId || !formData.address) {
+        toast({ title: "Validation Error", description: "Name, Linked Branch, and Address are required.", variant: "destructive"});
         return;
     }
     setIsSubmitting(true);
 
-    const godownDataPayload: GodownFormDataCallable = { ...formData };
+    const godownDataPayload: GodownInsert | GodownUpdate = { ...formData };
 
     try {
       let result;
       if (editingGodown) {
-        result = await updateGodownFn({ godownId: editingGodown.id, ...godownDataPayload });
+        result = await updateGodownFn({ godownId: editingGodown.id, ...(godownDataPayload as GodownUpdate) });
       } else {
-        result = await createGodownFn(godownDataPayload);
+        result = await createGodownFn(godownDataPayload as GodownInsert);
       }
 
       if (result.success) {
@@ -233,20 +251,14 @@ export default function GodownsPage() {
 
   const filteredGodowns = godowns.filter(godown =>
     godown.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    godown.location.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (godown.address && godown.address.toLowerCase().includes(searchTerm.toLowerCase())) || // Use address for filtering
     getBranchNameById(godown.branchId).toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  const getStatusBadgeVariant = (status: Godown["status"]): "default" | "destructive" | "secondary" => {
-    switch (status) {
-      case "Active":
-      case "Operational":
-        return "default";
-      case "Inactive":
-        return "destructive";
-      default:
-        return "default";
-    }
+  // Removed getStatusBadgeVariant as 'status' field is not in canonical Godown.
+  // Use 'isActive' field for similar logic if needed.
+  const getIsActiveBadgeVariant = (isActive: boolean | undefined): "default" | "secondary" => {
+    return isActive ? "default" : "secondary";
   };
 
   if (authLoading || (!authUser && !authLoading)) {
@@ -285,7 +297,7 @@ export default function GodownsPage() {
               </div>
               <div className="grid grid-cols-4 items-center gap-4">
                 <Label htmlFor="branchId" className="text-right">Linked Branch</Label>
-                <Select value={formData.branchId} onValueChange={handleSelectChange('branchId')}>
+                <Select value={formData.branchId} onValueChange={handleSelectChange('branchId') as (value: string) => void}>
                   <SelectTrigger className="col-span-3">
                     <SelectValue placeholder="Select branch" />
                   </SelectTrigger>
@@ -299,21 +311,21 @@ export default function GodownsPage() {
                 </Select>
               </div>
               <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="location" className="text-right">Location</Label>
-                <Input id="location" name="location" value={formData.location} onChange={handleInputChange} className="col-span-3" required />
+                <Label htmlFor="address" className="text-right">Address</Label> 
+                <Input id="address" name="address" value={formData.address || ""} onChange={handleInputChange} className="col-span-3" required />
               </div>
               <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="status" className="text-right">Status</Label>
-                <Select value={formData.status} onValueChange={handleSelectChange('status') as (value: FirestoreGodown["status"]) => void}>
-                  <SelectTrigger className="col-span-3">
-                    <SelectValue placeholder="Select status" />
-                  </SelectTrigger>
+                <Label htmlFor="contactNo" className="text-right">Contact No.</Label>
+                <Input id="contactNo" name="contactNo" value={formData.contactNo || ""} onChange={handleInputChange} className="col-span-3" placeholder="(Optional)"/>
+              </div>
+              {/* Removed Status field, using isActive instead */}
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="isActive" className="text-right">Active</Label>
+                <Select value={formData.isActive ? "true" : "false"} onValueChange={(value) => handleSelectChange('isActive')(value === "true")}>
+                  <SelectTrigger className="col-span-3"><SelectValue placeholder="Select status" /></SelectTrigger>
                   <SelectContent>
-                    {godownStatuses.map(status => (
-                      <SelectItem key={status} value={status}>
-                        {status}
-                      </SelectItem>
-                    ))}
+                    <SelectItem value="true">Active</SelectItem>
+                    <SelectItem value="false">Inactive</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -366,8 +378,9 @@ export default function GodownsPage() {
                 <TableRow>
                   <TableHead>Name</TableHead>
                   <TableHead>Branch</TableHead>
-                  <TableHead>Location</TableHead>
-                  <TableHead>Status</TableHead>
+                  <TableHead>Address</TableHead> {/* Changed from Location to Address */} 
+                  <TableHead>Contact No.</TableHead>
+                  <TableHead>Status</TableHead> {/* Changed from Status to Is Active */} 
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
@@ -383,10 +396,11 @@ export default function GodownsPage() {
                     <TableRow key={godown.id}>
                       <TableCell>{godown.name}</TableCell>
                       <TableCell>{getBranchNameById(godown.branchId)}</TableCell>
-                      <TableCell>{godown.location}</TableCell>
+                      <TableCell>{godown.address || "N/A"}</TableCell> {/* Use address */} 
+                      <TableCell>{godown.contactNo || "N/A"}</TableCell>
                       <TableCell>
-                        <Badge variant={getStatusBadgeVariant(godown.status)}>
-                          {godown.status}
+                        <Badge variant={getIsActiveBadgeVariant(godown.isActive)} className={godown.isActive ? "bg-accent text-accent-foreground" : ""}>
+                          {godown.isActive ? "Active" : "Inactive"}
                         </Badge>
                       </TableCell>
                       <TableCell className="text-right">

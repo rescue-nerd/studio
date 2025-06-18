@@ -1,14 +1,22 @@
+import { supabase } from '@/lib/supabase';
 import auth from '@/lib/supabase-auth';
 import {
   Branch,
   User
 } from '@/types/database';
-import { createClient } from '@supabase/supabase-js';
-import { getSupabaseConfig } from './supabase-config';
 
-// Initialize Supabase client
-const config = getSupabaseConfig();
-const supabase = createClient(config.supabaseUrl, config.supabaseAnonKey);
+// Base URL for your Supabase functions
+const FUNCTIONS_URL = `${supabase.supabaseUrl}/functions/v1`;
+
+// Helper function to get current session's access token
+async function getAccessToken() {
+  const { data: { session }, error } = await supabase.auth.getSession();
+  if (error || !session) {
+    console.error('Error getting session or session not found:', error);
+    throw new Error('User is not authenticated.');
+  }
+  return session.access_token;
+}
 
 export const db = {
   // Generic CRUD operations
@@ -58,37 +66,7 @@ export const db = {
     }
   },
 
-  async updateCountry(id: string, name: string, code: string) {
-    try {
-      const user = supabase.auth.getUser();
-      const session = await supabase.auth.getSession();
-      const accessToken = session.data?.session?.access_token;
 
-      if (!accessToken) {
-        throw new Error('User is not authenticated');
-      }
-
-      const response = await fetch('/api/update-country', {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${accessToken}`
-        },
-        body: JSON.stringify({ id, name, code })
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error?.message || 'Failed to update country');
-      }
-
-      const data = await response.json();
-      return data.data;
-    } catch (error) {
-      console.error('Error updating country:', error);
-      throw error;
-    }
-  },
 
   async delete(table: string, id: string) {
     try {
@@ -318,151 +296,152 @@ export const db = {
 
   async getBranches(): Promise<Branch[]> {
     try {
-      // Check if branches table exists by trying to get a count
-      const { count, error: countError } = await supabase
-        .from('branches')
-        .select('*', { count: 'exact', head: true });
-      
-      if (countError) {
-        console.warn("Branches table might not exist:", countError);
-        // Return mock data if table doesn't exist
-        return [
-          {
-            id: '1',
-            name: 'Main Branch',
-            code: 'MB',
-            address: 'Main Street',
-            isActive: true,
-            createdAt: new Date().toISOString()
-          },
-          {
-            id: '2',
-            name: 'Secondary Branch',
-            code: 'SB',
-            address: 'Second Avenue',
-            isActive: true,
-            createdAt: new Date().toISOString()
-          }
-        ];
+      const accessToken = await getAccessToken();
+      const response = await fetch(`${FUNCTIONS_URL}/get-branch`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${accessToken}`,
+        },
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        console.error('Error fetching branches via function:', errorData);
+        throw new Error(errorData.error?.message || 'Failed to fetch branches');
       }
-      
-      const { data, error } = await supabase
-        .from('branches')
-        .select('*')
-        .order('name');
-        
-      if (error) throw error;
-      
-      // Map the data to match the expected Branch interface
-      return data.map(branch => ({
+
+      const result = await response.json();
+      if (!result.success) {
+        console.error('Error in get-branch function response:', result.error);
+        throw new Error(result.error?.message || 'Failed to fetch branches from function');
+      }
+      // Map the data to match the expected Branch interface based on actual database schema
+      return (result.data || []).map((branch: any) => ({
         id: branch.id,
         name: branch.name,
-        location: branch.location,
-        code: branch.code || branch.name.substring(0, 2).toUpperCase(),
-        address: branch.address || branch.location,
-        contactNo: branch.contact_phone,
-        email: branch.contact_email,
-        isActive: branch.status === 'Active',
-        createdAt: branch.created_at
+        location: branch.location, // Database column is 'location'
+        branch_code: branch.branch_code,
+        manager_name: branch.manager_name,
+        manager_user_id: branch.manager_user_id,
+        contact_email: branch.contact_email, // Database column is 'contact_email'
+        contact_phone: branch.contact_phone, // Database column is 'contact_phone'
+        status: branch.status, // String: 'Active' | 'Inactive' | 'Deleted'
+        created_at: branch.created_at,
+        created_by: branch.created_by,
+        updated_at: branch.updated_at,
+        updated_by: branch.updated_by,
+        deleted_at: branch.deleted_at,
+        deleted_by: branch.deleted_by,
       }));
     } catch (error) {
       console.error("Error fetching branches:", error);
-      // Return mock data as fallback
-      return [
-        {
-          id: '1',
-          name: 'Main Branch',
-          code: 'MB',
-          address: 'Main Street',
-          isActive: true,
-          createdAt: new Date().toISOString()
-        },
-        {
-          id: '2',
-          name: 'Secondary Branch',
-          code: 'SB',
-          address: 'Second Avenue',
-          isActive: true,
-          createdAt: new Date().toISOString()
-        }
-      ];
+      // Fallback or rethrow as appropriate for your error handling strategy
+      throw error; 
     }
   },
 
-  async getBranch(branchId: string): Promise<Branch> {
+  async getBranch(branchIdOrCode: string): Promise<Branch | null> {
     try {
-      const { data, error } = await supabase
-        .from('branches')
-        .select('*')
-        .eq('id', branchId)
-        .single();
-      if (error) throw error;
+      const accessToken = await getAccessToken();
+      // Determine if it's an ID (UUID) or branch_code
+      const isUuid = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(branchIdOrCode);
+      const paramName = isUuid ? 'id' : 'branch_code';
       
-      // Map the data to match the expected Branch interface
+      const response = await fetch(`${FUNCTIONS_URL}/get-branch?${paramName}=${encodeURIComponent(branchIdOrCode)}`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${accessToken}`,
+        },
+      });
+
+      if (!response.ok) {
+        if (response.status === 404) return null; // Not found
+        const errorData = await response.json();
+        console.error(`Error fetching branch ${branchIdOrCode} via function:`, errorData);
+        throw new Error(errorData.error?.message || `Failed to fetch branch ${branchIdOrCode}`);
+      }
+
+      const result = await response.json();
+      if (!result.success || !result.data) {
+         if (result.error?.message === 'Branch not found') return null;
+        console.error('Error in get-branch function response or no data:', result.error);
+        throw new Error(result.error?.message || `Failed to fetch branch ${branchIdOrCode} from function`);
+      }
+      
+      const branch = result.data;
+      // Map the data to match the expected Branch interface based on actual database schema
       return {
-        id: data.id,
-        name: data.name,
-        location: data.location,
-        code: data.code || data.name.substring(0, 2).toUpperCase(),
-        address: data.address || data.location,
-        contactNo: data.contact_phone,
-        email: data.contact_email,
-        isActive: data.status === 'Active',
-        createdAt: data.created_at
+        id: branch.id,
+        name: branch.name,
+        location: branch.location, // Database column is 'location'
+        branch_code: branch.branch_code,
+        manager_name: branch.manager_name,
+        manager_user_id: branch.manager_user_id,
+        contact_email: branch.contact_email, // Database column is 'contact_email'
+        contact_phone: branch.contact_phone, // Database column is 'contact_phone'
+        status: branch.status, // String: 'Active' | 'Inactive' | 'Deleted'
+        created_at: branch.created_at,
+        created_by: branch.created_by,
+        updated_at: branch.updated_at,
+        updated_by: branch.updated_by,
+        deleted_at: branch.deleted_at,
+        deleted_by: branch.deleted_by,
       };
     } catch (error) {
-      console.error(`Error fetching branch ${branchId}:`, error);
+      console.error(`Error fetching branch ${branchIdOrCode}:`, error);
       throw error;
     }
   },
 
-  async createBranch(branchData: Partial<Branch>): Promise<Branch> {
+  async createBranch(branchData: Partial<Omit<Branch, 'id' | 'created_at' | 'updated_at' | 'deleted_at' | 'created_by' | 'updated_by' | 'deleted_by' | 'status' | 'isActive'> & { name: string; branch_code: string; }>): Promise<Branch> {
     try {
-      // Map the data to match the database schema
-      const dbData = {
-        name: branchData.name,
-        location: branchData.location || branchData.address,
-        manager_name: branchData.managerName,
-        contact_email: branchData.email,
-        contact_phone: branchData.contactNo,
-        status: branchData.isActive ? 'Active' : 'Inactive',
-        created_at: new Date().toISOString(),
-        created_by: 'system' // Ideally this would be the current user's ID
-      };
-      
-      const { data, error } = await supabase
-        .from('branches')
-        .insert(dbData)
-        .select()
-        .single();
-        
-      if (error) {
-        // If table doesn't exist, return mock data
-        if (error.code === '42P01') {
-          console.warn("Branches table doesn't exist:", error);
-          return {
-            id: `branch-${Date.now()}`,
-            name: branchData.name || '',
-            code: branchData.code || (branchData.name || '').substring(0, 2).toUpperCase(),
-            address: branchData.address || '',
-            isActive: branchData.isActive || true,
-            createdAt: new Date().toISOString()
-          };
+      const accessToken = await getAccessToken();
+      const response = await fetch(`${FUNCTIONS_URL}/create-branch`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify(branchData),
+      });
+
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          console.error('Error parsing error response for create branch:', parseError);
+          throw new Error(`Failed to create branch - HTTP ${response.status}`);
         }
-        throw error;
+        console.error('Error creating branch via function:', errorData);
+        throw new Error(errorData?.error?.message || errorData?.message || `Failed to create branch - HTTP ${response.status}`);
       }
-      
-      // Map the response to match the expected Branch interface
+
+      const result = await response.json();
+      if (!result.success || !result.data) {
+        console.error('Error in create-branch function response or no data:', result.error);
+        throw new Error(result.error?.message || 'Failed to create branch from function');
+      }
+
+      const branch = result.data;
       return {
-        id: data.id,
-        name: data.name,
-        location: data.location,
-        code: data.code || data.name.substring(0, 2).toUpperCase(),
-        address: data.address || data.location,
-        contactNo: data.contact_phone,
-        email: data.contact_email,
-        isActive: data.status === 'Active',
-        createdAt: data.created_at
+        id: branch.id,
+        name: branch.name,
+        location: branch.location, // Database column is 'location'
+        branch_code: branch.branch_code,
+        manager_name: branch.manager_name,
+        manager_user_id: branch.manager_user_id,
+        contact_email: branch.contact_email, // Database column is 'contact_email'
+        contact_phone: branch.contact_phone, // Database column is 'contact_phone'
+        status: branch.status, // String: 'Active' | 'Inactive' | 'Deleted'
+        created_at: branch.created_at,
+        created_by: branch.created_by,
+        updated_at: branch.updated_at,
+        updated_by: branch.updated_by,
+        deleted_at: branch.deleted_at,
+        deleted_by: branch.deleted_by,
       };
     } catch (error) {
       console.error("Error creating branch:", error);
@@ -470,68 +449,351 @@ export const db = {
     }
   },
 
-  async updateBranch(branchId: string, updates: Partial<Branch>): Promise<Branch> {
+  async updateBranch(branchId: string, updates: Partial<Omit<Branch, 'id' | 'created_at' | 'updated_at' | 'deleted_at' | 'created_by' | 'updated_by' | 'deleted_by' | 'status' | 'isActive'>>): Promise<Branch> {
     try {
-      // Map the updates to match the database schema
-      const dbUpdates = {
-        name: updates.name,
-        location: updates.location || updates.address,
-        manager_name: updates.managerName,
-        contact_email: updates.email,
-        contact_phone: updates.contactNo,
-        status: updates.isActive ? 'Active' : 'Inactive',
-        updated_at: new Date().toISOString()
-      };
-      
-      const { data, error } = await supabase
-        .from('branches')
-        .update(dbUpdates)
-        .eq('id', branchId)
-        .select()
-        .single();
-        
-      if (error) throw error;
-      
-      // Map the response to match the expected Branch interface
+      const accessToken = await getAccessToken();
+      const response = await fetch(`${FUNCTIONS_URL}/update-branch?id=${encodeURIComponent(branchId)}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify(updates),
+      });
+
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          console.error(`Error parsing error response for branch ${branchId}:`, parseError);
+          throw new Error(`Failed to update branch ${branchId} - HTTP ${response.status}`);
+        }
+        console.error(`Error updating branch ${branchId} via function:`, errorData);
+        throw new Error(errorData?.error?.message || errorData?.message || `Failed to update branch ${branchId} - HTTP ${response.status}`);
+      }
+
+      const result = await response.json();
+      if (!result.success || !result.data) {
+        console.error('Error in update-branch function response or no data:', result.error);
+        throw new Error(result.error?.message || `Failed to update branch ${branchId} from function`);
+      }
+
+      const branch = result.data;
       return {
-        id: data.id,
-        name: data.name,
-        location: data.location,
-        code: data.code || data.name.substring(0, 2).toUpperCase(),
-        address: data.address || data.location,
-        contactNo: data.contact_phone,
-        email: data.contact_email,
-        isActive: data.status === 'Active',
-        createdAt: data.created_at,
-        updatedAt: data.updated_at
+        id: branch.id,
+        name: branch.name,
+        location: branch.location, // Database column is 'location'
+        branch_code: branch.branch_code,
+        manager_name: branch.manager_name,
+        manager_user_id: branch.manager_user_id,
+        contact_email: branch.contact_email, // Database column is 'contact_email'
+        contact_phone: branch.contact_phone, // Database column is 'contact_phone'
+        status: branch.status, // String: 'Active' | 'Inactive' | 'Deleted'
+        created_at: branch.created_at,
+        created_by: branch.created_by,
+        updated_at: branch.updated_at,
+        updated_by: branch.updated_by,
+        deleted_at: branch.deleted_at,
+        deleted_by: branch.deleted_by,
       };
     } catch (error) {
       console.error(`Error updating branch ${branchId}:`, error);
       throw error;
     }
   },
-
-  async deleteBranch(branchId: string): Promise<void> {
+  
+  async deleteBranch(branchId: string): Promise<{ success: boolean; message?: string }> {
     try {
-      // First check if branch is assigned to any users
-      const { data: users, error: usersError } = await supabase
-        .from('users')
-        .select('id')
-        .contains('assigned_branch_ids', [branchId])
-        .limit(1);
+      const accessToken = await getAccessToken();
+      const response = await fetch(`${FUNCTIONS_URL}/delete-branch?id=${encodeURIComponent(branchId)}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+      });
 
-      if (usersError) throw usersError;
-      if (users && users.length > 0) {
-        throw new Error('Cannot delete branch because it is assigned to users. Remove all assignments first.');
+      if (!response.ok) {
+        const errorData = await response.json();
+        console.error(`Error deleting branch ${branchId} via function:`, errorData);
+        throw new Error(errorData.error?.message || `Failed to delete branch ${branchId}`);
       }
 
-      const { error } = await supabase
-        .from('branches')
-        .delete()
-        .eq('id', branchId);
-      if (error) throw error;
+      const result = await response.json();
+      if (!result.success) {
+        console.error('Error in delete-branch function response:', result.error);
+        throw new Error(result.error?.message || `Failed to delete branch ${branchId} from function`);
+      }
+      return { success: true, message: result.message };
     } catch (error) {
       console.error(`Error deleting branch ${branchId}:`, error);
+      throw error;
+    }
+  },
+
+  // Location and Unit management functions
+  async createCountry(countryData: { name: string }) {
+    try {
+      const response = await supabase.functions.invoke('create-country', {
+        body: countryData
+      });
+
+      if (response.error) {
+        throw response.error;
+      }
+
+      return response.data;
+    } catch (error) {
+      console.error('Error creating country:', error);
+      throw error;
+    }
+  },
+
+  async updateCountry(id: string, countryData: { name?: string }) {
+    try {
+      const response = await supabase.functions.invoke('update-country', {
+        body: { id, ...countryData }
+      });
+
+      if (response.error) {
+        throw response.error;
+      }
+
+      return response.data;
+    } catch (error) {
+      console.error('Error updating country:', error);
+      throw error;
+    }
+  },
+
+  async deleteCountry(id: string) {
+    try {
+      const response = await supabase.functions.invoke('delete-country', {
+        body: { id }
+      });
+
+      if (response.error) {
+        throw response.error;
+      }
+
+      return response.data;
+    } catch (error) {
+      console.error('Error deleting country:', error);
+      throw error;
+    }
+  },
+
+  async createState(stateData: { name: string; countryId: string }) {
+    try {
+      const response = await supabase.functions.invoke('create-state', {
+        body: stateData
+      });
+
+      if (response.error) {
+        throw response.error;
+      }
+
+      return response.data;
+    } catch (error) {
+      console.error('Error creating state:', error);
+      throw error;
+    }
+  },
+
+  async updateState(id: string, stateData: { name?: string; countryId?: string }) {
+    try {
+      const response = await supabase.functions.invoke('update-state', {
+        body: { id, ...stateData }
+      });
+
+      if (response.error) {
+        throw response.error;
+      }
+
+      return response.data;
+    } catch (error) {
+      console.error('Error updating state:', error);
+      throw error;
+    }
+  },
+
+  async deleteState(id: string) {
+    try {
+      const response = await supabase.functions.invoke('delete-state', {
+        body: { id }
+      });
+
+      if (response.error) {
+        throw response.error;
+      }
+
+      return response.data;
+    } catch (error) {
+      console.error('Error deleting state:', error);
+      throw error;
+    }
+  },
+
+  async createCity(cityData: { name: string; stateId: string }) {
+    try {
+      const response = await supabase.functions.invoke('create-city', {
+        body: cityData
+      });
+
+      if (response.error) {
+        throw response.error;
+      }
+
+      return response.data;
+    } catch (error) {
+      console.error('Error creating city:', error);
+      throw error;
+    }
+  },
+
+  async updateCity(id: string, cityData: { name?: string; stateId?: string }) {
+    try {
+      const response = await supabase.functions.invoke('update-city', {
+        body: { id, ...cityData }
+      });
+
+      if (response.error) {
+        throw response.error;
+      }
+
+      return response.data;
+    } catch (error) {
+      console.error('Error updating city:', error);
+      throw error;
+    }
+  },
+
+  async deleteCity(id: string) {
+    try {
+      const response = await supabase.functions.invoke('delete-city', {
+        body: { id }
+      });
+
+      if (response.error) {
+        throw response.error;
+      }
+
+      return response.data;
+    } catch (error) {
+      console.error('Error deleting city:', error);
+      throw error;
+    }
+  },
+
+  async createUnit(unitData: { 
+    name: string; 
+    type: string; 
+    symbol: string; 
+    conversionFactor?: number; 
+    isBaseUnit?: boolean 
+  }) {
+    try {
+      const response = await supabase.functions.invoke('create-unit', {
+        body: unitData
+      });
+
+      if (response.error) {
+        throw response.error;
+      }
+
+      return response.data;
+    } catch (error) {
+      console.error('Error creating unit:', error);
+      throw error;
+    }
+  },
+
+  async updateUnit(id: string, unitData: { 
+    name?: string; 
+    type?: string; 
+    symbol?: string; 
+    conversionFactor?: number; 
+    isBaseUnit?: boolean 
+  }) {
+    try {
+      const response = await supabase.functions.invoke('update-unit', {
+        body: { id, ...unitData }
+      });
+
+      if (response.error) {
+        throw response.error;
+      }
+
+      return response.data;
+    } catch (error) {
+      console.error('Error updating unit:', error);
+      throw error;
+    }
+  },
+
+  async deleteUnit(id: string) {
+    try {
+      const response = await supabase.functions.invoke('delete-unit', {
+        body: { id }
+      });
+
+      if (response.error) {
+        throw response.error;
+      }
+
+      return response.data;
+    } catch (error) {
+      console.error('Error deleting unit:', error);
+      throw error;
+    }
+  },
+
+  // Fetch functions for locations and units
+  async fetchLocations() {
+    try {
+      const { data, error } = await supabase
+        .from('locations')
+        .select(`
+          id,
+          name,
+          type,
+          parent_id,
+          status,
+          created_at,
+          updated_at,
+          parent:locations!parent_id(id, name, type)
+        `)
+        .eq('status', 'active')
+        .order('type')
+        .order('name');
+
+      if (error) {
+        throw error;
+      }
+
+      return data;
+    } catch (error) {
+      console.error('Error fetching locations:', error);
+      throw error;
+    }
+  },
+
+  async fetchUnits() {
+    try {
+      const { data, error } = await supabase
+        .from('units')
+        .select('*')
+        .order('type')
+        .order('name');
+
+      if (error) {
+        throw error;
+      }
+
+      return data;
+    } catch (error) {
+      console.error('Error fetching units:', error);
       throw error;
     }
   }

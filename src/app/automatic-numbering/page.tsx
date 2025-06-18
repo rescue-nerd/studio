@@ -1,77 +1,119 @@
 "use client";
 
 import {
-    AlertDialog,
-    AlertDialogAction,
-    AlertDialogCancel,
-    AlertDialogContent,
-    AlertDialogDescription,
-    AlertDialogFooter,
-    AlertDialogHeader,
-    AlertDialogTitle,
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
-    Dialog,
-    DialogClose,
-    DialogContent,
-    DialogDescription,
-    DialogFooter,
-    DialogHeader,
-    DialogTitle,
-    DialogTrigger,
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { useAuth } from "@/contexts/auth-context"; // Import useAuth
-import type {
-    CreateDocumentNumberingConfigPayload,
-    DeleteDocumentNumberingConfigPayload,
-    UpdateDocumentNumberingConfigPayload
-} from "@/functions/src/types";
+import { useAuth } from "@/contexts/auth-context";
 import { useToast } from "@/hooks/use-toast";
-import { getSupabaseErrorMessage } from "@/lib/supabase-error-handler";
+import { supabase } from "@/lib/supabase";
 import { db } from "@/lib/supabase-db";
-import type { Branch as FirestoreBranch, DocumentNumberingConfig as FirestoreDocumentNumberingConfig } from "@/types/firestore";
-import {
-    collection,
-    getDocs,
-    orderBy,
-    query
-} from "firebase/firestore";
-import { httpsCallable, type HttpsCallableResult } from "firebase/functions";
+import { getSupabaseErrorMessage } from "@/lib/supabase-error-handler";
+import type { Branch as SupabaseBranch, DocumentNumberingConfig as SupabaseDocumentNumberingConfig, DocumentType as SupabaseDocumentType } from "@/types/database";
 import { Edit, Loader2, PlusCircle, Search, Trash2 } from "lucide-react";
-import { useRouter } from "next/navigation"; // Import useRouter
+import { useRouter } from "next/navigation";
 import { useEffect, useState, type ChangeEvent, type FormEvent } from "react";
 
-interface DocumentNumberingConfig extends FirestoreDocumentNumberingConfig {}
-interface Branch extends FirestoreBranch {}
+// Canonical types from database.ts are aliased for clarity
+interface DocumentNumberingConfig extends SupabaseDocumentNumberingConfig {}
+interface Branch extends SupabaseBranch {}
 
-const documentTypes = ["Invoice", "Waybill", "Receipt", "Credit Note", "Purchase Order", "Manifest", "GoodsReceipt", "GoodsDelivery"];
+// Form state interface
+interface DocumentNumberingFormState {
+  documentType: SupabaseDocumentType;
+  prefix: string;
+  suffix: string;
+  startingNumber: number;
+  minLength: number; // UI only, not in DB config
+  perBranch: boolean;
+  branchId: string;
+  fiscalYear: string;
+}
 
-const defaultFormData: Omit<DocumentNumberingConfig, 'id' | 'lastGeneratedNumber' | 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy'> = {
+// Payloads for Supabase functions (aligned with DocumentNumberingConfig fields)
+interface CreateConfigPayload {
+  documentType: SupabaseDocumentType;
+  prefix?: string;
+  suffix?: string;
+  lastNumber: number;
+  branchId: string;
+  fiscalYear: string;
+}
+
+interface UpdateConfigPayload {
+  configId: string; // ID of the config to update
+  documentType?: SupabaseDocumentType;
+  prefix?: string;
+  suffix?: string;
+  lastNumber?: number;
+  branchId?: string;
+  fiscalYear?: string;
+}
+
+interface DeleteConfigPayload {
+  configId: string;
+}
+
+const documentTypes: SupabaseDocumentType[] = ["bilti", "manifest", "goods_receipt", "goods_delivery", "daybook"];
+
+const defaultFormData: DocumentNumberingFormState = {
   documentType: documentTypes[0],
   prefix: "",
   suffix: "",
   startingNumber: 1,
+  minLength: 0, // Default for UI, not stored in DB
   perBranch: false,
-  branchId: "Global", 
-  minLength: 0,
+  branchId: "Global",
+  fiscalYear: new Date().getFullYear().toString(),
 };
 
-// Firebase Functions setup
-const createDocumentNumberingConfigFn = httpsCallable<CreateDocumentNumberingConfigPayload, {success: boolean, id: string, message: string}>(functions, 'createDocumentNumberingConfig');
-const updateDocumentNumberingConfigFn = httpsCallable<UpdateDocumentNumberingConfigPayload, {success: boolean, message: string}>(functions, 'updateDocumentNumberingConfig');
-const deleteDocumentNumberingConfigFn = httpsCallable<DeleteDocumentNumberingConfigPayload, {success: boolean, message: string}>(functions, 'deleteDocumentNumberingConfig');
+// Supabase Edge Function wrappers
+const createDocumentNumberingConfigFn = async (data: CreateConfigPayload) => {
+  const {data: result, error} = await supabase.functions.invoke('create-document-numbering-config', { body: data });
+  if(error) throw error;
+  return result as { success: boolean; message?: string };
+};
+
+const updateDocumentNumberingConfigFn = async (data: UpdateConfigPayload) => {
+  const {data: result, error} = await supabase.functions.invoke('update-document-numbering-config', { body: data });
+  if(error) throw error;
+  return result as { success: boolean; message?: string };
+};
+
+const deleteDocumentNumberingConfigFn = async (data: DeleteConfigPayload) => {
+  const {data: result, error} = await supabase.functions.invoke('delete-document-numbering-config', { body: data });
+  if(error) throw error;
+  return result as { success: boolean; message?: string };
+};
 
 
 export default function AutomaticNumberingPage() {
   const { toast } = useToast();
-  const { user: authUser, loading: authLoading } = useAuth(); // Get authenticated user
+  const { user: authUser, loading: authLoading } = useAuth();
   const router = useRouter();
 
   const [configs, setConfigs] = useState<DocumentNumberingConfig[]>([]);
@@ -82,7 +124,7 @@ export default function AutomaticNumberingPage() {
   
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingConfig, setEditingConfig] = useState<DocumentNumberingConfig | null>(null);
-  const [formData, setFormData] = useState(defaultFormData);
+  const [formData, setFormData] = useState<DocumentNumberingFormState>(defaultFormData);
   
   const [isDeleteAlertOpen, setIsDeleteAlertOpen] = useState(false);
   const [configToDelete, setConfigToDelete] = useState<DocumentNumberingConfig | null>(null);
@@ -94,13 +136,22 @@ export default function AutomaticNumberingPage() {
   }, [authUser, authLoading, router]);
 
   const fetchBranches = async () => {
-    if (!authUser) return;
+    if (!authUser || !supabase) return;
     try {
-      const branchesCollectionRef = collection(db, "branches");
-      const q = query(branchesCollectionRef, orderBy("name"));
-      const querySnapshot = await getDocs(q);
-      const fetchedBranches: Branch[] = querySnapshot.docs.map(docSnap => ({ ...docSnap.data() as FirestoreBranch, id: docSnap.id }));
-      setBranches([{ id: "Global", name: "Global (Non-Branch Specific)" } as Branch, ...fetchedBranches]);
+      const branchesFromDb: SupabaseBranch[] = await db.getBranches(); 
+      const globalBranch: Branch = { 
+        id: "Global", 
+        name: "Global (Non-Branch Specific)", 
+        code: "GLBL",
+        address: "N/A",
+        location: "N/A",
+        contactNo: "N/A",
+        email: "N/A",
+        isActive: true,
+        managerName: "N/A",
+        createdAt: new Date().toISOString(),
+      };
+      setBranches([globalBranch, ...branchesFromDb]);
     } catch (error) {
       console.error("Error fetching branches: ", error);
       toast({ title: "Error", description: getSupabaseErrorMessage(error), variant: "destructive" });
@@ -108,13 +159,15 @@ export default function AutomaticNumberingPage() {
   };
 
   const fetchConfigs = async () => {
-     if (!authUser) return;
+     if (!authUser || !supabase) return;
     try {
-      const configsCollectionRef = collection(db, "documentNumberingConfigs");
-      const q = query(configsCollectionRef, orderBy("documentType"));
-      const querySnapshot = await getDocs(q);
-      const fetchedConfigs: DocumentNumberingConfig[] = querySnapshot.docs.map(docSnap => ({ ...docSnap.data() as FirestoreDocumentNumberingConfig, id: docSnap.id }));
-      setConfigs(fetchedConfigs);
+      const { data, error } = await supabase
+        .from('document_numbering_configs')
+        .select('*')
+        .order('documentType');
+      
+      if (error) throw error;
+      setConfigs((data as DocumentNumberingConfig[]) || []);
     } catch (error) {
       console.error("Error fetching numbering configs: ", error);
       toast({ title: "Error", description: getSupabaseErrorMessage(error), variant: "destructive" });
@@ -136,33 +189,61 @@ export default function AutomaticNumberingPage() {
 
   const handleInputChange = (e: ChangeEvent<HTMLInputElement>) => {
     const { name, value, type, checked } = e.target;
-    if (type === 'checkbox') {
-      setFormData(prev => ({ ...prev, [name]: checked, branchId: checked ? (branches.length > 1 ? branches[1].id : "") : "Global" }));
-    } else if (type === 'number') {
-      setFormData(prev => ({ ...prev, [name]: value === '' ? 0 : parseInt(value, 10) }));
-    } 
-    else {
-      setFormData(prev => ({ ...prev, [name]: value }));
-    }
+    setFormData(prev => {
+      const newFormData = { ...prev } as DocumentNumberingFormState; // Assert type here
+      if (type === 'checkbox') {
+        // Ensure name is a valid key of DocumentNumberingFormState before assignment
+        if (name in newFormData) {
+          (newFormData as any)[name] = checked;
+        }
+        if (name === 'perBranch') {
+          newFormData.branchId = checked ? (branches.length > 1 && branches[1] ? branches[1].id : "") : "Global";
+        }
+      } else if (type === 'number') {
+        if (name in newFormData) {
+            // Ensure that the target property can accept a number
+            if (name === 'startingNumber' || name === 'minLength') {
+                (newFormData as any)[name] = value === '' ? 0 : parseInt(value, 10);
+            } else {
+                 (newFormData as any)[name] = value; // Or handle as error/default
+            }
+        }
+      } else {
+        if (name in newFormData) {
+          (newFormData as any)[name] = value;
+        }
+      }
+      return newFormData;
+    });
   };
+  
 
-  const handleSelectChange = (name: keyof Omit<DocumentNumberingConfig, 'id' | 'lastGeneratedNumber' | 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy'>, value: string) => {
-    setFormData(prev => ({ ...prev, [name]: value }));
+  const handleSelectChange = (name: keyof DocumentNumberingFormState, value: string | boolean) => {
+    setFormData(prev => ({
+         ...prev,
+         [name]: value,
+         ...(name === 'perBranch' && { branchId: value ? (branches.length > 1 ? branches[1].id : "") : "Global" }),
+     }));
   };
 
 
   const openAddForm = () => {
     setEditingConfig(null);
-    setFormData({...defaultFormData, branchId: branches[0]?.id || "Global"});
+    setFormData({...defaultFormData, branchId: branches[0]?.id || "Global", fiscalYear: new Date().getFullYear().toString()});
     setIsFormOpen(true);
   };
 
   const openEditForm = (config: DocumentNumberingConfig) => {
     setEditingConfig(config);
-    const { id, createdAt, createdBy, updatedAt, updatedBy, lastGeneratedNumber, ...editableData } = config;
     setFormData({
-        ...editableData,
-        branchId: config.perBranch && config.branchId ? config.branchId : "Global",
+        documentType: config.documentType,
+        prefix: config.prefix || "",
+        suffix: config.suffix || "",
+        startingNumber: config.lastNumber + 1,
+        minLength: 0, // Reset to default as it's not stored in DB
+        perBranch: config.branchId !== "Global",
+        branchId: config.branchId,
+        fiscalYear: config.fiscalYear,
     });
     setIsFormOpen(true);
   };
@@ -173,45 +254,45 @@ export default function AutomaticNumberingPage() {
       toast({ title: "Authentication Error", description: "You must be logged in.", variant: "destructive" });
       return;
     }
-    if (!formData.documentType || (formData.perBranch && !formData.branchId)) {
-      toast({ title: "Validation Error", description: "Document Type and Branch (if specific) are required.", variant: "destructive" });
+    if (!formData.documentType || (formData.perBranch && !formData.branchId) || !formData.fiscalYear.trim()) {
+      toast({ title: "Validation Error", description: "Document Type, Fiscal Year, and Branch (if specific) are required.", variant: "destructive" });
       return;
     }
     setIsSubmitting(true);
 
     try {
       if (editingConfig) {
-        // Update existing config
-        const payload: UpdateDocumentNumberingConfigPayload = {
+        const payload: UpdateConfigPayload = {
           configId: editingConfig.id,
-          ...formData,
+          documentType: formData.documentType,
+          prefix: formData.prefix || undefined,
+          suffix: formData.suffix || undefined,
+          lastNumber: formData.startingNumber - 1,
           branchId: formData.perBranch ? formData.branchId : "Global",
+          fiscalYear: formData.fiscalYear,
         };
-
-        const result: HttpsCallableResult<{success: boolean, message: string}> = await updateDocumentNumberingConfigFn(payload);
-        
-        if (result.data.success) {
-          toast({ title: "Success", description: result.data.message || "Configuration updated." });
+        const result = await updateDocumentNumberingConfigFn(payload);
+        if (result.success) {
+          toast({ title: "Success", description: result.message || "Configuration updated." });
         } else {
-          throw new Error(result.data.message || "Failed to update configuration");
+          throw new Error(result.message || "Failed to update configuration");
         }
       } else {
-        // Create new config
-        const payload: CreateDocumentNumberingConfigPayload = {
-          ...formData,
+        const payload: CreateConfigPayload = {
+          documentType: formData.documentType,
+          prefix: formData.prefix || undefined,
+          suffix: formData.suffix || undefined,
+          lastNumber: formData.startingNumber - 1,
           branchId: formData.perBranch ? formData.branchId : "Global",
-          lastGeneratedNumber: formData.startingNumber - 1
+          fiscalYear: formData.fiscalYear,
         };
-
-        const result: HttpsCallableResult<{success: boolean, id: string, message: string}> = await createDocumentNumberingConfigFn(payload);
-        
-        if (result.data.success) {
-          toast({ title: "Success", description: result.data.message || "Configuration added." });
+        const result = await createDocumentNumberingConfigFn(payload);
+        if (result.success) {
+          toast({ title: "Success", description: result.message || "Configuration added." });
         } else {
-          throw new Error(result.data.message || "Failed to create configuration");
+          throw new Error(result.message || "Failed to create configuration");
         }
       }
-      
       fetchConfigs();
       setIsFormOpen(false);
     } catch (error) {
@@ -235,17 +316,15 @@ export default function AutomaticNumberingPage() {
     if (!configToDelete) return;
     setIsSubmitting(true);
     try {
-      const payload: DeleteDocumentNumberingConfigPayload = {
+      const payload: DeleteConfigPayload = {
         configId: configToDelete.id
       };
-
-      const result: HttpsCallableResult<{success: boolean, message: string}> = await deleteDocumentNumberingConfigFn(payload);
-      
-      if (result.data.success) {
-        toast({ title: "Success", description: result.data.message || `Configuration for "${configToDelete.documentType}" deleted.` });
+      const result = await deleteDocumentNumberingConfigFn(payload);
+      if (result.success) {
+        toast({ title: "Success", description: result.message || `Configuration for "${configToDelete.documentType}" deleted.` });
         fetchConfigs();
       } else {
-        throw new Error(result.data.message || "Failed to delete configuration");
+        throw new Error(result.message || "Failed to delete configuration");
       }
     } catch (error) {
       console.error("Error deleting config: ", error);
@@ -272,7 +351,7 @@ export default function AutomaticNumberingPage() {
     (config.branchId && getBranchNameForDisplay(config.branchId).toLowerCase().includes(searchTerm.toLowerCase()))
   );
   
-  if (authLoading || (!authUser && !authLoading) || (isLoading && !configs.length)) {
+  if (authLoading || (!authUser && !authLoading) || (isLoading && !configs.length && !branches.length)) {
     return (
       <div className="flex justify-center items-center h-64">
         <Loader2 className="h-12 w-12 animate-spin text-primary" />
@@ -305,44 +384,48 @@ export default function AutomaticNumberingPage() {
             </DialogHeader>
             <form onSubmit={handleSubmit} className="space-y-4 py-4">
               <div>
-                <Label htmlFor="docType">Document Type</Label>
-                <Select name="documentType" value={formData.documentType} onValueChange={(value) => handleSelectChange('documentType', value)} required>
+                <Label htmlFor="docType">Document Type <span className="text-destructive">*</span></Label>
+                <Select value={formData.documentType} onValueChange={(value) => handleSelectChange('documentType', value as SupabaseDocumentType)} required>
                   <SelectTrigger id="docType"><SelectValue placeholder="Select document type" /></SelectTrigger>
                   <SelectContent>
-                    {documentTypes.map(type => <SelectItem key={type} value={type.toLowerCase().replace(/\s+/g, '-')}>{type}</SelectItem>)}
+                    {documentTypes.map(type => <SelectItem key={type} value={type}>{type.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <Label htmlFor="prefix">Prefix</Label>
-                  <Input id="prefix" name="prefix" value={formData.prefix || ""} onChange={handleInputChange} placeholder="e.g., INV-" />
+                  <Input id="prefix" name="prefix" value={formData.prefix} onChange={handleInputChange} placeholder="e.g., INV-" />
                 </div>
                 <div>
                   <Label htmlFor="suffix">Suffix</Label>
-                  <Input id="suffix" name="suffix" value={formData.suffix || ""} onChange={handleInputChange} placeholder="e.g., /2024" />
+                  <Input id="suffix" name="suffix" value={formData.suffix} onChange={handleInputChange} placeholder="e.g., /2024" />
                 </div>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                  <div>
-                    <Label htmlFor="startNum">Starting Number</Label>
+                    <Label htmlFor="startNum">Starting Number <span className="text-destructive">*</span></Label>
                     <Input id="startNum" name="startingNumber" type="number" value={formData.startingNumber} onChange={handleInputChange} placeholder="e.g., 1001" min="1" required/>
                   </div>
                   <div>
-                    <Label htmlFor="minLength">Min. Length (incl. prefix/suffix)</Label>
-                    <Input id="minLength" name="minLength" type="number" value={formData.minLength || 0} onChange={handleInputChange} placeholder="e.g., 8 (for INV-001)" min="0"/>
+                    <Label htmlFor="minLength">Min. Number Length (UI)</Label> 
+                    <Input id="minLength" name="minLength" type="number" value={formData.minLength} onChange={handleInputChange} placeholder="e.g., 8" min="0"/>
                   </div>
               </div>
+              <div>
+                <Label htmlFor="fiscalYear">Fiscal Year <span className="text-destructive">*</span></Label>
+                <Input id="fiscalYear" name="fiscalYear" value={formData.fiscalYear} onChange={handleInputChange} placeholder="e.g., 2024" required />
+              </div>
               <div className="flex items-center space-x-2">
-                <Checkbox id="perBranch" name="perBranch" checked={formData.perBranch} onCheckedChange={(checked) => handleSelectChange('perBranch', String(checked))} />
+                <Checkbox id="perBranch" name="perBranch" checked={formData.perBranch} onCheckedChange={(checked) => handleSelectChange('perBranch', Boolean(checked))} />
                 <Label htmlFor="perBranch">Branch Specific Numbering</Label>
               </div>
               {formData.perBranch && (
                 <div>
                   <Label htmlFor="branchSelect">Branch <span className="text-destructive">*</span></Label>
-                  <Select name="branchId" value={formData.branchId} onValueChange={(value) => handleSelectChange('branchId', value)} required={formData.perBranch} disabled={branches.length <=1}>
+                  <Select value={formData.branchId} onValueChange={(value) => handleSelectChange('branchId', value)} required={formData.perBranch} disabled={branches.length <=1 && !branches.find(b=>b.id !== "Global")}>
                     <SelectTrigger id="branchSelect">
-                      <SelectValue placeholder={branches.length <=1 ? "No branches configured" : "Select branch"} />
+                      <SelectValue placeholder={branches.length <=1 && !branches.find(b=>b.id !== "Global") ? "No branches configured" : "Select branch"} />
                     </SelectTrigger>
                     <SelectContent>
                       {branches.filter(b => b.id !== "Global").map(branch => <SelectItem key={branch.id} value={branch.id}>{branch.name}</SelectItem>)}
@@ -352,7 +435,7 @@ export default function AutomaticNumberingPage() {
               )}
               <DialogFooter>
                 <DialogClose asChild><Button type="button" variant="outline" disabled={isSubmitting}>Cancel</Button></DialogClose>
-                <Button type="submit" disabled={isSubmitting || (formData.perBranch && branches.length <=1)}>
+                <Button type="submit" disabled={isSubmitting || (formData.perBranch && branches.length <=1 && formData.branchId === 'Global')}>
                     {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                     Save Configuration
                 </Button>
@@ -380,8 +463,8 @@ export default function AutomaticNumberingPage() {
                   <TableHead>Document Type</TableHead>
                   <TableHead>Prefix</TableHead>
                   <TableHead>Suffix</TableHead>
-                  <TableHead>Start No.</TableHead>
-                  <TableHead>Min. Length</TableHead>
+                  <TableHead>Last Used No.</TableHead> 
+                  <TableHead>Fiscal Year</TableHead>
                   <TableHead>Per Branch</TableHead>
                   <TableHead>Branch/Scope</TableHead>
                   <TableHead>Actions</TableHead>
@@ -393,13 +476,13 @@ export default function AutomaticNumberingPage() {
                 )}
                 {filteredConfigs.map((config) => (
                   <TableRow key={config.id}>
-                    <TableCell className="font-medium">{config.documentType.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}</TableCell>
+                    <TableCell className="font-medium">{(config.documentType as string).replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}</TableCell>
                     <TableCell>{config.prefix || "N/A"}</TableCell>
                     <TableCell>{config.suffix || "N/A"}</TableCell>
-                    <TableCell>{config.startingNumber}</TableCell>
-                    <TableCell>{config.minLength || "N/A"}</TableCell>
+                    <TableCell>{config.lastNumber}</TableCell>
+                    <TableCell>{config.fiscalYear}</TableCell>
                     <TableCell>
-                      <Checkbox checked={config.perBranch} aria-label={config.perBranch ? "Yes" : "No"} disabled />
+                      <Checkbox checked={config.branchId !== "Global"} aria-label={config.branchId !== "Global" ? "Yes" : "No"} disabled />
                     </TableCell>
                     <TableCell>{getBranchNameForDisplay(config.branchId)}</TableCell>
                     <TableCell>
@@ -416,10 +499,10 @@ export default function AutomaticNumberingPage() {
                           <AlertDialogContent>
                             <AlertDialogHeader>
                               <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-                              <AlertDialogDescription>This will permanently delete the numbering configuration for "{configToDelete?.documentType.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}".</AlertDialogDescription>
+                              <AlertDialogDescription>This will permanently delete the numbering configuration for "{configToDelete?.documentType ? (configToDelete.documentType as string).replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase()): 'this item'}".</AlertDialogDescription>
                             </AlertDialogHeader>
                             <AlertDialogFooter>
-                              <AlertDialogCancel onClick={() => setIsDeleteAlertOpen(false)} disabled={isSubmitting}>Cancel</AlertDialogCancel>
+                              <AlertDialogCancel onClick={() => {setIsDeleteAlertOpen(false); setConfigToDelete(null);}} disabled={isSubmitting}>Cancel</AlertDialogCancel>
                               <AlertDialogAction onClick={confirmDelete} disabled={isSubmitting}>
                                 {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                                 Delete

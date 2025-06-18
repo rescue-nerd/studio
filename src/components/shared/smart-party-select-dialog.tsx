@@ -1,52 +1,54 @@
-
 "use client";
 
-import { useState, type ChangeEvent, type FormEvent, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogClose,
+    Dialog,
+    DialogClose,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { PlusCircle, Search } from "lucide-react";
-import { Party } from "@/app/invoicing/page"; // Assuming Party interface is exported from invoicing or a shared types file
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Party as DatabaseParty } from "@/types/database"; // Import canonical Party type
+import { PlusCircle, Search } from "lucide-react";
+import { useEffect, useState, type ChangeEvent, type FormEvent } from "react";
 
 interface SmartPartySelectDialogProps {
   isOpen: boolean;
   onOpenChange: (isOpen: boolean) => void;
-  parties: Party[];
-  onPartySelect: (party: Party) => void;
-  onPartyAdd: (party: Party) => void; // Callback to inform parent about the new party
+  parties: DatabaseParty[]; 
+  onPartySelect: (party: DatabaseParty) => void; 
+  onPartyAdd: (party: DatabaseParty) => void; 
   dialogTitle: string;
 }
 
-const partyTypes: Party["type"][] = ["Consignor", "Consignee", "Both"];
-const partyStatuses: Party["status"][] = ["Active", "Inactive"];
+const partyTypes: DatabaseParty["type"][] = ["customer", "supplier", "both"];
 
 interface NewPartyFormData {
   name: string;
-  panNo: string;
   contactNo: string;
   address: string;
-  type: Party["type"];
-  status: Party["status"];
+  type: DatabaseParty["type"];
+  isActive: boolean; 
+  branchId: string; 
+  assignedLedgerId: string; 
+  email: string; // Added email to form data
 }
 
 const defaultNewPartyFormData: NewPartyFormData = {
   name: "",
-  panNo: "",
   contactNo: "",
   address: "",
-  type: "Both",
-  status: "Active",
+  type: "both",
+  isActive: true,
+  branchId: "", 
+  assignedLedgerId: "", 
+  email: "", // Default email
 };
 
 export default function SmartPartySelectDialog({
@@ -60,61 +62,58 @@ export default function SmartPartySelectDialog({
   const [searchTerm, setSearchTerm] = useState("");
   const [showAddForm, setShowAddForm] = useState(false);
   const [newPartyData, setNewPartyData] = useState<NewPartyFormData>(defaultNewPartyFormData);
-  const [panError, setPanError] = useState<string | null>(null);
 
   useEffect(() => {
     if (isOpen) {
       setSearchTerm("");
       setShowAddForm(false);
       setNewPartyData(defaultNewPartyFormData);
-      setPanError(null);
     }
   }, [isOpen]);
 
   const handleInputChange = (e: ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
     setNewPartyData((prev) => ({ ...prev, [name]: value }));
-    if (name === "panNo") {
-      setPanError(null); // Clear PAN error on change
-    }
+  };
+  
+  const handleCheckboxChange = (e: ChangeEvent<HTMLInputElement>) => {
+    const { name, checked } = e.target;
+    setNewPartyData((prev) => ({ ...prev, [name]: checked }));
   };
 
   const handleSelectChange = (name: keyof NewPartyFormData) => (value: string) => {
-    setNewPartyData((prev) => ({ ...prev, [name]: value as Party["type"] | Party["status"] }));
+    setNewPartyData((prev) => ({ ...prev, [name]: value as DatabaseParty["type"] }));
   };
 
   const handleAddNewParty = (e: FormEvent) => {
     e.preventDefault();
-    if (!newPartyData.name.trim() || !newPartyData.panNo.trim()) {
-      alert("Party Name and PAN Number are required.");
+    if (!newPartyData.name.trim() || !newPartyData.branchId.trim() || !newPartyData.assignedLedgerId.trim()) {
+      alert("Party Name, Branch ID, and Assigned Ledger ID are required.");
       return;
     }
-    if (parties.some(p => p.panNo?.toLowerCase() === newPartyData.panNo.toLowerCase().trim())) {
-      setPanError("A party with this PAN number already exists.");
-      return;
-    }
-    setPanError(null);
 
-    const newParty: Party = {
-      id: `PTYNEW-${Date.now()}-${Math.floor(Math.random() * 1000)}`, // More robust unique ID for local state
+    const newParty: DatabaseParty = {
+      id: `PTYNEW-${Date.now()}-${Math.floor(Math.random() * 1000)}`, 
       name: newPartyData.name.trim(),
-      panNo: newPartyData.panNo.trim(),
       contactNo: newPartyData.contactNo.trim(),
       address: newPartyData.address.trim(),
       type: newPartyData.type,
-      status: newPartyData.status,
-      assignedLedger: `LEDGER-${newPartyData.panNo.trim().toUpperCase() || `GEN${Date.now()}`}`, // Auto-generate ledger ID
+      isActive: newPartyData.isActive,
+      branchId: newPartyData.branchId.trim(),
+      assignedLedgerId: newPartyData.assignedLedgerId.trim(),
+      email: newPartyData.email.trim(), 
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
     };
-    onPartyAdd(newParty); // Inform parent
-    onPartySelect(newParty); // Auto-select the new party
-    onOpenChange(false); // Close dialog
+    onPartyAdd(newParty); 
+    onPartySelect(newParty); 
+    onOpenChange(false); 
   };
 
   const filteredParties = parties.filter(
     (party) =>
       party.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (party.panNo && party.panNo.toLowerCase().includes(searchTerm.toLowerCase())) ||
-      party.contactNo.toLowerCase().includes(searchTerm.toLowerCase())
+      (party.contactNo && party.contactNo.toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
   return (
@@ -132,7 +131,7 @@ export default function SmartPartySelectDialog({
             <div className="relative my-2">
               <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Search by Name, PAN, Contact..."
+                placeholder="Search by Name, Contact..."
                 className="pl-8"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
@@ -151,7 +150,7 @@ export default function SmartPartySelectDialog({
                   >
                     <p className="font-semibold">{party.name}</p>
                     <p className="text-sm text-muted-foreground">
-                      PAN: {party.panNo || "N/A"} | Contact: {party.contactNo || "N/A"}
+                       Contact: {party.contactNo || "N/A"}
                     </p>
                     <p className="text-xs text-muted-foreground">{party.address || "No address"}</p>
                   </div>
@@ -179,17 +178,24 @@ export default function SmartPartySelectDialog({
               <Input id="newPartyName" name="name" value={newPartyData.name} onChange={handleInputChange} required />
             </div>
             <div>
-              <Label htmlFor="newPartyPanNo">PAN Number <span className="text-destructive">*</span></Label>
-              <Input id="newPartyPanNo" name="panNo" value={newPartyData.panNo} onChange={handleInputChange} required />
-              {panError && <p className="text-sm text-destructive mt-1">{panError}</p>}
-            </div>
-            <div>
               <Label htmlFor="newPartyContactNo">Contact Number</Label>
               <Input id="newPartyContactNo" name="contactNo" value={newPartyData.contactNo} onChange={handleInputChange} />
             </div>
             <div>
               <Label htmlFor="newPartyAddress">Address</Label>
               <Input id="newPartyAddress" name="address" value={newPartyData.address} onChange={handleInputChange} />
+            </div>
+            <div>
+              <Label htmlFor="newPartyEmail">Email</Label>
+              <Input id="newPartyEmail" name="email" type="email" value={newPartyData.email} onChange={handleInputChange} />
+            </div>
+            <div>
+              <Label htmlFor="newPartyBranchId">Branch ID <span className="text-destructive">*</span></Label>
+              <Input id="newPartyBranchId" name="branchId" value={newPartyData.branchId} onChange={handleInputChange} placeholder="Enter assigned branch ID" required />
+            </div>
+            <div>
+              <Label htmlFor="newPartyAssignedLedgerId">Assigned Ledger ID <span className="text-destructive">*</span></Label>
+              <Input id="newPartyAssignedLedgerId" name="assignedLedgerId" value={newPartyData.assignedLedgerId} onChange={handleInputChange} placeholder="Enter assigned ledger ID" required />
             </div>
              <div>
               <Label htmlFor="newPartyType">Type <span className="text-destructive">*</span></Label>
@@ -200,20 +206,15 @@ export default function SmartPartySelectDialog({
                 </SelectContent>
               </Select>
             </div>
-            <div>
-              <Label htmlFor="newPartyStatus">Status <span className="text-destructive">*</span></Label>
-               <Select name="status" value={newPartyData.status} onValueChange={handleSelectChange('status')} required>
-                <SelectTrigger id="newPartyStatus"><SelectValue placeholder="Select status" /></SelectTrigger>
-                <SelectContent>
-                  {partyStatuses.map(status => <SelectItem key={status} value={status}>{status}</SelectItem>)}
-                </SelectContent>
-              </Select>
+            <div className="flex items-center space-x-2">
+              <input type="checkbox" id="newPartyIsActive" name="isActive" checked={newPartyData.isActive} onChange={handleCheckboxChange} className="form-checkbox h-4 w-4 text-primary transition duration-150 ease-in-out" />
+              <Label htmlFor="newPartyIsActive" className="text-sm font-medium text-gray-700 dark:text-gray-300">Is Active</Label>
             </div>
-            <DialogFooter className="pt-4 border-t sticky bottom-0 bg-background pb-2">
-              <Button type="button" variant="outline" onClick={() => { setShowAddForm(false); setPanError(null); setNewPartyData(defaultNewPartyFormData); }}>
-                Back to Search
+            <DialogFooter className="pt-4 border-t">
+              <Button type="submit">Add Party</Button>
+              <Button type="button" variant="outline" onClick={() => setShowAddForm(false)}>
+                Cancel
               </Button>
-              <Button type="submit">Save New Party</Button>
             </DialogFooter>
           </form>
         )}

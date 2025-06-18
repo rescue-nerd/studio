@@ -20,16 +20,20 @@ export interface User {
 export interface Branch {
   id: string;
   name: string;
-  code?: string;
-  address?: string;
-  location?: string;
-  contactNo?: string;
-  email?: string;
-  isActive: boolean;
-  managerName?: string;
-  managerUserId?: string;
-  createdAt: string;
-  updatedAt?: string;
+  location: string; // Was address, changed to location as per SQL (text not null)
+  branch_code: string | null;
+  manager_name: string | null;
+  manager_user_id: string | null;
+  contact_email: string | null; // Was email
+  contact_phone: string | null; // Was contact_no
+  status: 'Active' | 'Inactive' | 'Deleted' | 'active' | 'inactive'; // Was is_active (boolean), changed to string status
+  // Audit fields
+  created_at: string;
+  created_by: string;
+  updated_at: string | null;
+  updated_by: string | null;
+  deleted_at?: string | null;
+  deleted_by?: string | null;
 }
 
 export interface DocumentNumberingConfig {
@@ -44,18 +48,69 @@ export interface DocumentNumberingConfig {
   updatedAt?: string;
 }
 
+// NOTE: The original Daybook interface seemed to represent a single ledger entry.
+// The daybook/page.tsx requires a structure representing a daily summary.
+// If the old Daybook type is still used elsewhere, it should be renamed.
+// For this refactor, we are defining Daybook as per daybook/page.tsx needs.
+
+export type DaybookStatus = 'pending' | 'submitted' | 'approved' | 'rejected';
+
 export interface Daybook {
   id: string;
-  branchId: string;
-  date: string;
-  description: string;
+  branch_id: string;
+  nepali_miti: string; // YYYY-MM-DD
+  english_miti: string; // ISO Date string
+  opening_balance?: number;
+  closing_balance?: number; // This is often calculated, might not be a direct DB field
+  status: DaybookStatus;
+  remarks?: string; // For rejection etc.
+  created_by: string; // user_id
+  created_at: string;
+  updated_at?: string;
+  submitted_at?: string;
+  approved_at?: string;
+  processing_timestamp?: string;
+  transactions_json?: string; // For legacy or denormalized data
+  // daybook_transactions is typically populated by a join in the query
+}
+
+export type DaybookTransactionType =
+  | "Cash In (from Delivery/Receipt)"
+  | "Delivery Expense (Cash Out)"
+  | "Cash Out (to Expense/Supplier/Other)"
+  | "Cash In (Other)"
+  | "Cash In (from Party Payment)"
+  | "Cash Out (to Driver/Staff, Petty Expense)"
+  | "Adjustment/Correction";
+
+export interface DaybookTransaction {
+  id: string;
+  daybook_id: string;
+  transaction_type: DaybookTransactionType;
   amount: number;
-  type: 'debit' | 'credit';
-  category: string;
-  referenceNo?: string;
-  status: CashCollectionStatus;
-  createdAt: string;
-  updatedAt?: string;
+  description?: string;
+  nepali_miti: string; // YYYY-MM-DD, usually same as parent Daybook's nepali_miti
+  reference_id?: string | null; // e.g., bilti_id
+  party_id?: string | null;
+  ledger_account_id: string; // Assumed mandatory
+  auto_linked?: boolean;
+  supporting_doc_url?: string | null;
+  reason_for_adjustment?: string | null;
+  created_by: string; // user_id
+  created_at: string;
+  updated_at?: string;
+  updated_by?: string; // user_id
+}
+
+export interface LedgerAccount {
+  id: string;
+  account_name: string;
+  account_code?: string;
+  account_type: 'asset' | 'liability' | 'equity' | 'income' | 'expense' | 'bank' | 'cash' | string; // More specific types if available
+  branch_id?: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at?: string;
 }
 
 export interface Bilti {
@@ -165,22 +220,53 @@ export interface Godown {
   updatedAt?: string;
 }
 
+export type LocationType = 'country' | 'state' | 'city';
+export type LocationStatus = 'active' | 'inactive';
+export type UnitType = 'weight' | 'volume' | 'length' | 'count';
+
 export interface Location {
   id: string;
   name: string;
-  type: 'country' | 'state' | 'city';
-  parentId?: string;
-  code?: string;
-  isActive: boolean;
-  createdAt: string;
-  updatedAt?: string;
+  type: LocationType;
+  parent_id?: string | null;
+  status: LocationStatus;
+  created_at: string;
+  created_by?: string;
+  updated_at?: string | null;
+  updated_by?: string;
+  parent?: Location | null; // For joined queries
 }
 
 export interface Unit {
   id: string;
   name: string;
+  type: UnitType;
   symbol: string;
-  isActive: boolean;
-  createdAt: string;
-  updatedAt?: string;
+  conversion_factor: number;
+  is_base_unit: boolean;
+  created_at: string;
+  created_by?: string;
+  updated_at?: string | null;
+  updated_by?: string;
+}
+
+// Request/Payload types for Supabase functions
+export interface DaybookTransactionCreateRequest {
+  daybook_id: string;
+  transaction_type: DaybookTransactionType;
+  amount: number;
+  description?: string | null;
+  nepali_miti: string;
+  reference_id?: string | null;
+  party_id?: string | null;
+  ledger_account_id: string; // Mandatory
+  auto_linked?: boolean;
+  supporting_doc_url?: string | null;
+  reason_for_adjustment?: string | null;
+  // created_by will be set by the function from auth user
+}
+
+export interface DaybookTransactionDeleteRequest {
+  id: string; // ID of the transaction to delete
+  daybook_id: string; // Parent daybook ID for context/validation
 }

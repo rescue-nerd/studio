@@ -1,28 +1,28 @@
 "use client";
 
 import {
-    AlertDialog,
-    AlertDialogAction,
-    AlertDialogCancel,
-    AlertDialogContent,
-    AlertDialogDescription,
-    AlertDialogFooter,
-    AlertDialogHeader,
-    AlertDialogTitle,
-    AlertDialogTrigger,
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
-    Dialog,
-    DialogClose,
-    DialogContent,
-    DialogDescription,
-    DialogFooter,
-    DialogHeader,
-    DialogTitle,
-    DialogTrigger,
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -32,41 +32,52 @@ import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/contexts/auth-context";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/lib/supabase";
-import { db } from "@/lib/supabase-db";
 import { handleSupabaseError, logError } from "@/lib/supabase-error-handler";
-import type { Party as FirestoreParty } from "@/types/firestore";
+// import type { Party as FirestoreParty } from "@/types/firestore";
+import type { Party as CanonicalParty } from "@/types/database";
 import { Edit, Loader2, PlusCircle, Search, Trash2, UsersRound } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, type ChangeEvent, type FormEvent } from "react";
 
-interface Party extends FirestoreParty {}
-type PartyFormDataCallable = Omit<FirestoreParty, 'id' | 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy'>;
+// Use canonical types
+interface Party extends CanonicalParty {}
+
+// Define form data types based on the canonical Party type
+// Manually define Insert and Update types if not exported from database.ts
+type PartyInsert = Omit<Party, 'id' | 'createdAt' | 'updatedAt'>;
+type PartyUpdate = Partial<Omit<Party, 'id' | 'createdAt' | 'updatedAt'>>;
+
+type PartyFormDataCallable = Omit<Party, 'id' | 'createdAt' | 'updatedAt'>;
 type UpdatePartyFormDataCallable = Partial<PartyFormDataCallable> & { partyId: string };
 
 
-const partyTypes: FirestoreParty["type"][] = ["Consignor", "Consignee", "Both"];
-const partyStatuses: FirestoreParty["status"][] = ["Active", "Inactive"];
+const partyTypes: Array<Party['type']> = ["customer", "supplier", "both"]; // Use canonical types
+// const partyStatuses: Party["status"][] = ["Active", "Inactive"]; // Status field not in canonical Party, use isActive
 
-const defaultPartyFormData: Omit<Party, 'id' | 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy'> = {
+const defaultPartyFormData: PartyFormDataCallable = {
   name: "",
-  type: "Consignor",
+  type: "customer", // Default to customer
   contactNo: "",
-  panNo: "",
+  // panNo: "", // panNo field not in canonical Party
   address: "",
-  city: "",
-  state: "",
-  country: "",
+  // city: "", // city field not in canonical Party
+  // state: "", // state field not in canonical Party
+  // country: "", // country field not in canonical Party
+  email: "", // Added email as it is in canonical Party
   assignedLedgerId: "",
-  status: "Active",
+  // status: "Active", // status field not in canonical Party, use isActive
+  isActive: true, // Use isActive from canonical Party
+  branchId: "", // Assuming branchId is required, add a default or fetch from context
 };
 
-const createPartyFn = async (data: PartyFormDataCallable) => {
+const createPartyFn = async (data: PartyInsert) => {
   const response = await supabase.functions.invoke('create-party', { body: data });
   return response.data as {success: boolean, id: string, message: string};
 };
 
-const updatePartyFn = async (data: UpdatePartyFormDataCallable) => {
-  const response = await supabase.functions.invoke('update-party', { body: data });
+const updatePartyFn = async (data: { partyId: string } & PartyUpdate) => {
+  const { partyId, ...updateData } = data;
+  const response = await supabase.functions.invoke('update-party', { body: { partyId, ...updateData } });
   return response.data as {success: boolean, id: string, message: string};
 };
 
@@ -80,7 +91,7 @@ export default function PartiesPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [isFormDialogOpen, setIsFormDialogOpen] = useState(false);
   const [editingParty, setEditingParty] = useState<Party | null>(null);
-  const [formData, setFormData] = useState<Omit<Party, 'id' | 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy'>>(defaultPartyFormData);
+  const [formData, setFormData] = useState<PartyFormDataCallable>(defaultPartyFormData);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [partyToDelete, setPartyToDelete] = useState<Party | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -96,9 +107,18 @@ export default function PartiesPage() {
   }, [authUser, authLoading, router]);
 
   const fetchParties = async () => {
-    const { data, error } = await db.query('parties', { select: '*' });
-    if (error) throw error;
-    return data;
+    try {
+      const { data, error } = await supabase
+        .from('parties') // Correct table name
+        .select('*')
+        .order('name');
+      
+      if (error) throw error;
+      setParties((data as Party[]) || []); // Cast to Party[]
+    } catch (error) {
+      console.error("Error fetching parties: ", error);
+      handleSupabaseError(error, toast);
+    }
   };
 
   useEffect(() => {
@@ -113,13 +133,15 @@ export default function PartiesPage() {
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
   
-  const handleSelectChange = (name: keyof Omit<Party, 'id' | 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy'>) => (value: string) => {
+  const handleSelectChange = (name: keyof PartyFormDataCallable) => (value: string | boolean) => {
     if (name === 'type') {
-        setFormData((prev) => ({ ...prev, [name]: value as FirestoreParty['type'] }));
-    } else if (name === 'status') {
-        setFormData((prev) => ({ ...prev, [name]: value as FirestoreParty['status'] }));
+        setFormData((prev) => ({ ...prev, [name]: value as Party['type'] }));
+    // } else if (name === 'status') { // Removed status handling
+    //     setFormData((prev) => ({ ...prev, [name]: value as Party['status'] }));
+    } else if (name === 'isActive') {
+        setFormData(prev => ({ ...prev, [name]: value as boolean }));
     } else {
-        setFormData((prev) => ({ ...prev, [name]: value }));
+        setFormData((prev) => ({ ...prev, [name]: value as string }));
     }
   };
 
@@ -131,8 +153,19 @@ export default function PartiesPage() {
 
   const openEditForm = (party: Party) => {
     setEditingParty(party);
-    const { id, createdAt, createdBy, updatedAt, updatedBy, ...editableData } = party;
-    setFormData(editableData);
+    const { id, createdAt, updatedAt, ...editableData } = party;
+    // Ensure all fields in editableData exist in PartyFormDataCallable
+    const currentFormData: PartyFormDataCallable = {
+        name: editableData.name,
+        type: editableData.type,
+        contactNo: editableData.contactNo || "",
+        address: editableData.address || "",
+        email: editableData.email || "",
+        assignedLedgerId: editableData.assignedLedgerId,
+        isActive: editableData.isActive,
+        branchId: editableData.branchId,
+    };
+    setFormData(currentFormData);
     setIsFormDialogOpen(true);
   };
 
@@ -142,20 +175,21 @@ export default function PartiesPage() {
       toast({ title: "Authentication Error", description: "You must be logged in.", variant: "destructive"});
       return;
     }
-    if (!formData.name || !formData.contactNo || !formData.assignedLedgerId) {
-        toast({ title: "Validation Error", description: "Name, Contact No., and Ledger A/C ID are required.", variant: "destructive"});
+    // Update validation to match canonical Party type fields
+    if (!formData.name || !formData.contactNo || !formData.assignedLedgerId || !formData.branchId) {
+        toast({ title: "Validation Error", description: "Name, Contact No., Ledger A/C ID, and Branch ID are required.", variant: "destructive"});
         return;
     }
     setIsSubmitting(true);
 
-    const partyDataPayload: PartyFormDataCallable = { ...formData };
+    const partyDataPayload: PartyInsert | PartyUpdate = { ...formData };
 
     try {
       let result;
       if (editingParty) {
-        result = await updatePartyFn({ partyId: editingParty.id, ...partyDataPayload });
+        result = await updatePartyFn({ partyId: editingParty.id, ...(partyDataPayload as PartyUpdate) });
       } else {
-        result = await createPartyFn(partyDataPayload);
+        result = await createPartyFn(partyDataPayload as PartyInsert);
       }
 
       if (result.success) {
@@ -203,12 +237,15 @@ export default function PartiesPage() {
 
   const filteredParties = parties.filter(party =>
     party.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    party.contactNo.includes(searchTerm) ||
-    (party.panNo && party.panNo.toLowerCase().includes(searchTerm.toLowerCase()))
+    (party.contactNo && party.contactNo.includes(searchTerm)) || // Check if contactNo exists
+    (party.email && party.email.toLowerCase().includes(searchTerm.toLowerCase())) // Check if email exists
+    // (party.panNo && party.panNo.toLowerCase().includes(searchTerm.toLowerCase())) // panNo not in canonical Party
   );
 
-  const getStatusBadgeVariant = (status: Party["status"]): "default" | "destructive" => {
-    return status === "Active" ? "default" : "destructive";
+  // Removed getStatusBadgeVariant as 'status' field is not in canonical Party.
+  // Use 'isActive' field for similar logic if needed.
+  const getIsActiveBadgeVariant = (isActive: boolean | undefined): "default" | "secondary" => {
+    return isActive ? "default" : "secondary";
   };
   
   if (authLoading || (!authUser && !authLoading)) {
@@ -247,33 +284,46 @@ export default function PartiesPage() {
               </div>
               <div className="grid grid-cols-4 items-center gap-4">
                 <Label htmlFor="type" className="text-right">Type</Label>
-                <Select value={formData.type} onValueChange={handleSelectChange('type') as (value: FirestoreParty["type"]) => void}>
+                <Select value={formData.type} onValueChange={handleSelectChange('type') as (value: Party['type']) => void}>
                   <SelectTrigger className="col-span-3"><SelectValue placeholder="Select type" /></SelectTrigger>
-                  <SelectContent>{partyTypes.map(type => <SelectItem key={type} value={type}>{type}</SelectItem>)}</SelectContent>
+                  <SelectContent>{partyTypes.map(type => <SelectItem key={type} value={type}>{type.charAt(0).toUpperCase() + type.slice(1)}</SelectItem>)}</SelectContent>
                 </Select>
               </div>
               <div className="grid grid-cols-4 items-center gap-4">
                 <Label htmlFor="contactNo" className="text-right">Contact No.</Label>
-                <Input id="contactNo" name="contactNo" value={formData.contactNo} onChange={handleInputChange} className="col-span-3" required />
+                <Input id="contactNo" name="contactNo" value={formData.contactNo || ""} onChange={handleInputChange} className="col-span-3" required />
               </div>
-              <div className="grid grid-cols-4 items-center gap-4">
+              {/* Removed PAN No. field */}
+              {/* <div className="grid grid-cols-4 items-center gap-4">
                 <Label htmlFor="panNo" className="text-right">PAN No.</Label>
                 <Input id="panNo" name="panNo" value={formData.panNo || ""} onChange={handleInputChange} className="col-span-3" placeholder="(Optional)" />
+              </div> */}
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="email" className="text-right">Email</Label>
+                <Input id="email" name="email" type="email" value={formData.email || ""} onChange={handleInputChange} className="col-span-3" placeholder="(Optional)" />
               </div>
               <div className="grid grid-cols-4 items-start gap-4">
                 <Label htmlFor="address" className="text-right pt-2">Address</Label>
                 <Textarea id="address" name="address" value={formData.address || ""} onChange={handleInputChange} className="col-span-3" placeholder="(Optional)" rows={3}/>
+              </div>
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="branchId" className="text-right">Branch ID</Label>
+                <Input id="branchId" name="branchId" value={formData.branchId || ''} onChange={handleInputChange} className="col-span-3" placeholder="e.g., Branch-XYZ" required />
               </div>
               {/* city, state, country fields can be added similarly if needed */}
               <div className="grid grid-cols-4 items-center gap-4">
                 <Label htmlFor="assignedLedgerId" className="text-right">Ledger A/C ID</Label>
                 <Input id="assignedLedgerId" name="assignedLedgerId" value={formData.assignedLedgerId} onChange={handleInputChange} className="col-span-3" required />
               </div>
+              {/* Removed Status field, using isActive instead */}
               <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="status" className="text-right">Status</Label>
-                <Select value={formData.status} onValueChange={handleSelectChange('status') as (value: FirestoreParty["status"]) => void}>
+                <Label htmlFor="isActive" className="text-right">Active</Label>
+                <Select value={formData.isActive ? "true" : "false"} onValueChange={(value) => handleSelectChange('isActive')(value === "true")}>
                   <SelectTrigger className="col-span-3"><SelectValue placeholder="Select status" /></SelectTrigger>
-                  <SelectContent>{partyStatuses.map(status => <SelectItem key={status} value={status}>{status}</SelectItem>)}</SelectContent>
+                  <SelectContent>
+                    <SelectItem value="true">Active</SelectItem>
+                    <SelectItem value="false">Inactive</SelectItem>
+                  </SelectContent>
                 </Select>
               </div>
               <DialogFooter>
@@ -308,8 +358,11 @@ export default function PartiesPage() {
                   <TableHead>Name</TableHead>
                   <TableHead>Type</TableHead>
                   <TableHead>Contact No.</TableHead>
-                  <TableHead>PAN No.</TableHead>
-                  <TableHead>Status</TableHead>
+                  {/* <TableHead>PAN No.</TableHead> */}
+                  <TableHead>Email</TableHead>
+                  <TableHead>Address</TableHead>
+                  <TableHead>Branch ID</TableHead>
+                  <TableHead>Status</TableHead> {/* Changed from Status to Is Active */} 
                   <TableHead>Ledger A/C ID</TableHead>
                   <TableHead>Actions</TableHead>
                 </TableRow>
@@ -322,10 +375,13 @@ export default function PartiesPage() {
                   <TableRow key={party.id}>
                     <TableCell className="font-medium">{party.id}</TableCell>
                     <TableCell>{party.name}</TableCell>
-                    <TableCell>{party.type}</TableCell>
-                    <TableCell>{party.contactNo}</TableCell>
-                    <TableCell>{party.panNo || 'N/A'}</TableCell>
-                    <TableCell><Badge variant={getStatusBadgeVariant(party.status)} className={party.status === "Active" ? "bg-accent text-accent-foreground" : ""}>{party.status}</Badge></TableCell>
+                    <TableCell>{party.type.charAt(0).toUpperCase() + party.type.slice(1)}</TableCell>
+                    <TableCell>{party.contactNo || 'N/A'}</TableCell>
+                    {/* <TableCell>{party.panNo || 'N/A'}</TableCell> */}
+                    <TableCell>{party.email || 'N/A'}</TableCell>
+                    <TableCell>{party.address || 'N/A'}</TableCell>
+                    <TableCell>{party.branchId}</TableCell>
+                    <TableCell><Badge variant={getIsActiveBadgeVariant(party.isActive)} className={party.isActive ? "bg-accent text-accent-foreground" : ""}>{party.isActive ? "Active" : "Inactive"}</Badge></TableCell>
                     <TableCell>{party.assignedLedgerId}</TableCell>
                     <TableCell>
                       <div className="flex gap-2">

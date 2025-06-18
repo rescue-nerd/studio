@@ -1,258 +1,196 @@
-import { createClient } from 'npm:@supabase/supabase-js@2';
-import { corsHeaders } from '../_shared/cors.ts';
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
-interface RequestBody {
-  id: string;
-  name?: string;
-  countryId?: string;
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'PUT, OPTIONS',
 }
 
-interface StateData {
-  id: string;
-  name: string;
-  country_id: string;
-  created_by: string;
-  created_at: string;
-  updated_by: string;
-  updated_at: string;
-}
-
-Deno.serve(async (req) => {
-  // Handle CORS preflight requests
+serve(async (req) => {
   if (req.method === 'OPTIONS') {
-    return new Response(null, { 
-      status: 204,
-      headers: corsHeaders 
-    });
+    return new Response('ok', { headers: corsHeaders })
+  }
+
+  if (req.method !== 'PUT') {
+    return new Response(JSON.stringify({ error: 'Method not allowed' }), {
+      status: 405,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    })
   }
 
   try {
-    // Initialize Supabase client
-    const supabaseClient = createClient(
+    const supabase = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-    );
+      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+      {
+        global: {
+          headers: { Authorization: req.headers.get('Authorization')! },
+        },
+      }
+    )
 
-    // Verify authentication
-    const authHeader = req.headers.get('Authorization');
-    if (!authHeader) {
-      return new Response(
-        JSON.stringify({ 
-          success: false, 
-          message: 'Authorization header is required' 
-        }),
-        { 
-          status: 401, 
-          headers: corsHeaders
-        }
-      );
-    }
-
-    const token = authHeader.replace('Bearer ', '');
-    const { data: { user }, error: authError } = await supabaseClient.auth.getUser(token);
-
+    // Get the authenticated user
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
     if (authError || !user) {
-      return new Response(
-        JSON.stringify({ 
-          success: false, 
-          message: 'Unauthorized' 
-        }),
-        { 
-          status: 401, 
-          headers: corsHeaders
-        }
-      );
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+        status: 401,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      })
     }
 
-    // Parse and validate request body
-    let body: RequestBody;
-    try {
-      body = await req.json();
-    } catch (parseError) {
-      return new Response(
-        JSON.stringify({ 
-          success: false, 
-          message: 'Invalid JSON in request body' 
-        }),
-        { 
-          status: 400, 
-          headers: corsHeaders
-        }
-      );
-    }
-    
-    if (!body.id) {
-      return new Response(
-        JSON.stringify({ 
-          success: false, 
-          message: 'State ID is required' 
-        }),
-        { 
-          status: 400, 
-          headers: corsHeaders
-        }
-      );
+    const { id, name, countryId } = await req.json()
+
+    // Validate required fields
+    if (!id) {
+      return new Response(JSON.stringify({ 
+        error: 'Missing required field: id' 
+      }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      })
     }
 
     // Validate name if provided
-    if (body.name !== undefined && body.name.trim().length === 0) {
-      return new Response(
-        JSON.stringify({ 
-          success: false, 
-          message: 'State name cannot be empty' 
-        }),
-        { 
-          status: 400, 
-          headers: corsHeaders
-        }
-      );
+    if (name !== undefined && (typeof name !== 'string' || name.trim().length < 2 || name.trim().length > 100)) {
+      return new Response(JSON.stringify({ 
+        error: 'State name must be between 2 and 100 characters' 
+      }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      })
     }
 
     // Check if state exists
-    const { data: existingState, error: fetchError } = await supabaseClient
-      .from('states')
-      .select('*')
-      .eq('id', body.id)
-      .single();
+    const { data: existingState, error: stateError } = await supabase
+      .from('locations')
+      .select('id, name, parent_id, type, status')
+      .eq('id', id)
+      .eq('type', 'state')
+      .single()
 
-    if (fetchError || !existingState) {
-      return new Response(
-        JSON.stringify({ 
-          success: false, 
-          message: 'State not found',
-          details: fetchError?.message
-        }),
-        { 
-          status: 404, 
-          headers: corsHeaders
-        }
-      );
+    if (stateError || !existingState) {
+      return new Response(JSON.stringify({ 
+        error: 'State not found' 
+      }), {
+        status: 404,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      })
     }
 
-    // If countryId is provided, verify it exists
-    if (body.countryId) {
-      const { data: country, error: countryError } = await supabaseClient
-        .from('countries')
-        .select('id')
-        .eq('id', body.countryId)
-        .single();
+    if (existingState.status !== 'active') {
+      return new Response(JSON.stringify({ 
+        error: 'Cannot update inactive state' 
+      }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      })
+    }
+
+    // Verify country if provided
+    if (countryId && countryId !== existingState.parent_id) {
+      const { data: country, error: countryError } = await supabase
+        .from('locations')
+        .select('id, name')
+        .eq('id', countryId)
+        .eq('type', 'country')
+        .eq('status', 'active')
+        .single()
 
       if (countryError || !country) {
-        return new Response(
-          JSON.stringify({ 
-            success: false, 
-            message: 'Country not found',
-            details: countryError?.message
-          }),
-          { 
-            status: 404, 
-            headers: corsHeaders
-          }
-        );
+        return new Response(JSON.stringify({ 
+          error: 'Invalid country ID or country is inactive' 
+        }), {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        })
       }
     }
 
-    // Check for duplicate name in the same country (if name is being updated)
-    if (body.name) {
-      const targetCountryId = body.countryId || existingState.country_id;
-      const { data: duplicateState, error: duplicateError } = await supabaseClient
-        .from('states')
+    // Check for duplicate name if name is being changed
+    if (name && name.trim() !== existingState.name) {
+      const targetCountryId = countryId || existingState.parent_id
+      const { data: duplicate, error: duplicateError } = await supabase
+        .from('locations')
         .select('id')
-        .eq('name', body.name.trim())
-        .eq('country_id', targetCountryId)
-        .neq('id', body.id)
-        .single();
+        .eq('name', name.trim())
+        .eq('parent_id', targetCountryId)
+        .eq('type', 'state')
+        .eq('status', 'active')
+        .neq('id', id)
+        .single()
 
       if (duplicateError && duplicateError.code !== 'PGRST116') {
-        return new Response(
-          JSON.stringify({ 
-            success: false, 
-            message: 'Error checking for duplicate state name',
-            details: duplicateError.message
-          }),
-          { 
-            status: 500, 
-            headers: corsHeaders
-          }
-        );
+        throw duplicateError
       }
 
-      if (duplicateState) {
-        return new Response(
-          JSON.stringify({ 
-            success: false, 
-            message: 'A state with this name already exists in the selected country' 
-          }),
-          { 
-            status: 409, 
-            headers: corsHeaders
-          }
-        );
+      if (duplicate) {
+        return new Response(JSON.stringify({ 
+          error: 'A state with this name already exists in this country' 
+        }), {
+          status: 409,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        })
       }
     }
 
     // Prepare update data
-    const updateData: Partial<StateData> = {
+    const updateData: any = {
       updated_by: user.id,
       updated_at: new Date().toISOString()
-    };
-
-    if (body.name) updateData.name = body.name.trim();
-    if (body.countryId) updateData.country_id = body.countryId;
-
-    // Update state
-    const { data: updatedState, error: updateError } = await supabaseClient
-      .from('states')
-      .update(updateData)
-      .eq('id', body.id)
-      .select()
-      .single();
-
-    if (updateError) {
-      console.error('Error updating state:', updateError);
-      return new Response(
-        JSON.stringify({ 
-          success: false, 
-          message: 'Failed to update state',
-          details: updateError.message
-        }),
-        { 
-          status: 500, 
-          headers: corsHeaders
-        }
-      );
     }
 
-    // Return success response with camelCase field names
-    return new Response(
-      JSON.stringify({ 
-        success: true, 
-        data: {
-          id: updatedState.id,
-          name: updatedState.name,
-          countryId: updatedState.country_id,
-          updatedAt: updatedState.updated_at
-        },
-        message: 'State updated successfully' 
-      }),
-      { 
-        status: 200,
-        headers: corsHeaders
-      }
-    );
+    if (name !== undefined) {
+      updateData.name = name.trim()
+    }
+
+    if (countryId !== undefined) {
+      updateData.parent_id = countryId
+    }
+
+    // Update the state
+    const { data: updatedState, error: updateError } = await supabase
+      .from('locations')
+      .update(updateData)
+      .eq('id', id)
+      .select(`
+        id,
+        name,
+        type,
+        parent_id,
+        status,
+        created_at,
+        updated_at,
+        created_by,
+        updated_by,
+        parent:locations!parent_id(id, name, type)
+      `)
+      .single()
+
+    if (updateError) {
+      console.error('Update state error:', updateError)
+      return new Response(JSON.stringify({ 
+        error: 'Failed to update state' 
+      }), {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      })
+    }
+
+    return new Response(JSON.stringify({
+      success: true,
+      data: updatedState
+    }), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    })
 
   } catch (error) {
-    console.error('Error updating state:', error);
-    return new Response(
-      JSON.stringify({ 
-        success: false, 
-        message: 'Internal server error',
-        details: error instanceof Error ? error.message : 'Unknown error'
-      }),
-      { 
-        status: 500, 
-        headers: corsHeaders
-      }
-    );
+    console.error('Error updating state:', error)
+    return new Response(JSON.stringify({ 
+      error: 'Internal server error' 
+    }), {
+      status: 500,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    })
   }
-});
+})

@@ -33,13 +33,12 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/contexts/auth-context";
 import { useToast } from "@/hooks/use-toast";
-import { handleSupabaseError, logError } from "@/lib/supabase-error-handler";
 import { supabase } from "@/lib/supabase";
 import { db } from "@/lib/supabase-db";
+import { handleSupabaseError, logError } from "@/lib/supabase-error-handler";
 import { cn } from "@/lib/utils";
 import type { Driver as FirestoreDriver } from "@/types/firestore";
 import { format } from "date-fns";
-import { type HttpsCallableResult } from "firebase/functions";
 import { CalendarIcon, Car, Edit, Loader2, PlusCircle, Search, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, type ChangeEvent, type FormEvent } from "react";
@@ -74,7 +73,7 @@ const fetchDrivers = async () => {
   return response.data;
 };
 
-// Replace Firebase Functions calls with Supabase Edge Function calls
+// Supabase Edge Function calls
 const createDriverFn = async (data: any) => {
   const response = await supabase.functions.invoke('create-driver', { body: data });
   return response.data;
@@ -162,19 +161,19 @@ export default function DriversPage() {
     };
 
     try {
-      let result: HttpsCallableResult<{success: boolean; id: string; message: string}>;
+      let result: {success: boolean; id: string; message: string};
       if (editingDriver) {
         result = await updateDriverFn({ driverId: editingDriver.id, ...driverDataPayload });
       } else {
         result = await createDriverFn(driverDataPayload);
       }
-      if (result.data.success) {
-        toast({ title: "Success", description: result.data.message });
+      if (result.success) {
+        toast({ title: "Success", description: result.message });
         fetchDrivers();
         setIsFormDialogOpen(false);
         setEditingDriver(null);
       } else {
-        toast({ title: "Error", description: result.data.message, variant: "destructive" });
+        toast({ title: "Error", description: result.message, variant: "destructive" });
       }
     } catch (error) {
       logError(error, `Error ${editingDriver ? 'updating' : 'creating'} driver`);
@@ -196,11 +195,11 @@ export default function DriversPage() {
       setIsSubmitting(true);
       try {
         const result = await deleteDriverFn({ driverId: driverToDelete.id });
-        if (result.data.success) {
-            toast({ title: "Success", description: result.data.message});
+        if (result.success) {
+            toast({ title: "Success", description: result.message});
             fetchDrivers();
         } else {
-            toast({ title: "Error", description: result.data.message, variant: "destructive" });
+            toast({ title: "Error", description: result.message, variant: "destructive" });
         }
       } catch (error) {
         logError(error, "Error deleting driver");

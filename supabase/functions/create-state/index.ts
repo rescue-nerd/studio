@@ -1,225 +1,158 @@
-import { createClient } from 'npm:@supabase/supabase-js@2';
-import { corsHeaders } from '../_shared/cors.ts';
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
-interface RequestBody {
-  name: string;
-  countryId: string;
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
 }
 
-interface StateData {
-  id: string;
-  name: string;
-  country_id: string;
-  created_by: string;
-  created_at: string;
-  updated_by: string;
-  updated_at: string;
-}
-
-Deno.serve(async (req) => {
-  // Handle CORS preflight requests
+serve(async (req) => {
   if (req.method === 'OPTIONS') {
-    return new Response(null, { 
-      status: 204,
-      headers: corsHeaders 
-    });
+    return new Response('ok', { headers: corsHeaders })
+  }
+
+  if (req.method !== 'POST') {
+    return new Response(JSON.stringify({ error: 'Method not allowed' }), {
+      status: 405,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    })
   }
 
   try {
-    // Initialize Supabase client
-    const supabaseClient = createClient(
+    const supabase = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-    );
+      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+      {
+        global: {
+          headers: { Authorization: req.headers.get('Authorization')! },
+        },
+      }
+    )
 
-    // Verify authentication
-    const authHeader = req.headers.get('Authorization');
-    if (!authHeader) {
-      return new Response(
-        JSON.stringify({ 
-          success: false, 
-          message: 'Authorization header is required' 
-        }),
-        { 
-          status: 401, 
-          headers: corsHeaders
-        }
-      );
-    }
-
-    const token = authHeader.replace('Bearer ', '');
-    const { data: { user }, error: authError } = await supabaseClient.auth.getUser(token);
-
+    // Get the authenticated user
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
     if (authError || !user) {
-      return new Response(
-        JSON.stringify({ 
-          success: false, 
-          message: 'Unauthorized' 
-        }),
-        { 
-          status: 401, 
-          headers: corsHeaders
-        }
-      );
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+        status: 401,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      })
     }
 
-    // Parse and validate request body
-    let body: RequestBody;
-    try {
-      body = await req.json();
-    } catch (parseError) {
-      return new Response(
-        JSON.stringify({ 
-          success: false, 
-          message: 'Invalid JSON in request body' 
-        }),
-        { 
-          status: 400, 
-          headers: corsHeaders
-        }
-      );
-    }
-    
-    if (!body.name || !body.countryId) {
-      return new Response(
-        JSON.stringify({ 
-          success: false, 
-          message: 'Name and country ID are required' 
-        }),
-        { 
-          status: 400, 
-          headers: corsHeaders
-        }
-      );
+    const { name, countryId } = await req.json()
+
+    // Validate required fields
+    if (!name || !countryId) {
+      return new Response(JSON.stringify({ 
+        error: 'Missing required fields: name, countryId' 
+      }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      })
     }
 
-    // Validate name length
-    if (body.name.trim().length === 0) {
-      return new Response(
-        JSON.stringify({ 
-          success: false, 
-          message: 'State name cannot be empty' 
-        }),
-        { 
-          status: 400, 
-          headers: corsHeaders
-        }
-      );
+    // Validate name
+    if (typeof name !== 'string' || name.trim().length < 2 || name.trim().length > 100) {
+      return new Response(JSON.stringify({ 
+        error: 'State name must be between 2 and 100 characters' 
+      }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      })
     }
 
-    // Check if country exists
-    const { data: country, error: countryError } = await supabaseClient
-      .from('countries')
-      .select('id')
-      .eq('id', body.countryId)
-      .single();
+    // Verify the country exists
+    const { data: country, error: countryError } = await supabase
+      .from('locations')
+      .select('id, name')
+      .eq('id', countryId)
+      .eq('type', 'country')
+      .eq('status', 'active')
+      .single()
 
     if (countryError || !country) {
-      return new Response(
-        JSON.stringify({ 
-          success: false, 
-          message: 'Country not found',
-          details: countryError?.message
-        }),
-        { 
-          status: 404, 
-          headers: corsHeaders
-        }
-      );
+      return new Response(JSON.stringify({ 
+        error: 'Invalid country ID or country is inactive' 
+      }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      })
     }
 
-    // Check if state with same name already exists in the country
-    const { data: existingState, error: checkError } = await supabaseClient
-      .from('states')
+    // Check for duplicate state name within the same country
+    const { data: existingState, error: duplicateError } = await supabase
+      .from('locations')
       .select('id')
-      .eq('name', body.name.trim())
-      .eq('country_id', body.countryId)
-      .single();
+      .eq('name', name.trim())
+      .eq('parent_id', countryId)
+      .eq('type', 'state')
+      .eq('status', 'active')
+      .single()
 
-    if (checkError && checkError.code !== 'PGRST116') { // PGRST116 is "no rows returned"
-      return new Response(
-        JSON.stringify({ 
-          success: false, 
-          message: 'Error checking state existence',
-          details: checkError.message
-        }),
-        { 
-          status: 500, 
-          headers: corsHeaders
-        }
-      );
+    if (duplicateError && duplicateError.code !== 'PGRST116') {
+      throw duplicateError
     }
 
     if (existingState) {
-      return new Response(
-        JSON.stringify({ 
-          success: false, 
-          message: 'A state with this name already exists in the selected country' 
-        }),
-        { 
-          status: 409, 
-          headers: corsHeaders
-        }
-      );
+      return new Response(JSON.stringify({ 
+        error: 'A state with this name already exists in this country' 
+      }), {
+        status: 409,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      })
     }
 
-    // Create state
-    const { data: newState, error: createError } = await supabaseClient
-      .from('states')
+    // Create the state
+    const { data: newState, error: createError } = await supabase
+      .from('locations')
       .insert({
-        name: body.name.trim(),
-        country_id: body.countryId,
+        name: name.trim(),
+        type: 'state',
+        parent_id: countryId,
+        status: 'active',
         created_by: user.id,
-        updated_by: user.id
+        updated_by: user.id,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
       })
-      .select()
-      .single();
+      .select(`
+        id,
+        name,
+        type,
+        parent_id,
+        status,
+        created_at,
+        updated_at,
+        created_by,
+        updated_by,
+        parent:locations!parent_id(id, name, type)
+      `)
+      .single()
 
     if (createError) {
-      console.error('Error creating state:', createError);
-      return new Response(
-        JSON.stringify({ 
-          success: false, 
-          message: 'Failed to create state',
-          details: createError.message
-        }),
-        { 
-          status: 500, 
-          headers: corsHeaders
-        }
-      );
+      console.error('Create state error:', createError)
+      return new Response(JSON.stringify({ 
+        error: 'Failed to create state' 
+      }), {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      })
     }
 
-    // Return success response with camelCase field names
-    return new Response(
-      JSON.stringify({ 
-        success: true, 
-        data: {
-          id: newState.id,
-          name: newState.name,
-          countryId: newState.country_id,
-          createdAt: newState.created_at
-        },
-        message: 'State created successfully' 
-      }),
-      { 
-        status: 201,
-        headers: corsHeaders
-      }
-    );
+    return new Response(JSON.stringify({
+      success: true,
+      data: newState
+    }), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    })
 
   } catch (error) {
-    console.error('Error creating state:', error);
-    return new Response(
-      JSON.stringify({ 
-        success: false, 
-        message: 'Internal server error',
-        error: error instanceof Error ? error.message : 'Unknown error'
-      }),
-      { 
-        status: 500, 
-        headers: corsHeaders
-      }
-    );
+    console.error('Error creating state:', error)
+    return new Response(JSON.stringify({ 
+      error: 'Internal server error' 
+    }), {
+      status: 500,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    })
   }
-});
+})
